@@ -1,1 +1,0 @@
-Estructura base repositorio CAPSTON
