@@ -58,7 +58,7 @@ npm run test:unit
 | Integrante | Rol |
 |---|---|
 | Pino, Marcelo | Líder de Proyecto / Arquitectura de Software & Backend Developer |
-| [Miranda, David] | Desarrollador Frontend / Diseñador UX-UI (Google Stitch & React) |
+| Miranda, David | Desarrollador Frontend / Diseñador UX-UI (Google Stitch & React) |
 
 ## 5. Metodología de trabajo
 Se emplea un marco de trabajo ágil basado en **Scrum / Scrumban** apoyado en el repositorio de **GitHub** (Issues, Projects y Milestones) y herramientas de prototipado rápido como **Google Stitch**:
