@@ -61,10 +61,12 @@ npm run test:unit
 | Miranda, David | Desarrollador Frontend / Diseñador UX-UI (Google Stitch & React) |
 
 ## 5. Metodología de trabajo
-Se emplea un marco de trabajo ágil basado en **Scrum / Scrumban** apoyado en el repositorio de **GitHub** (Issues, Projects y Milestones) y herramientas de prototipado rápido como **Google Stitch**:
-- **Sprints de 2 semanas:** Planificación, desarrollo modular y revisión de entregables.
-- **Desacoplamiento Front/Back:** Definición previa de contratos de interfaz en Google Stitch y catálogo de 57 endpoints RESTful para permitir el desarrollo en paralelo sin bloqueos.
-- **Integración Continua y Calidad (CI/QA):** Validación mediante suites de pruebas automatizadas antes de cada liberación hacia la rama `main`.
+El proyecto se aborda mediante la metodología **RUP (Rational Unified Process)**, de naturaleza iterativa y evolutiva, enfocada en la mitigación continua de riesgos, la robustez de la arquitectura de software y el modelado de casos de uso. El ciclo de vida se estructura en tres fases alineadas con el calendario académico:
+- **Incepción y Elaboración (Fase 1 - 20%):** Definición del alcance, justificación del proyecto (*Business Case*), análisis exhaustivo de requisitos y diseño de la arquitectura base. Se desarrollaron los artefactos de diseño UML (Casos de Uso, Clases, Secuencia, Comunicación, Componentes y Despliegue) y el modelado de datos relacional (MER de 15 tablas en PostgreSQL y SQLite).
+- **Construcción (Fase 2 - 50%):** Implementación incremental del software en iteraciones sucesivas. Comprende el desarrollo del servidor Backend API (Node.js/Express con persistencia dual), la interfaz del cliente Frontend (React SPA / POS), la integración del motor de IA OCR de Google AI Studio, la conexión con pasarelas de pago chilenas en sandbox (Transbank, Mercado Pago, SumUp), el módulo de productos *trending* (Mercado Libre, AliExpress) y la certificación mediante 147 pruebas automatizadas (Jest).
+- **Transición (Fase 3 - 30%):** Pruebas de estrés, aseguramiento de calidad (QA), refinamiento del producto, despliegue del MVP (*Release Notes*) y preparación del material audiovisual para la defensa técnica ante la comisión evaluadora.
+
+El seguimiento de tareas, control de versiones y trazabilidad de los artefactos de ingeniería se gestiona de manera centralizada a través de **GitHub**.
 
 ## 6. Arquitectura de la solución
 La solución adopta un patrón **Dual-Core Híbrido Desacoplado**:
