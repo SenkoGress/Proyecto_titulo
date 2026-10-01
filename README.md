@@ -75,7 +75,7 @@ La solución adopta un patrón **Dual-Core Híbrido Desacoplado**:
 3. **Mecanismo de Resiliencia (Circuit Breaker):** Conmutación instantánea (0 ms) ante fallos de conectividad TCP hacia la nube, derivando consultas al almacenamiento local para evitar el congelamiento de la interfaz del cajero.
 4. **Seguridad Perimetral:** CORS restrictivo dinámico, Rate Limiting granular, sanitización de identificadores multi-tenant contra SQL Injection y ofuscación de trazas de error en producción.
 
-> El diagrama Entidad-Relación y los esquemas técnicos completos se encuentran disponibles en [`docs/diagrama_base_de_datos.svg`](./docs/diagrama_base_de_datos.svg) y [`docs/arquitectura_sistema.docx`](./docs/arquitectura_sistema.docx).
+> Todos los diagramas se encuentran disponibles en la carpeta [`FASE 1/Diagramas`](./FASE%201/Diagramas).
 
 ---
 ### Sección de innovación (documento de cierre)
