@@ -1,0 +1,1884 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GesTock - Sistema Inteligente de Inventarios & POS Offline-First</title>
+  <link rel="stylesheet" href="/css/pos-theme.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <!-- Top Navigation & Sync Bar -->
+  <header class="top-nav">
+    <div class="brand">
+      <div class="brand-logo">GT</div>
+      <div>
+        <h1 class="brand-title">GesTock POS</h1>
+        <div class="brand-subtitle">Gestión Predictiva & Offline-First para Microempresas</div>
+      </div>
+    </div>
+
+    <div class="nav-controls">
+      <!-- Sync Status Indicator -->
+      <div class="sync-badge">
+        <span id="statusDot" class="status-dot dot-online"></span>
+        <span id="statusText">VERIFICANDO ESTADO...</span>
+        <span style="color: var(--text-muted); font-size: 11px;">(Pendientes: <span id="dirtyCount">0</span>)</span>
+      </div>
+
+      <button id="btnSyncNow" class="btn-sync">
+        ⚡ Sincronizar Nube
+      </button>
+
+      <button id="btnThemeToggle" onclick="alternarTemaRapido()" style="background: var(--bg-card); border: 1px solid var(--border-color); color: var(--text-main); padding: 6px 12px; border-radius: 20px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px;" title="Cambiar Tema Claro / Oscuro">
+        <span id="themeToggleIcon">🌙</span> <span id="themeToggleText">Oscuro</span>
+      </button>
+
+      <div style="font-size: 12px; color: var(--text-muted); border-left: 1px solid #334155; padding-left: 14px;">
+        Caja: <strong>Caja 01</strong> | Cajero: <strong>Admin Demo</strong>
+      </div>
+    </div>
+  </header>
+
+  <!-- Module Navigation Tabs -->
+  <nav class="tabs-bar">
+    <button class="tab-btn active" data-tab="tab-pos">
+      🛒 Terminal POS
+    </button>
+    <button class="tab-btn" data-tab="tab-dashboard">
+      📊 Dashboard Global
+    </button>
+    <button class="tab-btn" data-tab="tab-inventory">
+      📦 Inventario & Catálogo
+    </button>
+    <button class="tab-btn" data-tab="tab-transactions">
+      🧾 Registro de Ventas
+    </button>
+    <button class="tab-btn" data-tab="tab-caja">
+      💰 Cierre de Caja (Z)
+    </button>
+    <button class="tab-btn" data-tab="tab-tax">
+      📁 Respaldo Facturas & SII
+    </button>
+    <button class="tab-btn" data-tab="tab-suppliers">
+      🏢 Proveedores
+    </button>
+    <button class="tab-btn" data-tab="tab-replenishment">
+      📊 Reabastecimiento ROP
+    </button>
+    <button class="tab-btn" data-tab="tab-ocr">
+      📑 Ingesta Facturas OCR
+    </button>
+    <button class="tab-btn" data-tab="tab-trends">
+      📈 Tendencias de Mercado
+    </button>
+    <button class="tab-btn" data-tab="tab-config">
+      ⚙️ Configuración
+    </button>
+  </nav>
+
+  <!-- Main Work Area -->
+  <main class="main-content">
+    
+    <!-- Tab 1: POS Quick Sale Terminal -->
+    <section id="tab-pos" class="tab-pane active">
+      <div class="pos-layout">
+        
+        <!-- Left: Product Catalog & Search -->
+        <div class="catalog-panel">
+          <div class="search-bar-wrap">
+            <input 
+              type="text" 
+              id="posSearch" 
+              class="search-input" 
+              placeholder="Buscar por Nombre, SKU o Código de Barras... (F2)" 
+              autofocus
+            >
+          </div>
+
+          <div id="productGrid" class="product-grid">
+            <!-- Renderizado dinámico desde app.js -->
+          </div>
+        </div>
+
+        <!-- Right: Current Sale Ticket & Checkout -->
+        <div class="cart-panel">
+          <div class="cart-header">
+            <h3 style="font-size: 16px; font-weight: 700;">Ticket de Venta Actual</h3>
+            <span style="font-size: 11px; color: var(--text-muted);">Moneda: CLP ($)</span>
+          </div>
+
+          <div id="cartItems" class="cart-items">
+            <!-- Items del carrito -->
+          </div>
+
+          <div class="cart-footer">
+            <div style="background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 6px 12px; margin-bottom: 6px;">
+              <div style="display: flex; justify-content: space-between; font-size: 11.5px; color: var(--text-muted);">
+                <span>Neto: <strong id="cartSubtotal" style="color: #cbd5e1;">$0</strong></span>
+                <span>IVA (19%): <strong id="cartIva" style="color: #cbd5e1;">$0</strong></span>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: baseline; margin-top: 4px; border-top: 1px dashed #334155; padding-top: 4px;">
+                <span style="font-size: 12.5px; font-weight: 700; color: #fff;">TOTAL A PAGAR:</span>
+                <span id="cartTotal" style="font-size: 19px; font-weight: 800; color: var(--primary);">$0</span>
+              </div>
+            </div>
+
+            <div style="font-size: 10px; color: #38bdf8; background: rgba(56, 189, 248, 0.08); padding: 2px 6px; border-radius: 4px; margin-bottom: 6px; text-align: center;">
+              ⚖️ Ley N° 20.956: Redondeo a la decena en efectivo
+            </div>
+
+            <!-- Payment Method Selector -->
+            <label style="font-size: 11px; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">
+              Forma de Pago:
+            </label>
+            <div class="payment-methods-grid">
+              <button class="pay-btn selected" data-pay="EFECTIVO">💵 Efectivo</button>
+              <button class="pay-btn" data-pay="TRANSBANK">💳 Transbank</button>
+              <button class="pay-btn" data-pay="RUTPAY">🟡 RutPay</button>
+              <button class="pay-btn" data-pay="MERCADOPAGO">🔵 MercadoPago</button>
+              <button class="pay-btn" data-pay="SUMUP">🔴 SumUp</button>
+            </div>
+
+            <!-- Quick Reusable Bag (Ley N° 21.368) -->
+            <button type="button" class="btn-sync" onclick="agregarBolsaReutilizable()" style="width: 100%; margin-bottom: 6px; padding: 4px 8px; background: rgba(5, 150, 105, 0.15); border: 1px dashed #059669; color: #34d399; font-size: 11px; font-weight: 600;">
+              🛍️ + Cobrar Bolsa Reutilizable ($1.000 - Ley 21.368)
+            </button>
+
+            <!-- Tipo de Documento Fiscal (Boleta 39 vs Factura 33) -->
+            <div style="background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 6px 10px; margin-bottom: 6px;">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 11px; color: var(--text-muted); font-weight: 600;">Documento Fiscal:</span>
+                <div style="display: flex; gap: 12px; font-size: 11.5px;">
+                  <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                    <input type="radio" name="posDocType" value="BOLETA" checked onchange="togglePosDocType()">
+                    <span>🧾 Boleta</span>
+                  </label>
+                  <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                    <input type="radio" name="posDocType" value="FACTURA" onchange="togglePosDocType()">
+                    <span style="color: #38bdf8; font-weight: 600;">📑 Factura</span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- Campos colapsables para Factura Empresa -->
+              <div id="posFacturaFields" style="display: none; margin-top: 8px; padding-top: 6px; border-top: 1px dashed #334155;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 4px;">
+                  <div>
+                    <label style="font-size: 10px; color: var(--text-muted);">RUT Empresa Receptor:</label>
+                    <input type="text" id="posFacturaRut" placeholder="Ej: 76.123.456-7" style="background: #1e293b; border: 1px solid #475569; color: #fff; padding: 4px 6px; border-radius: 4px; width: 100%; font-size: 11px;">
+                  </div>
+                  <div>
+                    <label style="font-size: 10px; color: var(--text-muted);">Razón Social:</label>
+                    <input type="text" id="posFacturaRazonSocial" placeholder="Empresa SpA / Ltda" style="background: #1e293b; border: 1px solid #475569; color: #fff; padding: 4px 6px; border-radius: 4px; width: 100%; font-size: 11px;">
+                  </div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+                  <div>
+                    <label style="font-size: 10px; color: var(--text-muted);">Giro Comercial:</label>
+                    <input type="text" id="posFacturaGiro" placeholder="Ej: Servicios Generales" style="background: #1e293b; border: 1px solid #475569; color: #fff; padding: 4px 6px; border-radius: 4px; width: 100%; font-size: 11px;">
+                  </div>
+                  <div>
+                    <label style="font-size: 10px; color: var(--text-muted);">Dirección / Comuna:</label>
+                    <input type="text" id="posFacturaDireccion" placeholder="Dirección Comercial" style="background: #1e293b; border: 1px solid #475569; color: #fff; padding: 4px 6px; border-radius: 4px; width: 100%; font-size: 11px;">
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Cash Payment Calculator -->
+            <div id="cashCalcBox" style="background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 6px 10px; margin-bottom: 6px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <span style="font-size: 11px; color: var(--text-muted);">Paga con:</span>
+                <input type="number" id="cashGivenInput" placeholder="$ Monto entregado" style="background: #1e293b; border: 1px solid #475569; color: #fff; padding: 4px 8px; border-radius: 4px; width: 120px; text-align: right; font-weight: 600; font-size: 11.5px;">
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 11px; color: var(--text-muted);">Vuelto a entregar:</span>
+                <span id="cashChangeDisplay" style="color: var(--primary); font-weight: 800; font-size: 14px;">$0</span>
+              </div>
+            </div>
+
+            <!-- Advertencia Control de Alcohol Ley N° 19.925 / Ley 21.363 -->
+            <div id="alcoholWarningBox" style="display: none; background: rgba(239, 68, 68, 0.12); border: 1px solid #ef4444; border-radius: 6px; padding: 8px 10px; margin-bottom: 6px;">
+              <div style="display: flex; align-items: flex-start; gap: 8px;">
+                <span style="font-size: 18px; line-height: 1;">🔞</span>
+                <div style="flex: 1;">
+                  <strong style="color: #f87171; font-size: 11px; display: block; margin-bottom: 2px;">
+                    Control Ley de Alcoholes N° 19.925 / Ley 21.363:
+                  </strong>
+                  <p style="font-size: 10.5px; color: #fca5a5; margin: 0 0 4px 0; line-height: 1.2;">
+                    Venta de alcohol. Legalmente obligatorio verificar Cédula de Identidad (+18).
+                  </p>
+                  <label style="display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: #fff; cursor: pointer; user-select: none;">
+                    <input type="checkbox" id="checkVerificacionAlcohol" style="width: 14px; height: 14px; cursor: pointer;">
+                    <span>He verificado la Cédula del cliente (+18 años)</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <button id="btnCheckout" class="btn-checkout" style="padding: 11px; font-size: 14px; font-weight: 700;" disabled>
+              CONFIRMAR VENTA (F4)
+            </button>
+            <div style="font-size: 9.5px; color: var(--text-muted); text-align: center; margin-top: 4px;">
+              ⚡ Transacciones protegidas ACID con persistencia dual
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Tab 2: Inventario & Catálogo Completo -->
+    <section id="tab-inventory" class="tab-pane">
+      <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 14px; flex-wrap: wrap;">
+          <div>
+            <h3 style="font-size: 18px; font-weight: 700;">📦 Catálogo e Inventario de Productos</h3>
+            <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Control centralizado de existencias, costos, precios redondeados y proveedores</p>
+          </div>
+          <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+            <input type="text" id="inventorySearch" oninput="filtrarInventario()" placeholder="Filtrar por nombre o SKU..." class="search-input" style="width: 230px; padding: 8px 12px; font-size: 13px;">
+            <button class="btn-sync" onclick="loadInventory()">🔄 Actualizar</button>
+            <button class="btn-sync" onclick="abrirModalEtiquetasGondola()" style="background: #0284c7; border: 1px solid #38bdf8; color: #fff; font-weight: 700; display: flex; align-items: center; gap: 6px;">
+              🏷️ Imprimir Etiquetas de Góndola
+            </button>
+          </div>
+        </div>
+
+        <!-- Banner Sanitario MINSAL DS 977/96 de Control de Vencimientos -->
+        <div id="vencimientosAlertBanner" style="display: none; background: rgba(239, 68, 68, 0.1); border: 1px solid #ef4444; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="font-size: 20px;">⚠️</span>
+              <div>
+                <strong style="color: #f87171; font-size: 13px;">Alerta Sanitaria de Vencimientos (D.S. N° 977/96 MINSAL):</strong>
+                <div id="vencimientosAlertText" style="font-size: 12px; color: #cbd5e1; margin-top: 2px;">
+                  Tienes productos vencidos o próximos a caducar.
+                </div>
+              </div>
+            </div>
+            <button class="btn-checkout" style="width: auto; padding: 6px 12px; font-size: 11px; background: #dc2626;" onclick="filtrarSoloPorVencer()">Ver Productos en Riesgo</button>
+          </div>
+        </div>
+
+        <div style="overflow-x: auto;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>SKU</th>
+                <th>Código Barra</th>
+                <th>Nombre del Ítem</th>
+                <th>Categoría</th>
+                <th>Stock Actual / Mín</th>
+                <th>Precio Costo</th>
+                <th>Precio Venta</th>
+                <th>Lote / Vencimiento (DS 977)</th>
+                <th>Impuesto ILA</th>
+                <th>Proveedor</th>
+                <th>Origen</th>
+              </tr>
+            </thead>
+            <tbody id="inventoryTbody">
+              <!-- Datos dinámicos -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tab 3: Registro de Ventas / Auditoría -->
+    <section id="tab-transactions" class="tab-pane">
+      <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+          <div>
+            <h3 style="font-size: 18px; font-weight: 700;">🧾 Registro Visual de Ventas y Auditoría</h3>
+            <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Historial cronológico con fecha, hora, cajero, medio de pago y desglose de boleta</p>
+          </div>
+          <button class="btn-sync" onclick="loadTransactions()">🔄 Actualizar Registro</button>
+        </div>
+
+        <div style="overflow-x: auto;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Folio</th>
+                <th>Fecha y Hora</th>
+                <th>Cajero</th>
+                <th>Medio de Pago</th>
+                <th>Unidades</th>
+                <th>Total Cobrado</th>
+                <th>Estado</th>
+                <th>Detalle de Productos</th>
+                <th style="text-align: center;">Comprobante Fiscal</th>
+                <th style="text-align: center;">Devolución (DTE 61)</th>
+              </tr>
+            </thead>
+            <tbody id="transactionsTbody">
+              <!-- Datos dinámicos -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tab 4: Cierre de Caja (Arqueo / Balance Z) -->
+    <section id="tab-caja" class="tab-pane">
+      <div style="display: grid; grid-template-columns: 360px 1fr; gap: 24px;">
+        
+        <!-- Panel Izquierdo: Acciones de Turno -->
+        <div style="display: flex; flex-direction: column; gap: 20px;">
+          
+          <!-- Card Apertura -->
+          <div id="cajaAperturaCard" style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 20px;">
+            <h4 style="font-size: 16px; margin-bottom: 10px; color: var(--primary);">🟢 Apertura de Turno de Caja</h4>
+            <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 14px;">Ingresa el monto del fondo inicial en efectivo (sencillo en gaveta) para iniciar operaciones.</p>
+            
+            <label style="font-size: 12px; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 6px;">Fondo Inicial en Efectivo ($):</label>
+            <input type="number" id="montoAperturaInput" placeholder="Ej: 30000" style="background: #0f172a; border: 1px solid #334155; color: #fff; padding: 10px; border-radius: 6px; width: 100%; font-size: 15px; font-weight: 700; margin-bottom: 14px;">
+            
+            <button class="btn-checkout" style="background: var(--primary);" onclick="abrirTurnoCaja()">ABRIR TURNO DE CAJA</button>
+          </div>
+
+          <!-- Card Cierre / Arqueo -->
+          <div id="cajaCierreCard" style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; display: none;">
+            <h4 style="font-size: 16px; margin-bottom: 10px; color: #f59e0b;">🔴 Arqueo y Cierre de Caja (Z)</h4>
+            <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 14px;">Cuenta el dinero físico real que tienes en gaveta y verifica la cuadratura del turno.</p>
+            
+            <label style="font-size: 12px; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 6px;">Efectivo Real Contado en Gaveta ($):</label>
+            <input type="number" id="montoRealEfectivoInput" oninput="calcularDiferenciaCaja()" placeholder="Dinero contado en caja" style="background: #0f172a; border: 1px solid #334155; color: #fff; padding: 10px; border-radius: 6px; width: 100%; font-size: 15px; font-weight: 700; margin-bottom: 12px;">
+
+            <div id="diferenciaCajaBox" style="background: #0f172a; padding: 12px; border-radius: 6px; margin-bottom: 14px; font-size: 13px;">
+              <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                <span style="color: var(--text-muted);">Efectivo Esperado:</span>
+                <strong id="cajaEsperadoDisplay">$0</strong>
+              </div>
+              <div style="display: flex; justify-content: space-between;">
+                <span style="color: var(--text-muted);">Cuadratura:</span>
+                <strong id="cajaDiferenciaDisplay" style="color: var(--primary);">$0 (Cuadrada)</strong>
+              </div>
+            </div>
+
+            <label style="font-size: 12px; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 6px;">Observaciones / Notas:</label>
+            <textarea id="cajaObservacionesInput" placeholder="Ej: Sin discrepancias, billetes revisados" style="background: #0f172a; border: 1px solid #334155; color: #fff; padding: 8px; border-radius: 6px; width: 100%; height: 60px; font-size: 12px; margin-bottom: 14px; resize: none;"></textarea>
+
+            <button class="btn-checkout" style="background: #ef4444;" onclick="ejecutarCierreCaja()">EJECUTAR CIERRE Z</button>
+          </div>
+
+          <!-- Card Movimientos de Efectivo (Ingresos / Egresos) -->
+          <div id="cajaMovimientoCard" style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 18px; display: none;">
+            <h4 style="font-size: 15px; margin-bottom: 8px; color: #38bdf8;">💸 Movimiento de Caja (Ingreso / Egreso)</h4>
+            <p style="font-size: 11.5px; color: var(--text-muted); margin-bottom: 12px;">Registra retiros de efectivo (gastos menores, pago proveedores) o aportes de sencillo.</p>
+            
+            <label style="font-size: 11px; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Tipo de Movimiento:</label>
+            <select id="tipoMovimientoCajaInput" style="background: #0f172a; border: 1px solid #334155; color: #fff; padding: 8px; border-radius: 6px; width: 100%; font-size: 13px; margin-bottom: 10px;">
+              <option value="EGRESO">🔴 Egreso / Retiro (Resta de caja)</option>
+              <option value="INGRESO">🟢 Ingreso / Aporte Sencillo (Suma a caja)</option>
+            </select>
+
+            <label style="font-size: 11px; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Monto ($):</label>
+            <input type="number" id="montoMovimientoCajaInput" placeholder="Ej: 5000" style="background: #0f172a; border: 1px solid #334155; color: #fff; padding: 8px; border-radius: 6px; width: 100%; font-size: 14px; font-weight: 700; margin-bottom: 10px;">
+
+            <label style="font-size: 11px; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Motivo / Destino del Dinero:</label>
+            <input type="text" id="motivoMovimientoCajaInput" placeholder="Ej: Compra panadería, Pago proveedor pan" style="background: #0f172a; border: 1px solid #334155; color: #fff; padding: 8px; border-radius: 6px; width: 100%; font-size: 12px; margin-bottom: 12px;">
+
+            <button class="btn-checkout" style="background: #0284c7; padding: 8px;" onclick="registrarMovimientoCajaForm()">REGISTRAR MOVIMIENTO</button>
+          </div>
+
+        </div>
+
+        <!-- Panel Derecho: Balance en Vivo del Turno -->
+        <div style="display: flex; flex-direction: column; gap: 20px;">
+          
+          <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+              <div>
+                <h4 style="font-size: 16px;">Balance en Vivo del Turno</h4>
+                <div id="cajaEstadoBadge" style="font-size: 12px; color: #f87171; font-weight: 700; margin-top: 4px;">🔴 CAJA CERRADA</div>
+              </div>
+              <div style="display: flex; gap: 8px;">
+                <button class="btn-sync" onclick="loadCajaResumen()">🔄 Actualizar</button>
+                <button class="btn-checkout" style="width: auto; padding: 6px 12px; font-size: 12px; background: #6366f1;" onclick="imprimirUltimoReporteZ()">🖨️ Imprimir Reporte Z</button>
+              </div>
+            </div>
+
+            <div class="metrics-row" style="margin-bottom: 16px;">
+              <div class="metric-card">
+                <div class="metric-label">Fondo Apertura</div>
+                <div id="metricFondoApertura" class="metric-value">$0</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-label">Ventas Efectivo</div>
+                <div id="metricVentasEfectivo" class="metric-value" style="color: var(--primary);">$0</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-label">Aportes Sencillo (+)</div>
+                <div id="metricIngresosCaja" class="metric-value" style="color: #34d399;">$0</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-label">Egresos / Gastos (-)</div>
+                <div id="metricEgresosCaja" class="metric-value" style="color: #f87171;">$0</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-label">Efectivo en Gaveta (=)</div>
+                <div id="metricEsperadoEfectivo" class="metric-value" style="color: var(--accent);">$0</div>
+              </div>
+            </div>
+
+            <div class="metrics-row">
+              <div class="metric-card">
+                <div class="metric-label">Transbank (Tarjetas)</div>
+                <div id="metricVentasTransbank" class="metric-value" style="color: #60a5fa;">$0</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-label">Mercado Pago</div>
+                <div id="metricVentasMP" class="metric-value" style="color: #38bdf8;">$0</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-label">SumUp</div>
+                <div id="metricVentasSumUp" class="metric-value" style="color: #f87171;">$0</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Historial de Cierres Anteriores -->
+          <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 20px;">
+            <h4 style="font-size: 16px; margin-bottom: 14px;">Historial de Cierres de Caja (Z)</h4>
+            <div style="overflow-x: auto;">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Fecha Cierre</th>
+                    <th>Cajero</th>
+                    <th>Fondo Inicial</th>
+                    <th>Total Ventas</th>
+                    <th>Efectivo Esperado</th>
+                    <th>Efectivo Real</th>
+                    <th>Diferencia</th>
+                    <th>Estado</th>
+                  </tr>
+                </thead>
+                <tbody id="cajaHistorialTbody">
+                  <!-- Datos dinámicos -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Tab 5: Respaldo Tributario de Facturas & Centro de Cumplimiento SII -->
+    <section id="tab-tax" class="tab-pane">
+      <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 20px;">
+        
+        <!-- Header Principal -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; flex-wrap: wrap; gap: 12px; border-bottom: 1px solid var(--border-color); padding-bottom: 14px;">
+          <div>
+            <h3 style="font-size: 20px; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+              <span>🇨🇱</span> Centro Tributario & Facturación SII (Ley N° 20.727)
+            </h3>
+            <p style="font-size: 12.5px; color: var(--text-muted); margin-top: 4px;">
+              Gestión Integral DTE: Boletas Afectas (39), Exentas (41), Notas de Crédito (61), CAF, TED, RCOF y Respaldo F29
+            </p>
+          </div>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <button class="btn-sync" onclick="recargarModuloTributario()">🔄 Actualizar Todo</button>
+            <button class="btn-checkout" style="width: auto; padding: 8px 16px; font-size: 12px; background: #4338ca;" onclick="descargarRespaldoLegal6Anos()">🛡️ Respaldo Legal 6 Años</button>
+            <button class="btn-checkout" style="width: auto; padding: 8px 16px; font-size: 12px; background: #059669;" onclick="exportarFacturasCSV()">📥 Exportar F29 CSV</button>
+          </div>
+        </div>
+
+        <!-- Sub-pestañas de Navegación Tributaria -->
+        <div style="display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; overflow-x: auto;">
+          <button class="subtab-btn active" id="btnSubtabTaxCompras" onclick="cambiarSubtabTax('tax-compras')">📑 Facturas Compra (F29)</button>
+          <button class="subtab-btn" id="btnSubtabTaxBoletas" onclick="cambiarSubtabTax('tax-boletas')">🧾 Boletas & DTEs Emitidos</button>
+          <button class="subtab-btn" id="btnSubtabTaxF29" onclick="cambiarSubtabTax('tax-f29')">📊 Pre-Liquidación F29</button>
+          <button class="subtab-btn" id="btnSubtabTaxGuias" onclick="cambiarSubtabTax('tax-guias')">🚚 Guías Despacho (52)</button>
+          <button class="subtab-btn" id="btnSubtabTaxCaf" onclick="cambiarSubtabTax('tax-caf')">🔐 Stock Folios CAF (SII)</button>
+          <button class="subtab-btn" id="btnSubtabTaxRcof" onclick="cambiarSubtabTax('tax-rcof')">📊 Consumo Diario RCOF (RCV)</button>
+          <button class="subtab-btn" id="btnSubtabTaxCert" onclick="cambiarSubtabTax('tax-cert')">🚀 Certificación Técnica (Res. 74)</button>
+        </div>
+
+        <!-- Sub-panel 1: Facturas de Compra (F29) -->
+        <div id="subpane-tax-compras" class="subpane-tax">
+          <div class="metrics-row" style="margin-bottom: 20px;">
+            <div class="metric-card">
+              <div class="metric-label">Facturas Respaldadas</div>
+              <div id="taxCountFacturas" class="metric-value">0</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">Total Neto Compras</div>
+              <div id="taxTotalNeto" class="metric-value">$0</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">IVA Crédito Fiscal (19%)</div>
+              <div id="taxTotalIva" class="metric-value" style="color: #38bdf8;">$0</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">Total Compras Bruto</div>
+              <div id="taxTotalBruto" class="metric-value" style="color: var(--primary);">$0</div>
+            </div>
+          </div>
+
+          <div style="overflow-x: auto;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>N° Folio</th>
+                  <th>RUT Proveedor</th>
+                  <th>Razón Social</th>
+                  <th>Fecha Emisión</th>
+                  <th>Monto Neto ($)</th>
+                  <th>IVA Crédito (19%)</th>
+                  <th>Total Factura ($)</th>
+                  <th>Método Ingesta</th>
+                  <th>Estado SII</th>
+                </tr>
+              </thead>
+              <tbody id="taxInvoicesTbody">
+                <!-- Datos dinámicos -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Sub-panel 2: Boletas & DTEs Emitidos (Ventas) -->
+        <div id="subpane-tax-boletas" class="subpane-tax" style="display: none;">
+          <div class="metrics-row" style="margin-bottom: 20px;">
+            <div class="metric-card">
+              <div class="metric-label">DTEs Emitidos Localmente</div>
+              <div id="taxCountDtes" class="metric-value">0</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">Ventas Netas DTE</div>
+              <div id="taxTotalNetoVentas" class="metric-value">$0</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">IVA Débito Fiscal (19%)</div>
+              <div id="taxTotalIvaVentas" class="metric-value" style="color: #38bdf8;">$0</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">Total Ventas Facturadas</div>
+              <div id="taxTotalVentasDte" class="metric-value" style="color: var(--primary);">$0</div>
+            </div>
+          </div>
+
+          <div style="overflow-x: auto;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Folio</th>
+                  <th>Tipo DTE</th>
+                  <th>Fecha Emisión</th>
+                  <th>Receptor</th>
+                  <th>Monto Neto ($)</th>
+                  <th>IVA Débito (19%)</th>
+                  <th>Total ($)</th>
+                  <th>Estado SII</th>
+                  <th style="text-align: center;">Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="taxDtesTbody">
+                <!-- Datos dinámicos -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Sub-panel F29: Pre-Liquidación Mensual de Impuestos F29 -->
+        <div id="subpane-tax-f29" class="subpane-tax" style="display: none;">
+          <div style="background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 18px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
+            <div>
+              <h4 style="font-size: 16px; font-weight: 700; color: #fff;">📊 Pre-Liquidación Mensual Formulario 29 (F29)</h4>
+              <p style="font-size: 12px; color: #94a3b8; margin-top: 4px;">Conciliación automática de Débito Fiscal (Boletas, Facturas, Vouchers Res. 176) vs Crédito Fiscal (Compras)</p>
+            </div>
+            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+              <label style="font-size: 12px; color: #94a3b8;">Periodo:</label>
+              <input type="month" id="f29PeriodoInput" class="search-input" style="width: 150px; font-size: 13px;">
+              <label style="font-size: 12px; color: #94a3b8;">Tasa PPM:</label>
+              <input type="number" id="f29TasaPpmInput" value="1.0" step="0.1" style="background: #1e293b; border: 1px solid #475569; color: #fff; padding: 6px; border-radius: 4px; width: 60px; text-align: right; font-weight: 700;">
+              <span style="color: #94a3b8; font-size: 12px;">%</span>
+              <button class="btn-checkout" style="width: auto; padding: 8px 16px; font-size: 12px; background: #0284c7;" onclick="cargarReporteF29()">⚡ Calcular F29</button>
+            </div>
+          </div>
+
+          <!-- KPI Cards F29 -->
+          <div class="metrics-row" style="margin-bottom: 20px;">
+            <div class="metric-card">
+              <div class="metric-label">Ventas Netas Totales</div>
+              <div id="f29TotalVentasNeto" class="metric-value">$0</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">IVA Débito Fiscal (Ventas)</div>
+              <div id="f29IvaDebito" class="metric-value" style="color: #38bdf8;">$0</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">IVA Crédito Fiscal (Compras)</div>
+              <div id="f29IvaCredito" class="metric-value" style="color: #34d399;">$0</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">IVA Determinado a Pagar</div>
+              <div id="f29IvaDeterminado" class="metric-value" style="color: #f87171;">$0</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">Total Estimado F29 (+PPM)</div>
+              <div id="f29TotalPagar" class="metric-value" style="color: var(--primary);">$0</div>
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+            <!-- Desglose Débito -->
+            <div style="background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 16px;">
+              <h5 style="font-size: 14px; font-weight: 700; color: #38bdf8; margin-bottom: 12px;">📤 Débito Fiscal (Ventas Realizadas)</h5>
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Documento</th>
+                    <th style="text-align: right;">Cant</th>
+                    <th style="text-align: right;">Neto ($)</th>
+                    <th style="text-align: right;">IVA ($)</th>
+                  </tr>
+                </thead>
+                <tbody id="f29DebitoTbody"></tbody>
+              </table>
+            </div>
+
+            <!-- Desglose Crédito -->
+            <div style="background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 16px;">
+              <h5 style="font-size: 14px; font-weight: 700; color: #34d399; margin-bottom: 12px;">📥 Crédito Fiscal (Facturas Proveedor)</h5>
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Documento</th>
+                    <th style="text-align: right;">Cant</th>
+                    <th style="text-align: right;">Neto ($)</th>
+                    <th style="text-align: right;">IVA ($)</th>
+                  </tr>
+                </thead>
+                <tbody id="f29CreditoTbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sub-panel Guías: Guías de Despacho Electrónicas (DTE Tipo 52) -->
+        <div id="subpane-tax-guias" class="subpane-tax" style="display: none;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
+            <div>
+              <h4 style="font-size: 16px; font-weight: 700;">🚚 Guías de Despacho Electrónicas (Ley N° 21.131)</h4>
+              <p style="font-size: 12px; color: var(--text-muted);">Obligatorias para el traslado de mercaderías entre bodegas o despacho a domicilio</p>
+            </div>
+            <button class="btn-checkout" style="width: auto; padding: 8px 16px; font-size: 12px; background: #0284c7;" onclick="abrirModalNuevaGuia()">+ Emitir Guía de Despacho (52)</button>
+          </div>
+
+          <div style="overflow-x: auto;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Folio</th>
+                  <th>Fecha</th>
+                  <th>Tipo Traslado</th>
+                  <th>Receptor</th>
+                  <th>Destino</th>
+                  <th>Vehículo / Chofer</th>
+                  <th>Total Ítems</th>
+                  <th>Monto Total ($)</th>
+                  <th>Estado</th>
+                </tr>
+              </thead>
+              <tbody id="taxGuiasTbody">
+                <!-- Guías dinámicas -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Sub-panel 3: Gestión de CAF (Folios SII) -->
+        <div id="subpane-tax-caf" class="subpane-tax" style="display: none;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <div>
+              <h4 style="font-size: 16px; font-weight: 700;">Archivos de Autorización de Folios (CAF) Vigentes</h4>
+              <p style="font-size: 12px; color: var(--text-muted);">Administración de rangos autorizados y monitoreo de correlatividad numérica estricta</p>
+            </div>
+            <button class="btn-checkout" style="width: auto; padding: 8px 16px; font-size: 12px; background: #0284c7;" onclick="abrirModalCargaCaf()">📥 Subir Archivo CAF XML</button>
+          </div>
+
+          <div id="taxCafCardsGrid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-bottom: 20px;">
+            <!-- Renderizado dinámico de tarjetas de CAF -->
+          </div>
+        </div>
+
+        <!-- Sub-panel 4: Consumo Diario RCOF (Registro de Compras y Ventas) -->
+        <div id="subpane-tax-rcof" class="subpane-tax" style="display: none;">
+          <div style="background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 18px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
+            <div>
+              <h4 style="font-size: 15px; font-weight: 700; color: #fff;">Generación Diaria de Archivo RCOF para el SII</h4>
+              <p style="font-size: 12px; color: #94a3b8; margin-top: 4px;">Genera el archivo XML consolidado de boletas para envío al Registro de Compras y Ventas (RCV) del SII</p>
+            </div>
+            <div style="display: flex; gap: 10px; align-items: center;">
+              <input type="date" id="rcofFechaInput" class="search-input" style="width: 160px; font-size: 13px;">
+              <button class="btn-checkout" style="width: auto; padding: 10px 18px; font-size: 13px; background: #10b981;" onclick="generarRcofDiario()">⚡ Generar RCOF del Día</button>
+            </div>
+          </div>
+
+          <div style="overflow-x: auto;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Fecha Reporte</th>
+                  <th>Secuencia</th>
+                  <th>Cant. Boletas</th>
+                  <th>Total Neto ($)</th>
+                  <th>Total IVA ($)</th>
+                  <th>Total Ventas ($)</th>
+                  <th>Estado Envío</th>
+                  <th>Fecha Generación</th>
+                  <th>Acción</th>
+                </tr>
+              </thead>
+              <tbody id="taxRcofTbody">
+                <!-- Historial dinámico de RCOF -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Sub-panel 5: Certificación Técnica SII (Res. Ex. N° 74) -->
+        <div id="subpane-tax-cert" class="subpane-tax" style="display: none;">
+          <div style="background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 20px; margin-bottom: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
+              <div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span style="font-size: 24px;">🛡️</span>
+                  <h4 style="font-size: 16px; font-weight: 700; color: #fff;">Ambiente de Certificación Técnica Maullín (Res. Ex. N° 74)</h4>
+                </div>
+                <p style="font-size: 12.5px; color: #94a3b8; margin-top: 6px;">
+                  Ejecuta y valida los Sets de Prueba oficiales requeridos para la homologación ante el SII: Boletas Afectas (39), Exentas (41), Notas de Crédito (61) y XMLDSig.
+                </p>
+              </div>
+              <button id="btnEjecutarCertificacion" class="btn-checkout" style="width: auto; padding: 12px 24px; font-size: 13px; background: #6366f1;" onclick="ejecutarSetCertificacionSii()">
+                🚀 Ejecutar Suite de Homologación Maullín
+              </button>
+            </div>
+          </div>
+
+          <div id="certResultsArea">
+            <div style="text-align: center; color: #94a3b8; padding: 30px; border: 1px dashed #334155; border-radius: 8px;">
+              Presiona <strong>"Ejecutar Suite de Homologación Maullín"</strong> para correr la batería de validación técnica oficial del SII.
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Tab: Directorio de Proveedores & Días de Visita -->
+    <section id="tab-suppliers" class="tab-pane">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <div>
+          <h2 style="font-size: 18px; font-weight: 700;">🏢 Directorio de Proveedores & Frecuencia de Visitas</h2>
+          <p style="font-size: 12px; color: var(--text-muted);">Gestione el día que pasa cada proveedor, sus datos tributarios y de contacto para coordinar órdenes de compra.</p>
+        </div>
+        <button class="btn-sync" onclick="loadSuppliers()">🔄 Actualizar Proveedores</button>
+      </div>
+
+      <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 20px;">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>RUT Proveedor</th>
+              <th>Razón Social</th>
+              <th>Giro Comercial</th>
+              <th>Dirección & Teléfono</th>
+              <th>Día de Visita (Editable)</th>
+              <th>Próxima Visita</th>
+              <th>Ítems Suministrados</th>
+              <th>Acción</th>
+            </tr>
+          </thead>
+          <tbody id="suppliersTbody">
+            <!-- Renderizado dinámico desde app.js -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Tab 6: Predictive Replenishment Dashboard -->
+    <section id="tab-replenishment" class="tab-pane">
+      <div class="metrics-row">
+        <div class="metric-card">
+          <div class="metric-label">Órdenes Sugeridas</div>
+          <div id="suggestedOrderCount" class="metric-value">0</div>
+          <div style="font-size: 12px; color: var(--text-muted);">Calculadas por algoritmo de rotación ROP</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Productos en Riesgo Crítico</div>
+          <div id="criticalStockCount" class="metric-value" style="color: #f87171;">0</div>
+          <div style="font-size: 12px; color: var(--text-muted);">Stock actual inferior al stock mínimo o agotado</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Tiempo de Reposición (Lead Time)</div>
+          <div class="metric-value" style="color: var(--accent);">7 Días</div>
+          <div style="font-size: 12px; color: var(--text-muted);">Factor de Seguridad Dinámico: 1.50x</div>
+        </div>
+      </div>
+
+      <!-- Tabla 1: Productos en Alerta de Bajo Stock & Quiebre -->
+      <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; margin-bottom: 24px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+          <div>
+            <h3 style="font-size: 16px; color: #f87171;">🚨 Productos en Alerta de Bajo Stock & Quiebre</h3>
+            <p style="font-size: 12px; color: var(--text-muted);">Ítems que han alcanzado o están por debajo del punto de reorden (ROP). Revise códigos y estado de urgencia.</p>
+          </div>
+          <span id="lowStockBadge" style="background: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; color: #f87171; font-weight: 700; font-size: 12px; padding: 4px 12px; border-radius: 12px;">0 Críticos</span>
+        </div>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Código de Barra</th>
+              <th>SKU & Nombre</th>
+              <th>Stock Actual / Mín</th>
+              <th>Rotación Diaria</th>
+              <th>Días Restantes</th>
+              <th>Estado</th>
+              <th>Proveedor Habitual</th>
+              <th>Próxima Visita</th>
+            </tr>
+          </thead>
+          <tbody id="lowStockTbody">
+            <!-- Datos dinámicos -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Tabla 2: Propuestas de Órdenes de Compra por Proveedor -->
+      <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+          <div>
+            <h3 style="font-size: 16px;">📋 Propuestas de Órdenes de Compra por Proveedor (Con Comparador Multiproveedor)</h3>
+            <p style="font-size: 12px; color: var(--text-muted);">El sistema evalúa el mejor precio histórico y la fecha de visita más próxima para recomendar el proveedor ideal.</p>
+          </div>
+          <div style="display: flex; gap: 10px;">
+            <button class="btn-checkout" style="background: var(--primary); width: auto; padding: 8px 18px; font-size: 13px;" onclick="enviarOrdenesPorEmail()">📧 Enviar Órdenes por Correo</button>
+            <button class="btn-sync" onclick="loadReplenishment()">🔄 Recalcular</button>
+          </div>
+        </div>
+        
+        <div id="suggestedOrdersContainer">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Proveedor & Visita</th>
+                <th>Producto, Código & SKU</th>
+                <th>Stock / Mín</th>
+                <th>Sugerencia Compra (Q)</th>
+                <th>Costo Unitario</th>
+                <th>Subtotal Estimado</th>
+                <th>Alternativas / Comparativa</th>
+              </tr>
+            </thead>
+            <tbody id="replenishmentTbody">
+              <!-- Datos dinámicos -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tab 3: OCR Invoice Ingestion -->
+    <section id="tab-ocr" class="tab-pane">
+      <div style="display: grid; grid-template-columns: 350px 1fr; gap: 24px;">
+        
+        <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 20px;">
+          <h3 style="margin-bottom: 12px; font-size: 16px;">Recepción de Facturas</h3>
+          <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 20px;">
+            El módulo OCR procesa facturas de compra electrónicas mediante IA multimodal (Gemini / Mock con degradación elegante) e incrementa el inventario de manera transaccional.
+          </p>
+
+          <div id="dropZone" style="border: 2px dashed var(--border-color); padding: 30px; text-align: center; border-radius: 8px; margin-bottom: 16px; cursor: pointer; transition: border-color 0.2s, background-color 0.2s;">
+            <div style="font-size: 30px; margin-bottom: 8px;">📷</div>
+            <div style="font-size: 13px; font-weight: 600;">Arrastra tu factura aquí o haz clic para subir</div>
+            <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">JPG, PNG o PDF digital</div>
+            <input type="file" id="invoiceFileInput" accept="image/*,application/pdf" style="display: none;" />
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <div style="font-size: 12px; color: var(--text-muted); font-weight: 600;">O probar con facturas de prueba:</div>
+            <button class="pay-btn" onclick="simulateOcrUpload('distribuidora')">📄 Factura Distribuidora Mayorista</button>
+            <button class="pay-btn" onclick="simulateOcrUpload('lacteos')">📄 Factura Lácteos del Sur</button>
+          </div>
+        </div>
+
+        <div id="ocrPreview" style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; display: flex; align-items: center; justify-content: center; min-height: 350px;">
+          <div style="color: var(--text-muted); text-align: center;">
+            Selecciona o arrastra una factura para previsualizar la extracción OCR estructurada.
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Tab 4: Market Trends Intelligence -->
+    <section id="tab-trends" class="tab-pane">
+      <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+          <div>
+            <h3 style="font-size: 16px;">Inteligencia de Precios & Tendencias de Demanda</h3>
+            <p style="font-size: 12px; color: var(--text-muted);">Monitoreo de factores externos de mercado (Mercado Libre & AliExpress) para ajuste de stock</p>
+          </div>
+          <button class="btn-sync" onclick="loadTrends()">🔄 Actualizar Tendencias</button>
+        </div>
+
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Palabra Clave / SKU</th>
+              <th>Plataforma Externa</th>
+              <th>Índice de Demanda (0-100)</th>
+              <th>Precio Promedio Mercado</th>
+              <th>Impacto en Reabastecimiento</th>
+            </tr>
+          </thead>
+          <tbody id="trendsTbody">
+            <!-- Datos dinámicos -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Tab 9: Configuración Comercial & Margen -->
+    <section id="tab-config" class="tab-pane">
+      <div style="max-width: 800px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px;">
+        
+        <!-- Selector de Tema Visual (Modo Oscuro / Claro) -->
+        <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 24px;">
+          <h3 style="font-size: 18px; font-weight: 700; margin-bottom: 8px;">🎨 Apariencia de la Aplicación</h3>
+          <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 18px;">
+            Personaliza el tema visual del Punto de Venta según la iluminación de tu local o preferencia de trabajo:
+          </p>
+          <div style="display: flex; gap: 16px;">
+            <button id="themeDarkBtn" onclick="cambiarTema('dark')" style="flex: 1; padding: 14px; border-radius: 8px; border: 2px solid var(--accent); background: #0f172a; color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; font-weight: 700; font-size: 14px; transition: all 0.2s;">
+              🌙 Modo Oscuro (Predeterminado)
+            </button>
+            <button id="themeLightBtn" onclick="cambiarTema('light')" style="flex: 1; padding: 14px; border-radius: 8px; border: 1px solid var(--border-color); background: #f8fafc; color: #0f172a; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; font-weight: 700; font-size: 14px; transition: all 0.2s;">
+              ☀️ Modo Claro
+            </button>
+          </div>
+        </div>
+
+        <!-- Margen de Ganancia Predeterminado -->
+        <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 24px;">
+          <h3 style="font-size: 18px; font-weight: 700; margin-bottom: 8px;">⚙️ Margen de Ganancia Predeterminado</h3>
+          <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 18px;">
+            Este porcentaje es asignado por el Administrador y se utiliza para calcular automáticamente el precio de venta al ingresar mercadería o facturas nuevas: <br>
+            <code style="color: #38bdf8; background: #0f172a; padding: 3px 8px; border-radius: 4px; display: inline-block; margin-top: 6px;">
+              Precio Venta = RedondeoChileno( Costo Unitario × (1 + Margen% / 100) )
+            </code>
+          </p>
+
+          <div style="display: flex; gap: 14px; align-items: flex-end;">
+            <div style="flex: 1;">
+              <label style="font-size: 12px; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 6px;">Porcentaje de Margen Comercial (%):</label>
+              <input type="number" id="configMarginInput" min="0" max="500" step="1" placeholder="Ej: 35" style="background: #0f172a; border: 1px solid #334155; color: #fff; padding: 10px; border-radius: 6px; width: 100%; font-size: 16px; font-weight: 700;">
+            </div>
+            <button class="btn-checkout" style="width: auto; padding: 10px 24px;" onclick="guardarMargenConfigurado()">GUARDAR MARGEN</button>
+          </div>
+        </div>
+
+        <!-- Configuración de Correo para Órdenes de Compra Propuestas -->
+        <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 24px;">
+          <h3 style="font-size: 18px; font-weight: 700; margin-bottom: 8px;">📧 Notificaciones y Envío de Órdenes de Compra</h3>
+          <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 18px;">
+            Ingresa la casilla de correo electrónico a la que se remitirán automáticamente las propuestas de órdenes de compra cuando un producto alcance su punto de reorden (ROP) o se encuentre agotado:
+          </p>
+
+          <div style="display: flex; flex-direction: column; gap: 14px;">
+            <div>
+              <label style="font-size: 12px; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 6px;">Correo Electrónico de Notificaciones / Compras:</label>
+              <input type="email" id="configEmailOrdersInput" placeholder="ejemplo: compras@mitienda.cl o admin@negocio.cl" style="background: #0f172a; border: 1px solid #334155; color: #fff; padding: 10px 14px; border-radius: 6px; width: 100%; font-size: 15px;">
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 10px; background: rgba(56, 189, 248, 0.05); padding: 10px 14px; border-radius: 6px; border: 1px solid rgba(56, 189, 248, 0.2);">
+              <input type="checkbox" id="configAutoSendOrdersCheck" style="width: 18px; height: 18px; cursor: pointer;">
+              <label for="configAutoSendOrdersCheck" style="font-size: 13px; color: var(--text-main); cursor: pointer; user-select: none;">
+                <strong>Envío Automático:</strong> Enviar propuesta de orden de compra por correo de forma inmediata al detectar productos con stock crítico o agotado.
+              </label>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; margin-top: 6px;">
+              <button class="btn-checkout" style="width: auto; padding: 10px 24px;" onclick="guardarEmailConfigurado()">💾 GUARDAR CONFIGURACIÓN DE CORREO</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Modelo de Emisión Tributaria SII (Res. Ex. N° 176 - Prevención Doble Tributación) -->
+        <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 24px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <h3 style="font-size: 18px; font-weight: 700;">⚖️ Modelo de Emisión Tributaria (Res. Exenta N° 176 del SII)</h3>
+            <span style="background: #1e3a8a; color: #93c5fd; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 12px;">NORMATIVA SII</span>
+          </div>
+          <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
+            Define cómo opera tu punto de venta frente a pagos electrónicos para <strong>prevenir la duplicación del IVA (Débito Fiscal)</strong> en el Registro de Compras y Ventas (RCV):
+          </p>
+
+          <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 18px;">
+            <label style="display: flex; align-items: flex-start; gap: 12px; background: #0f172a; border: 1px solid #334155; padding: 14px; border-radius: 8px; cursor: pointer;">
+              <input type="radio" name="radioSiiModelo" value="MODELO_B" id="siiModeloB" checked style="margin-top: 3px; cursor: pointer;">
+              <div>
+                <strong style="color: #38bdf8; font-size: 14px;">Opción B: El voucher de tarjeta reemplaza la boleta electrónica (Recomendado para almacenes y retail)</strong>
+                <p style="font-size: 12px; color: #94a3b8; margin-top: 4px; line-height: 1.5;">
+                  Al cobrar con tarjeta (Transbank / Mercado Pago / SumUp), el POS <strong>NO emite Boleta DTE Tipo 39</strong> porque la pasarela ya informa el débito al SII. El sistema emite un comprobante legal no tributario. La Boleta Electrónica DTE se reserva para pagos en Efectivo o Transferencia.
+                </p>
+              </div>
+            </label>
+
+            <label style="display: flex; align-items: flex-start; gap: 12px; background: #0f172a; border: 1px solid #334155; padding: 14px; border-radius: 8px; cursor: pointer;">
+              <input type="radio" name="radioSiiModelo" value="MODELO_A" id="siiModeloA" style="margin-top: 3px; cursor: pointer;">
+              <div>
+                <strong style="color: #fff; font-size: 14px;">Opción A: Siempre emito Boleta Electrónica aun cuando reciba pago con tarjeta</strong>
+                <p style="font-size: 12px; color: #94a3b8; margin-top: 4px; line-height: 1.5;">
+                  El sistema genera una Boleta DTE Tipo 39 para el 100% de las ventas. Requiere tener informado al SII que tu terminal POS está integrado para que la operadora no duplique el débito fiscal.
+                </p>
+              </div>
+            </label>
+          </div>
+
+          <div style="display: flex; justify-content: flex-end;">
+            <button class="btn-checkout" style="width: auto; padding: 10px 24px;" onclick="guardarModeloEmisionConfigurado()">💾 GUARDAR MODELO DE EMISIÓN SII</button>
+          </div>
+        </div>
+
+        <!-- Datos Fiscales del Negocio (SII) -->
+        <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 24px;">
+          <h3 style="font-size: 18px; font-weight: 700; margin-bottom: 8px;">🏢 Datos Fiscales del Contribuyente (Emisor DTE)</h3>
+          <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 18px;">
+            Información legal impresa en el encabezado de las boletas y firmada en los XML DTE enviados al SII:
+          </p>
+
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 16px;">
+            <div>
+              <label style="font-size: 12px; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">RUT Emisor:</label>
+              <input type="text" id="cfgRutEmisor" placeholder="76.123.456-7" style="background: #0f172a; border: 1px solid #334155; color: #fff; padding: 10px; border-radius: 6px; width: 100%; font-size: 14px;">
+            </div>
+            <div>
+              <label style="font-size: 12px; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Razón Social:</label>
+              <input type="text" id="cfgRazonSocial" placeholder="ALMACEN DON TITO SPA" style="background: #0f172a; border: 1px solid #334155; color: #fff; padding: 10px; border-radius: 6px; width: 100%; font-size: 14px;">
+            </div>
+            <div>
+              <label style="font-size: 12px; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Giro Comercial SII:</label>
+              <input type="text" id="cfgGiroComercial" placeholder="VENTA AL POR MENOR EN ALMACENES" style="background: #0f172a; border: 1px solid #334155; color: #fff; padding: 10px; border-radius: 6px; width: 100%; font-size: 14px;">
+            </div>
+            <div>
+              <label style="font-size: 12px; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Código Actividad (Acteco):</label>
+              <input type="text" id="cfgActeco" placeholder="471100" style="background: #0f172a; border: 1px solid #334155; color: #fff; padding: 10px; border-radius: 6px; width: 100%; font-size: 14px;">
+            </div>
+            <div>
+              <label style="font-size: 12px; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Dirección Casa Matriz:</label>
+              <input type="text" id="cfgDireccion" placeholder="AV. LIBERTADOR BERNARDO OHIGGINS 1234" style="background: #0f172a; border: 1px solid #334155; color: #fff; padding: 10px; border-radius: 6px; width: 100%; font-size: 14px;">
+            </div>
+            <div>
+              <label style="font-size: 12px; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Comuna:</label>
+              <input type="text" id="cfgComuna" placeholder="SANTIAGO" style="background: #0f172a; border: 1px solid #334155; color: #fff; padding: 10px; border-radius: 6px; width: 100%; font-size: 14px;">
+            </div>
+            <div>
+              <label style="font-size: 12px; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Ciudad:</label>
+              <input type="text" id="cfgCiudad" placeholder="SANTIAGO" style="background: #0f172a; border: 1px solid #334155; color: #fff; padding: 10px; border-radius: 6px; width: 100%; font-size: 14px;">
+            </div>
+            <div>
+              <label style="font-size: 12px; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Teléfono Comercial:</label>
+              <input type="text" id="cfgTelefono" placeholder="+56911223344" style="background: #0f172a; border: 1px solid #334155; color: #fff; padding: 10px; border-radius: 6px; width: 100%; font-size: 14px;">
+            </div>
+          </div>
+
+          <div style="display: flex; justify-content: flex-end;">
+            <button class="btn-checkout" style="width: auto; padding: 10px 24px;" onclick="guardarDatosFiscalesConfigurados()">💾 GUARDAR DATOS FISCALES SII</button>
+          </div>
+        </div>
+
+        <!-- Seguridad Financiera PCI-DSS v4.0 -->
+        <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 24px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <h3 style="font-size: 18px; font-weight: 700;">🛡️ Cumplimiento de Seguridad Financiera PCI-DSS v4.0</h3>
+            <span style="background: #065f46; color: #a7f3d0; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 12px;">AUDITADO & CONFORME</span>
+          </div>
+          <p style="font-size: 13px; color: var(--text-muted); line-height: 1.6;">
+            El software GesTock aplica de forma nativa los requerimientos de la norma <strong>Payment Card Industry Data Security Standard (PCI-DSS)</strong>:
+          </p>
+          <ul style="font-size: 13px; color: #cbd5e1; margin-left: 20px; margin-top: 10px; line-height: 1.8;">
+            <li><strong>Cero Almacenamiento de Datos Sensibles:</strong> Jamás se guarda el PAN de 16 dígitos, el código de seguridad CVV/CVC ni el PIN del cliente.</li>
+            <li><strong>Enmascaramiento Estricto:</strong> Solo se visualizan los últimos 4 dígitos en comprobantes (<code>**** **** **** 1234</code>).</li>
+            <li><strong>Tokens Criptográficos:</strong> Las comunicaciones con Transbank, Mercado Pago y SumUp se realizan mediante tokens efímeros autorizados.</li>
+          </ul>
+        </div>
+
+        <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 24px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <h3 style="font-size: 18px; font-weight: 700;">⚖️ Ley de Redondeo de Chile (Ley N° 20.956)</h3>
+            <span style="background: #065f46; color: #a7f3d0; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 12px;">ACTIVO & VIGENTE</span>
+          </div>
+          <p style="font-size: 13px; color: var(--text-muted); line-height: 1.6;">
+            En cumplimiento con la normativa del <strong>Banco Central de Chile</strong> y el Ministerio de Hacienda:
+          </p>
+          <ul style="font-size: 13px; color: #cbd5e1; margin-left: 20px; margin-top: 10px; line-height: 1.8;">
+            <li>Si la fracción del precio o cuenta termina en <strong>$1, $2, $3 o $4</strong>, se redondea hacia abajo a la decena inferior ($0).</li>
+            <li>Si la fracción del precio o cuenta termina en <strong>$5, $6, $7, $8 o $9</strong>, se redondea hacia arriba a la decena superior ($10).</li>
+            <li>Aplica tanto a los precios de venta fijados en el catálogo como al total final cobrado en caja.</li>
+          </ul>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Tab Dashboard: Analítica Global Interactiva de Ventas, Productos y Proveedores -->
+    <section id="tab-dashboard" class="tab-pane">
+      <div style="display: flex; flex-direction: column; gap: 20px;">
+        
+        <!-- Header & Toolbar de Período -->
+        <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 18px 24px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
+          <div>
+            <h2 style="font-size: 20px; font-weight: 800; margin: 0; color: #fff; display: flex; align-items: center; gap: 10px;">
+              <span>📊 Dashboard & Analítica Global del Negocio</span>
+              <span id="dashPeriodoBadge" style="background: rgba(56, 189, 248, 0.2); border: 1px solid #38bdf8; color: #38bdf8; font-size: 11px; padding: 2px 8px; border-radius: 12px; font-weight: 700;">Mensual</span>
+            </h2>
+            <p style="font-size: 12.5px; color: var(--text-muted); margin: 4px 0 0 0;">
+              Métricas consolidadas de ventas brutas, utilidades, medios de pago, rotación de productos y compras a proveedores
+            </p>
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+            <div class="subtabs-bar" style="margin: 0;">
+              <button class="subtab-btn" id="dashBtnDiario" onclick="cambiarPeriodoDashboard('diario')">📅 Diario (Hoy)</button>
+              <button class="subtab-btn active" id="dashBtnMensual" onclick="cambiarPeriodoDashboard('mensual')">📅 Mensual (Este Mes)</button>
+              <button class="subtab-btn" id="dashBtnHistorico" onclick="cambiarPeriodoDashboard('historico')">📈 Histórico Total</button>
+            </div>
+            <button class="btn-sync" onclick="cargarDashboardGlobal()" style="padding: 6px 14px; font-size: 12px;">🔄 Actualizar</button>
+          </div>
+        </div>
+
+        <!-- Fila de Tarjetas KPIs (6 KPIs) -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px;">
+          <div class="metric-card" style="border-left: 4px solid #38bdf8;">
+            <div class="metric-label">Ventas Totales Brutas</div>
+            <div id="dashKpiVentasBrutas" class="metric-value" style="color: #38bdf8;">$0</div>
+            <div id="dashKpiNetoIva" style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Neto: $0 | IVA: $0</div>
+          </div>
+
+          <div class="metric-card" style="border-left: 4px solid #10b981;">
+            <div class="metric-label">Utilidad Bruta Estimada</div>
+            <div id="dashKpiUtilidad" class="metric-value" style="color: #10b981;">$0</div>
+            <div id="dashKpiMargen" style="font-size: 11px; color: #a7f3d0; margin-top: 4px;">Margen: 0%</div>
+          </div>
+
+          <div class="metric-card" style="border-left: 4px solid #f59e0b;">
+            <div class="metric-label">Ticket Promedio</div>
+            <div id="dashKpiTicketPromedio" class="metric-value" style="color: #f59e0b;">$0</div>
+            <div id="dashKpiTransacciones" style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">0 transacciones</div>
+          </div>
+
+          <div class="metric-card" style="border-left: 4px solid #8b5cf6;">
+            <div class="metric-label">Unidades Vendidas</div>
+            <div id="dashKpiUnidades" class="metric-value" style="color: #8b5cf6;">0 u</div>
+            <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Artículos despachados</div>
+          </div>
+
+          <div class="metric-card" style="border-left: 4px solid #06b6d4;">
+            <div class="metric-label">Valorización Inventario</div>
+            <div id="dashKpiValorInventario" class="metric-value" style="color: #06b6d4;">$0</div>
+            <div id="dashKpiValorVenta" style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">PVP Proyectado: $0</div>
+          </div>
+
+          <div class="metric-card" style="border-left: 4px solid #ec4899;">
+            <div class="metric-label">Salud de Stock & Red</div>
+            <div id="dashKpiAlertasStock" class="metric-value" style="color: #ec4899;">0 / 0</div>
+            <div id="dashKpiProveedores" style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">0 proveedores activos</div>
+          </div>
+        </div>
+
+        <!-- Grid de Gráficos (4 Gráficos) -->
+        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px;">
+          
+          <!-- Gráfico 1: Evolución Temporal de Ventas -->
+          <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; display: flex; flex-direction: column;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+              <h3 style="font-size: 16px; font-weight: 700; color: #fff; margin: 0;">📈 Evolución de Ventas e Ingresos ($)</h3>
+              <span style="font-size: 11px; color: #94a3b8;">Historial y tendencia temporal</span>
+            </div>
+            <div style="position: relative; height: 280px; width: 100%;">
+              <canvas id="chartSalesTimeline"></canvas>
+            </div>
+          </div>
+
+          <!-- Gráfico 2: Ventas por Medio de Pago (Efectivo vs Tarjetas & RutPay) -->
+          <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; display: flex; flex-direction: column;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+              <h3 style="font-size: 16px; font-weight: 700; color: #fff; margin: 0;">💳 Ventas por Medio de Pago</h3>
+              <span style="font-size: 11px; color: #94a3b8;">Mix de pagos</span>
+            </div>
+            <div style="position: relative; height: 280px; width: 100%;">
+              <canvas id="chartPaymentMethods"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Segunda Fila de Gráficos: Top Productos y Proveedores -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+          
+          <!-- Gráfico 3: Top Productos Más Vendidos -->
+          <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; display: flex; flex-direction: column;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+              <h3 style="font-size: 16px; font-weight: 700; color: #fff; margin: 0;">🏆 Top Productos Más Vendidos (Unidades)</h3>
+              <span style="font-size: 11px; color: #94a3b8;">Mayor rotación</span>
+            </div>
+            <div style="position: relative; height: 260px; width: 100%;">
+              <canvas id="chartTopProducts"></canvas>
+            </div>
+          </div>
+
+          <!-- Gráfico 4: Inversión en Compras por Proveedor -->
+          <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; display: flex; flex-direction: column;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+              <h3 style="font-size: 16px; font-weight: 700; color: #fff; margin: 0;">🏢 Inversión en Compras por Proveedor ($)</h3>
+              <span style="font-size: 11px; color: #94a3b8;">Facturas respaldadas</span>
+            </div>
+            <div style="position: relative; height: 260px; width: 100%;">
+              <canvas id="chartSupplierSpend"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tablas de Desglose Comparativo -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+          
+          <!-- Tabla Top Productos -->
+          <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 20px;">
+            <h4 style="font-size: 15px; font-weight: 700; color: #fff; margin-bottom: 12px;">📋 Detalle de Artículos Líderes</h4>
+            <div style="max-height: 250px; overflow-y: auto;">
+              <table class="data-table" style="font-size: 12px;">
+                <thead>
+                  <tr>
+                    <th>Producto</th>
+                    <th>Categoría</th>
+                    <th style="text-align: right;">Vendidos</th>
+                    <th style="text-align: right;">Ingresos</th>
+                  </tr>
+                </thead>
+                <tbody id="dashTopProductsTbody">
+                  <!-- Render dinámico -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Tabla Proveedores -->
+          <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 20px;">
+            <h4 style="font-size: 15px; font-weight: 700; color: #fff; margin-bottom: 12px;">🏢 Detalle de Proveedores & Visitas</h4>
+            <div style="max-height: 250px; overflow-y: auto;">
+              <table class="data-table" style="font-size: 12px;">
+                <thead>
+                  <tr>
+                    <th>Proveedor</th>
+                    <th>Visita</th>
+                    <th style="text-align: right;">Facturas</th>
+                    <th style="text-align: right;">Total Comprado</th>
+                  </tr>
+                </thead>
+                <tbody id="dashSuppliersTbody">
+                  <!-- Render dinámico -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+  </main>
+
+  <!-- Modal de Previsualización y Confirmación de Ingesta de Factura -->
+  <div id="invoicePreviewModal" style="display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(5px); z-index: 9999; overflow-y: auto; padding: 30px 20px;">
+    <div style="max-width: 1100px; margin: 0 auto; background: var(--bg-card, #1e293b); border: 1px solid var(--border-color, #334155); border-radius: 12px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7); overflow: hidden;">
+      
+      <!-- Modal Header -->
+      <div style="background: #0f172a; padding: 18px 24px; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <span style="font-size: 26px;">📑</span>
+          <div>
+            <h3 style="margin: 0; font-size: 18px; font-weight: 700; color: #fff;">Previsualización de Factura Escaneada</h3>
+            <p style="margin: 2px 0 0 0; font-size: 12px; color: #94a3b8;">Revisa cuidadosamente los productos y cantidades antes de autorizar el ingreso al inventario</p>
+          </div>
+        </div>
+        <button onclick="cerrarModalFactura()" style="background: transparent; border: none; color: #94a3b8; font-size: 24px; cursor: pointer; line-height: 1;">&times;</button>
+      </div>
+
+      <!-- Modal Body -->
+      <div style="padding: 24px;">
+        
+        <!-- Header Info Cards -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 14px;">
+          <div style="background: #0f172a; padding: 12px 16px; border-radius: 8px; border: 1px solid #334155;">
+            <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; font-weight: 600;">N° Folio Factura</div>
+            <div id="modalFolio" style="font-size: 16px; font-weight: 700; color: #38bdf8; margin-top: 4px;">-</div>
+          </div>
+          <div style="background: #0f172a; padding: 12px 16px; border-radius: 8px; border: 1px solid #334155;">
+            <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; font-weight: 600;">Proveedor / Razón Social</div>
+            <div id="modalProveedor" style="font-size: 14px; font-weight: 700; color: #fff; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">-</div>
+            <div id="modalRut" style="font-size: 11px; color: #94a3b8;">-</div>
+          </div>
+          <div style="background: #0f172a; padding: 12px 16px; border-radius: 8px; border: 1px solid #334155;">
+            <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; font-weight: 600;">Fecha Emisión</div>
+            <div id="modalFecha" style="font-size: 15px; font-weight: 700; color: #fff; margin-top: 4px;">-</div>
+          </div>
+          <div style="background: #0f172a; padding: 12px 16px; border-radius: 8px; border: 1px solid #334155;">
+            <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; font-weight: 600;">Motor de Extracción</div>
+            <div id="modalMotor" style="font-size: 13px; font-weight: 700; color: #a7f3d0; margin-top: 4px;">-</div>
+          </div>
+        </div>
+
+        <!-- Proveedor Detectado y Asignación de Día de Visita -->
+        <div style="background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 14px 18px; margin-bottom: 20px; display: grid; grid-template-columns: 2fr 1fr; gap: 16px; align-items: center;">
+          <div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 16px;">🏢</span>
+              <span style="font-size: 13px; font-weight: 700; color: #fff;">Ficha del Proveedor Extraída de la Factura:</span>
+              <span id="modalBadgeProveedorNuevo" style="background: #0284c7; color: #fff; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px; display: none;">NUEVO PROVEEDOR</span>
+            </div>
+            <div style="font-size: 12px; color: #94a3b8; margin-top: 6px; display: flex; flex-wrap: wrap; gap: 14px;">
+              <span><strong>Giro:</strong> <span id="modalGiroProveedor" style="color: #e2e8f0;">-</span></span>
+              <span><strong>Dirección:</strong> <span id="modalDireccionProveedor" style="color: #e2e8f0;">-</span></span>
+              <span><strong>Teléfono:</strong> <span id="modalTelefonoProveedor" style="color: #e2e8f0;">-</span></span>
+            </div>
+          </div>
+          <div style="background: rgba(56, 189, 248, 0.05); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 6px; padding: 10px 14px;">
+            <label style="font-size: 11px; font-weight: 700; color: #38bdf8; display: block; margin-bottom: 4px; text-transform: uppercase;">📅 ¿Qué día visita este proveedor?</label>
+            <select id="modalSupplierDaySelect" style="background: #1e293b; border: 1px solid #38bdf8; color: #fff; padding: 6px 10px; border-radius: 4px; width: 100%; font-size: 13px; font-weight: 600;">
+              <option value="Lunes">Lunes</option>
+              <option value="Martes">Martes</option>
+              <option value="Miércoles">Miércoles</option>
+              <option value="Jueves">Jueves</option>
+              <option value="Viernes">Viernes</option>
+              <option value="Sábado">Sábado</option>
+              <option value="Lunes, Jueves">Lunes y Jueves</option>
+              <option value="Martes, Viernes">Martes y Viernes</option>
+              <option value="Semanal">Semanal</option>
+              <option value="Quincenal">Quincenal</option>
+              <option value="A pedido">A pedido / Sin día fijo</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Totales F29 Summary Cards -->
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 24px;">
+          <div style="background: rgba(56, 189, 248, 0.06); border: 1px solid rgba(56, 189, 248, 0.2); padding: 12px 16px; border-radius: 8px;">
+            <div style="font-size: 11px; color: #94a3b8;">Total Ítems Detectados</div>
+            <div id="modalItemsCount" style="font-size: 20px; font-weight: 800; color: #fff; margin-top: 2px;">0</div>
+          </div>
+          <div style="background: rgba(56, 189, 248, 0.06); border: 1px solid rgba(56, 189, 248, 0.2); padding: 12px 16px; border-radius: 8px;">
+            <div style="font-size: 11px; color: #94a3b8;">Monto Neto Compras</div>
+            <div id="modalMontoNeto" style="font-size: 20px; font-weight: 800; color: #fff; margin-top: 2px;">$0</div>
+          </div>
+          <div style="background: rgba(56, 189, 248, 0.06); border: 1px solid rgba(56, 189, 248, 0.2); padding: 12px 16px; border-radius: 8px;">
+            <div style="font-size: 11px; color: #94a3b8;">IVA Crédito (19%)</div>
+            <div id="modalIva" style="font-size: 20px; font-weight: 800; color: #38bdf8; margin-top: 2px;">$0</div>
+          </div>
+          <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.3); padding: 12px 16px; border-radius: 8px;">
+            <div style="font-size: 11px; color: #94a3b8;">Total Factura Bruto</div>
+            <div id="modalTotalFactura" style="font-size: 20px; font-weight: 800; color: #10b981; margin-top: 2px;">$0</div>
+          </div>
+        </div>
+
+        <h4 style="font-size: 15px; margin-bottom: 10px; color: #cbd5e1;">Desglose Ítem por Ítem para Ingreso a Catálogo</h4>
+        
+        <!-- Scanned Items Table -->
+        <div style="overflow-x: auto; max-height: 380px; overflow-y: auto; border: 1px solid #334155; border-radius: 8px; margin-bottom: 20px;">
+          <table class="data-table" style="margin: 0; font-size: 13px;">
+            <thead>
+              <tr style="position: sticky; top: 0; background: #0f172a; z-index: 10;">
+                <th>#</th>
+                <th>Código de Barra (EAN-13)</th>
+                <th>Código / SKU</th>
+                <th>Descripción del Ítem</th>
+                <th style="text-align: center;">Cantidad</th>
+                <th>Unidad</th>
+                <th>Costo Unit.</th>
+                <th>Subtotal</th>
+                <th>Margen (%)</th>
+                <th>Precio Venta Sugerido</th>
+                <th>Acción Inventario</th>
+              </tr>
+            </thead>
+            <tbody id="modalItemsTbody">
+              <!-- Renderizado dinámico -->
+            </tbody>
+          </table>
+        </div>
+
+        <div style="background: #0f172a; border-left: 4px solid #38bdf8; padding: 12px 16px; border-radius: 4px; font-size: 12px; color: #cbd5e1; margin-bottom: 20px;">
+          ℹ️ <strong>Transacción Segura:</strong> Si presionas <strong>"Aceptar e Ingresar"</strong>, los productos marcados como <em>"NUEVO PRODUCTO"</em> se crearán de inmediato en el catálogo y los marcados como <em>"ACTUALIZAR STOCK"</em> incrementarán sus existencias. Si presionas <strong>"Cancelar"</strong>, ningún cambio será aplicado.
+        </div>
+
+      </div>
+
+      <!-- Modal Footer -->
+      <div style="background: #0f172a; padding: 16px 24px; border-top: 1px solid #334155; display: flex; justify-content: flex-end; gap: 14px;">
+        <button onclick="cerrarModalFactura()" style="background: #334155; color: #fff; border: none; padding: 10px 20px; border-radius: 6px; font-weight: 600; cursor: pointer;">❌ Cancelar / Descartar</button>
+        <button id="btnModalConfirmarIngesta" onclick="confirmarIngestaModal()" class="btn-checkout" style="width: auto; padding: 10px 24px; background: #10b981;">📥 Aceptar e Ingresar al Inventario</button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Modal de Boleta Electrónica & Ticket Térmico 80mm (Res. Ex. N° 53 del SII) -->
+  <div id="thermalReceiptModal" style="display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(5px); z-index: 9999; overflow-y: auto; padding: 20px 10px;">
+    <div style="max-width: 480px; margin: 0 auto; background: var(--bg-card, #1e293b); border: 1px solid var(--border-color, #334155); border-radius: 12px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8); overflow: hidden;">
+      
+      <!-- Modal Header -->
+      <div style="background: #0f172a; padding: 14px 20px; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 20px;">🧾</span>
+          <h4 style="margin: 0; font-size: 15px; font-weight: 700; color: #fff;">Comprobante Fiscal de Venta</h4>
+        </div>
+        <button onclick="cerrarModalBoletaTermica()" style="background: transparent; border: none; color: #94a3b8; font-size: 22px; cursor: pointer; line-height: 1;">&times;</button>
+      </div>
+
+      <!-- Ticket Térmico Imprimible (80mm) -->
+      <div style="padding: 20px; background: #0f172a; display: flex; justify-content: center;">
+        <div id="thermalTicketArea" class="thermal-receipt-paper">
+          
+          <!-- Encabezado Emisor -->
+          <div class="thermal-header">
+            <h2 id="ticketEmisorNombre">ALMACÉN DON TITO SPA</h2>
+            <p><strong>RUT:</strong> <span id="ticketEmisorRut">76.123.456-7</span></p>
+            <p id="ticketEmisorGiro">GIRO: VENTA AL POR MENOR EN MINIMARKET</p>
+            <p id="ticketEmisorDir">CASA MATRIZ: AV. LIBERTADOR B. OHIGGINS 1234</p>
+            <p id="ticketEmisorComuna">SANTIAGO - CHILE</p>
+          </div>
+
+          <!-- Título del Documento -->
+          <div id="ticketTituloDoc" class="thermal-doc-title">
+            BOLETA ELECTRÓNICA N° <span id="ticketFolioDoc">000000</span>
+          </div>
+
+          <!-- Banner Res. 176 (visible solo si es voucher que reemplaza boleta) -->
+          <div id="ticketBannerRes176" style="display: none; background: #f1f5f9; border: 1px dashed #000; padding: 6px; font-size: 9.5px; text-align: center; margin-bottom: 8px; font-weight: 700;">
+            VOUCHER DE PAGO ELECTRÓNICO<br>
+            VÁLIDO COMO BOLETA SEGÚN RES. EXENTA N° 176 DEL SII
+          </div>
+
+          <!-- Datos Transacción -->
+          <div style="font-size: 10.5px; margin-bottom: 8px; border-bottom: 1px dashed #000; padding-bottom: 6px;">
+            <div style="display: flex; justify-content: space-between;">
+              <span><strong>FECHA:</strong> <span id="ticketFecha">--/--/----</span></span>
+              <span><strong>HORA:</strong> <span id="ticketHora">--:--</span></span>
+            </div>
+            <div><strong>CAJA:</strong> 01 | <strong>CAJERO:</strong> <span id="ticketCajero">Admin Demo</span></div>
+            <div><strong>CLIENTE:</strong> <span id="ticketReceptor">CONSUMIDOR FINAL (66.666.666-6)</span></div>
+            <div><strong>MEDIO DE PAGO:</strong> <span id="ticketMedioPago">EFECTIVO</span></div>
+            <div id="ticketCardInfo" style="display: none; font-size: 10px; color: #1e293b; margin-top: 2px;">
+              <strong>TARJETA:</strong> <span id="ticketCardBrand">-</span> (<span id="ticketCardLast4">****</span>) | <strong>AUT:</strong> <span id="ticketAuthCode">-</span>
+            </div>
+          </div>
+
+          <!-- Tabla de Ítems -->
+          <table class="thermal-table">
+            <thead>
+              <tr>
+                <th style="width: 15%;">CANT</th>
+                <th style="width: 50%;">DETALLE</th>
+                <th style="width: 15%; text-align: right;">P.U.</th>
+                <th style="width: 20%; text-align: right;">TOTAL</th>
+              </tr>
+            </thead>
+            <tbody id="ticketItemsTbody">
+              <!-- Ítems dinámicos -->
+            </tbody>
+          </table>
+
+          <!-- Totales Fiscales -->
+          <div class="thermal-totals">
+            <div class="thermal-total-row">
+              <span>MONTO NETO:</span>
+              <span id="ticketNeto">$0</span>
+            </div>
+            <div class="thermal-total-row">
+              <span>IVA DÉBITO FISCAL (19%):</span>
+              <span id="ticketIva">$0</span>
+            </div>
+            <div id="ticketRowRedondeo" class="thermal-total-row" style="font-size: 10px; color: #334155;">
+              <span>LEY REDONDEO CHILENA (20.956):</span>
+              <span id="ticketRedondeo">$0</span>
+            </div>
+            <div class="thermal-total-row thermal-total-main">
+              <span>TOTAL A PAGAR:</span>
+              <span id="ticketTotal">$0</span>
+            </div>
+          </div>
+
+          <!-- Timbre Electrónico DTE (TED) y QR Oficial -->
+          <div id="ticketTedSection">
+            <div class="thermal-ted-box">
+              <div style="font-weight: 800; font-size: 10px; margin-bottom: 2px;">TIMBRE ELECTRÓNICO DTE</div>
+              <div style="font-size: 8px;">Res. N° 53 del SII - Verifique documento en www.sii.cl</div>
+              <div class="thermal-qr-container">
+                <div id="ticketQrElement" style="background: #fff; padding: 4px; border: 1px solid #000;">
+                  <!-- QR renderizado en canvas/svg -->
+                </div>
+              </div>
+              <div style="font-size: 7.5px; color: #334155; word-break: break-all; margin-top: 2px;" id="ticketTedHash">
+                SHA1withRSA: Validado Digitalmente
+              </div>
+            </div>
+          </div>
+
+          <!-- Pie de Ticket -->
+          <div class="thermal-footer">
+            <div>¡GRACIAS POR SU COMPRA!</div>
+            <div style="margin-top: 2px;">Sistema GesTock POS - www.gestock.cl</div>
+            <div id="ticketAlcoholNotice" style="display: none; margin-top: 4px; font-size: 8px; font-weight: 700; border-top: 1px dashed #000; padding-top: 3px;">
+              🔞 VENTA DE ALCOHOL LEY N° 19.925 / 21.363<br>
+              Cédula de Identidad (+18) verificada
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Modal Footer con Acciones -->
+      <div style="background: #0f172a; padding: 14px 18px; border-top: 1px solid #334155; display: flex; flex-direction: column; gap: 10px;">
+        <div style="display: flex; gap: 8px;">
+          <button class="btn-checkout" style="flex: 1; padding: 10px; font-size: 13px; background: #0284c7;" onclick="imprimirTicketTermico()">
+            🖨️ Imprimir Ticket (80mm)
+          </button>
+          <button id="btnDescargarXmlDte" class="btn-checkout" style="flex: 1; padding: 10px; font-size: 13px; background: #6366f1;" onclick="descargarXmlDteActual()">
+            📥 Descargar XML DTE
+          </button>
+        </div>
+        
+        <div style="display: flex; gap: 8px;">
+          <input type="email" id="ticketEmailDestinoInput" placeholder="correo.cliente@ejemplo.cl" style="flex: 1; background: #1e293b; border: 1px solid #334155; color: #fff; padding: 8px 12px; border-radius: 6px; font-size: 12px;">
+          <button class="btn-checkout" style="width: auto; padding: 8px 14px; font-size: 12px; background: #059669;" onclick="enviarBoletaPorCorreoModal()">
+            📧 Enviar por Correo
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Modal de Carga de CAF XML -->
+  <div id="cafUploadModal" style="display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(5px); z-index: 9999; overflow-y: auto; padding: 30px 20px;">
+    <div style="max-width: 600px; margin: 0 auto; background: var(--bg-card, #1e293b); border: 1px solid var(--border-color, #334155); border-radius: 12px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7); overflow: hidden;">
+      <div style="background: #0f172a; padding: 16px 20px; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center;">
+        <h4 style="margin: 0; font-size: 16px; font-weight: 700; color: #fff;">📥 Carga de Archivo CAF (SII)</h4>
+        <button onclick="cerrarModalCargaCaf()" style="background: transparent; border: none; color: #94a3b8; font-size: 24px; cursor: pointer; line-height: 1;">&times;</button>
+      </div>
+
+      <div style="padding: 20px;">
+        <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 14px;">
+          Selecciona el archivo <code>.xml</code> de Código de Autorización de Folios (CAF) descargado del portal del SII o pega su contenido XML directamente:
+        </p>
+
+        <div style="margin-bottom: 14px;">
+          <input type="file" id="cafFileInput" accept=".xml" onchange="leerArchivoCafXml(event)" style="font-size: 12px; color: #cbd5e1;">
+        </div>
+
+        <div style="margin-bottom: 16px;">
+          <label style="font-size: 12px; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Contenido XML del CAF:</label>
+          <textarea id="cafXmlTextInput" rows="8" placeholder="<AUTORIZACION><CAF version=&quot;1.0&quot;>...</CAF><RSASK>...</RSASK></AUTORIZACION>" style="width: 100%; background: #0f172a; border: 1px solid #334155; color: #38bdf8; font-family: monospace; font-size: 11px; padding: 10px; border-radius: 6px;"></textarea>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 10px;">
+          <button onclick="cerrarModalCargaCaf()" style="background: #334155; color: #fff; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer;">Cancelar</button>
+          <button class="btn-checkout" style="width: auto; padding: 8px 20px; background: #0284c7;" onclick="procesarCargaCafXml()">📥 Validar y Guardar CAF</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de Devolución & Nota de Crédito (DTE Tipo 61) Ley N° 21.398 -->
+  <div id="devolucionModal" style="display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(5px); z-index: 9999; overflow-y: auto; padding: 30px 20px;">
+    <div style="max-width: 620px; margin: 0 auto; background: var(--bg-card, #1e293b); border: 1px solid var(--border-color, #334155); border-radius: 12px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7); overflow: hidden;">
+      <div style="background: #0f172a; padding: 16px 20px; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center;">
+        <h4 style="margin: 0; font-size: 16px; font-weight: 700; color: #f87171;">↩️ Devolución & Nota de Crédito (DTE 61)</h4>
+        <button onclick="cerrarModalDevolucion()" style="background: transparent; border: none; color: #94a3b8; font-size: 24px; cursor: pointer; line-height: 1;">&times;</button>
+      </div>
+
+      <div style="padding: 20px;">
+        <div style="font-size: 12px; color: #94a3b8; margin-bottom: 14px;">
+          Venta Referenciada: <strong id="devFolioVentaDisplay">-</strong> | Fecha: <span id="devFechaVentaDisplay">-</span>
+        </div>
+
+        <div style="margin-bottom: 14px;">
+          <label style="font-size: 12px; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 6px;">Motivo Legal de la Devolución (Ley Pro-Consumidor 21.398):</label>
+          <select id="devMotivoSelect" style="background: #0f172a; border: 1px solid #334155; color: #fff; padding: 8px; border-radius: 6px; width: 100%; font-size: 13px;">
+            <option value="Garantía Legal Ley N° 21.398 (Falla de fábrica o producto defectuoso)">🛡️ Garantía Legal 6 Meses (Falla de fábrica / Defecto)</option>
+            <option value="Error de digitación en caja / Cobro incorrecto">⚠️ Error de digitación en caja</option>
+            <option value="Desistimiento voluntario del cliente">🔄 Desistimiento voluntario del cliente</option>
+            <option value="Devolución total acordada">🤝 Devolución total acordada con el cliente</option>
+          </select>
+        </div>
+
+        <div style="margin-bottom: 14px;">
+          <label style="font-size: 12px; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 6px;">Ítems a Devolver y Reponer al Stock:</label>
+          <div id="devItemsContainer" style="max-height: 200px; overflow-y: auto; background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 10px;">
+            <!-- Renderizado dinámico de ítems a devolver -->
+          </div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: #0f172a; border-radius: 6px; margin-bottom: 18px;">
+          <span style="font-size: 13px; color: var(--text-muted);">Monto Total a Reembolsar:</span>
+          <strong id="devTotalReembolso" style="font-size: 18px; color: #f87171;">$0</strong>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 10px;">
+          <button onclick="cerrarModalDevolucion()" style="background: #334155; color: #fff; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer;">Cancelar</button>
+          <button class="btn-checkout" style="width: auto; padding: 8px 20px; background: #dc2626;" onclick="ejecutarDevolucionModal()">↩️ Confirmar y Emitir Nota de Crédito</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de Reporte Z Térmico (80mm) -->
+  <div id="cierreZModal" style="display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(5px); z-index: 9999; overflow-y: auto; padding: 30px 20px;">
+    <div style="max-width: 440px; margin: 0 auto; background: var(--bg-card, #1e293b); border: 1px solid var(--border-color, #334155); border-radius: 12px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7); overflow: hidden;">
+      <div style="background: #0f172a; padding: 14px 18px; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center;">
+        <h4 style="margin: 0; font-size: 15px; font-weight: 700; color: #fff;">🖨️ Reporte Z de Cierre de Caja (80mm)</h4>
+        <button onclick="cerrarModalCierreZ()" style="background: transparent; border: none; color: #94a3b8; font-size: 22px; cursor: pointer; line-height: 1;">&times;</button>
+      </div>
+
+      <div style="padding: 20px; background: #0f172a; display: flex; justify-content: center;">
+        <div id="cierreZTicketArea" class="thermal-receipt-paper">
+          <div class="thermal-header">
+            <h2 id="zEmisorNombre">ALMACÉN DON TITO SPA</h2>
+            <p><strong>RUT:</strong> <span id="zEmisorRut">76.123.456-7</span></p>
+            <p id="zEmisorDir">AV. LIBERTADOR B. OHIGGINS 1234 - SANTIAGO</p>
+          </div>
+
+          <div class="thermal-doc-title" style="background: #000; color: #fff; padding: 4px; text-align: center; font-weight: 800; font-size: 13px; margin: 8px 0;">
+            REPORTE Z - CIERRE DE TURNO
+          </div>
+
+          <div style="font-size: 10.5px; border-bottom: 1px dashed #000; padding-bottom: 6px; margin-bottom: 8px;">
+            <div><strong>SESIÓN ID:</strong> <span id="zSesionId">-</span></div>
+            <div><strong>APERTURA:</strong> <span id="zFechaApertura">-</span></div>
+            <div><strong>CIERRE:</strong> <span id="zFechaCierre">-</span></div>
+            <div><strong>CAJERO:</strong> <span id="zCajero">-</span></div>
+          </div>
+
+          <div style="font-size: 11px; margin-bottom: 8px;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+              <span>FONDO INICIAL:</span>
+              <strong id="zFondoInicial">$0</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+              <span>VENTAS EFECTIVO:</span>
+              <strong id="zVentasEfectivo">$0</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+              <span>APORTES SENCILLO (+):</span>
+              <strong id="zIngresos">$0</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+              <span>RETIROS / GASTOS (-):</span>
+              <strong id="zEgresos">$0</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; border-top: 1px dashed #000; padding-top: 4px; margin-bottom: 6px;">
+              <strong>EFECTIVO ESPERADO:</strong>
+              <strong id="zEsperado">$0</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+              <strong>EFECTIVO REAL CONTADO:</strong>
+              <strong id="zReal">$0</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; border-top: 1px dashed #000; padding-top: 4px; margin-bottom: 8px;">
+              <strong>DIFERENCIA:</strong>
+              <strong id="zDiferencia">$0</strong>
+            </div>
+          </div>
+
+          <div style="font-size: 10.5px; border-top: 1px dashed #000; padding-top: 6px; margin-bottom: 8px;">
+            <div style="font-weight: 700; margin-bottom: 2px;">VENTAS POR TARJETA (INFORME SII):</div>
+            <div style="display: flex; justify-content: space-between;">
+              <span>Transbank:</span>
+              <span id="zVentasTb">$0</span>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+              <span>Mercado Pago:</span>
+              <span id="zVentasMp">$0</span>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+              <span>SumUp:</span>
+              <span id="zVentasSu">$0</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-weight: 800; border-top: 1px dashed #000; padding-top: 3px; margin-top: 3px;">
+              <span>TOTAL VENTAS DEL TURNO:</span>
+              <span id="zTotalVentas">$0</span>
+            </div>
+          </div>
+
+          <div style="font-size: 9.5px; text-align: center; margin-top: 10px; border-top: 1px dashed #000; padding-top: 6px;">
+            <div>SISTEMA GESTOCK POS - CONTROL FISCAL</div>
+            <div>Documento de Auditoría Interna</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="background: #0f172a; padding: 12px 18px; border-top: 1px solid #334155; display: flex; justify-content: flex-end; gap: 10px;">
+        <button onclick="cerrarModalCierreZ()" style="background: #334155; color: #fff; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer;">Cerrar</button>
+        <button class="btn-checkout" style="width: auto; padding: 8px 20px; background: #0284c7;" onclick="imprimirReporteZTermico()">🖨️ Imprimir Ticket Z</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de Nueva Guía de Despacho (DTE Tipo 52) -->
+  <div id="nuevaGuiaModal" style="display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(5px); z-index: 9999; overflow-y: auto; padding: 30px 20px;">
+    <div style="max-width: 650px; margin: 0 auto; background: var(--bg-card, #1e293b); border: 1px solid var(--border-color, #334155); border-radius: 12px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7); overflow: hidden;">
+      <div style="background: #0f172a; padding: 16px 20px; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center;">
+        <h4 style="margin: 0; font-size: 16px; font-weight: 700; color: #fff;">🚚 Emisión de Guía de Despacho Electrónica (DTE 52)</h4>
+        <button onclick="cerrarModalNuevaGuia()" style="background: transparent; border: none; color: #94a3b8; font-size: 24px; cursor: pointer; line-height: 1;">&times;</button>
+      </div>
+
+      <div style="padding: 20px;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+          <div>
+            <label style="font-size: 11.5px; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Tipo de Traslado (SII):</label>
+            <select id="guiaTipoTrasladoInput" style="background: #0f172a; border: 1px solid #334155; color: #fff; padding: 7px; border-radius: 6px; width: 100%; font-size: 12px;">
+              <option value="5">5: Traslado interno (entre bodegas/sucursales)</option>
+              <option value="1">1: Operación constituye venta</option>
+              <option value="6">6: Otros traslados no venta</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size: 11.5px; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Patente del Vehículo:</label>
+            <input type="text" id="guiaPatenteInput" placeholder="Ej: AB-CD-12" style="background: #0f172a; border: 1px solid #334155; color: #fff; padding: 7px; border-radius: 6px; width: 100%; font-size: 12px; text-transform: uppercase;">
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+          <div>
+            <label style="font-size: 11.5px; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">RUT Chofer / Transportista:</label>
+            <input type="text" id="guiaChoferRutInput" placeholder="Ej: 12.345.678-9" style="background: #0f172a; border: 1px solid #334155; color: #fff; padding: 7px; border-radius: 6px; width: 100%; font-size: 12px;">
+          </div>
+          <div>
+            <label style="font-size: 11.5px; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Nombre del Chofer:</label>
+            <input type="text" id="guiaChoferNombreInput" placeholder="Nombre completo chofer" style="background: #0f172a; border: 1px solid #334155; color: #fff; padding: 7px; border-radius: 6px; width: 100%; font-size: 12px;">
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+          <div>
+            <label style="font-size: 11.5px; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">RUT Receptor / Destinatario:</label>
+            <input type="text" id="guiaReceptorRutInput" placeholder="Ej: 76.123.456-7" style="background: #0f172a; border: 1px solid #334155; color: #fff; padding: 7px; border-radius: 6px; width: 100%; font-size: 12px;">
+          </div>
+          <div>
+            <label style="font-size: 11.5px; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Razón Social Destinatario:</label>
+            <input type="text" id="guiaReceptorRznInput" placeholder="Nombre o Razón Social" style="background: #0f172a; border: 1px solid #334155; color: #fff; padding: 7px; border-radius: 6px; width: 100%; font-size: 12px;">
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 12px; margin-bottom: 14px;">
+          <div>
+            <label style="font-size: 11.5px; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Dirección de Destino:</label>
+            <input type="text" id="guiaDirDestinoInput" placeholder="Calle y número de destino" style="background: #0f172a; border: 1px solid #334155; color: #fff; padding: 7px; border-radius: 6px; width: 100%; font-size: 12px;">
+          </div>
+          <div>
+            <label style="font-size: 11.5px; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Comuna:</label>
+            <input type="text" id="guiaComunaDestinoInput" placeholder="Comuna" style="background: #0f172a; border: 1px solid #334155; color: #fff; padding: 7px; border-radius: 6px; width: 100%; font-size: 12px;">
+          </div>
+        </div>
+
+        <div style="margin-bottom: 16px;">
+          <label style="font-size: 11.5px; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Ítems a Despachar (Nombre y Cantidad):</label>
+          <div id="guiaItemsList" style="max-height: 150px; overflow-y: auto; background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 10px;">
+            <!-- Renderizado dinámico de productos para despacho -->
+          </div>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 10px;">
+          <button onclick="cerrarModalNuevaGuia()" style="background: #334155; color: #fff; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer;">Cancelar</button>
+          <button class="btn-checkout" style="width: auto; padding: 8px 20px; background: #0284c7;" onclick="emitirGuiaDespachoForm()">🚚 Firmar y Emitir Guía DTE 52</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de Generación e Impresión de Etiquetas de Góndola y Códigos de Barra (Ley N° 19.496) -->
+  <div id="modalEtiquetasGondola" style="display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(5px); z-index: 9999; overflow-y: auto; padding: 30px 20px;">
+    <div style="max-width: 950px; margin: 0 auto; background: var(--bg-card, #1e293b); border: 1px solid var(--border-color, #334155); border-radius: 12px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7); overflow: hidden;">
+      
+      <!-- Header -->
+      <div style="background: #0f172a; padding: 18px 24px; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <span style="font-size: 26px;">🏷️</span>
+          <div>
+            <h3 style="margin: 0; font-size: 18px; font-weight: 700; color: #fff;">Impresión de Etiquetas de Góndola & Códigos de Barra</h3>
+            <p style="margin: 2px 0 0 0; font-size: 12px; color: #94a3b8;">Cumplimiento Ley SERNAC N° 19.496 (Precios Visibles con IVA) y rotulación de estanterías</p>
+          </div>
+        </div>
+        <button onclick="cerrarModalEtiquetasGondola()" style="background: transparent; border: none; color: #94a3b8; font-size: 24px; cursor: pointer; line-height: 1;">&times;</button>
+      </div>
+
+      <!-- Controls & Filter Toolbar -->
+      <div style="padding: 16px 24px; border-bottom: 1px solid #334155; background: #162032; display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap;">
+        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+          <label style="font-size: 12px; color: var(--text-muted); font-weight: 600;">Filtrar:</label>
+          <select id="etiquetasFiltroSelect" onchange="filtrarEtiquetasGondola()" style="background: #0f172a; border: 1px solid #334155; color: #fff; padding: 6px 12px; border-radius: 6px; font-size: 12px;">
+            <option value="TODOS">Todos los productos activos</option>
+            <option value="NUEVOS">✨ Solo productos nuevos (de facturas)</option>
+            <option value="VENCIMIENTO">⚠️ Solo productos próximos a vencer</option>
+            <option value="ALCOHOL">🔞 Solo bebidas alcohólicas (+18 ILA)</option>
+          </select>
+
+          <label style="font-size: 12px; color: var(--text-muted); font-weight: 600; margin-left: 10px;">Copias por producto:</label>
+          <input type="number" id="etiquetasCopiasInput" min="1" max="10" value="1" onchange="actualizarContadorEtiquetas()" style="background: #0f172a; border: 1px solid #334155; color: #fff; padding: 6px 10px; border-radius: 6px; width: 60px; font-size: 12px; text-align: center; font-weight: 700;">
+        </div>
+
+        <div style="display: flex; gap: 8px;">
+          <button onclick="seleccionarTodasEtiquetas(true)" style="background: #334155; color: #e2e8f0; border: none; padding: 6px 12px; border-radius: 6px; font-size: 11px; cursor: pointer; font-weight: 600;">Marcar Todos</button>
+          <button onclick="seleccionarTodasEtiquetas(false)" style="background: #334155; color: #e2e8f0; border: none; padding: 6px 12px; border-radius: 6px; font-size: 11px; cursor: pointer; font-weight: 600;">Desmarcar</button>
+        </div>
+      </div>
+
+      <!-- Items List Table -->
+      <div style="padding: 20px 24px; max-height: 400px; overflow-y: auto;">
+        <table class="data-table" style="width: 100%;">
+          <thead>
+            <tr>
+              <th style="width: 40px; text-align: center;"><input type="checkbox" id="checkSelectAllLabels" onchange="seleccionarTodasEtiquetas(this.checked)" checked></th>
+              <th>SKU / Código</th>
+              <th>Nombre del Producto</th>
+              <th>Precio Venta (IVA Inc.)</th>
+              <th>Trazabilidad / Sellos</th>
+              <th style="text-align: center;">Muestra Código</th>
+            </tr>
+          </thead>
+          <tbody id="etiquetasTbody">
+            <!-- Renderizado dinámico de filas para etiquetas -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Footer Actions -->
+      <div style="background: #0f172a; padding: 16px 24px; border-top: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+        <div style="font-size: 12px; color: #94a3b8;">
+          <span id="etiquetasCountDisplay" style="color: #38bdf8; font-weight: 700;">0 productos seleccionados</span> | Hoja adhesiva de 3 columnas (apta para góndola o rotulado)
+        </div>
+        <div style="display: flex; gap: 10px;">
+          <button onclick="cerrarModalEtiquetasGondola()" style="background: #334155; color: #fff; border: none; padding: 10px 20px; border-radius: 6px; font-weight: 600; cursor: pointer;">Cancelar</button>
+          <button class="btn-checkout" style="width: auto; padding: 10px 24px; background: #0284c7;" onclick="ejecutarImpresionEtiquetasGondola()">🖨️ Imprimir Etiquetas</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Contenedor Invisible para impresión de etiquetas de góndola -->
+  <div id="shelfLabelsPrintArea" style="display: none;"></div>
+
+  <!-- Floating Toast Notifications -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <script src="/js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,54 @@
+{
+  "name": "gestock-backend",
+  "version": "0.1.0",
+  "description": "GesTock - Sistema Inteligente de Gestión de Inventarios & POS Offline-First (Backend API)",
+  "main": "dist/src/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/src/index.js",
+    "dev": "ts-node src/index.ts",
+    "test": "jest --runInBand --detectOpenHandles",
+    "test:unit": "jest --config tests_unitarias/jest.unit.config.js --runInBand",
+    "test:coverage": "jest --runInBand --coverage",
+    "migrate:pg": "ts-node src/database/postgres/run-migration.ts",
+    "migrate:sqlite": "ts-node src/database/sqlite/run-migration.ts"
+  },
+  "keywords": [
+    "inventory",
+    "pos",
+    "offline-first",
+    "multi-tenant",
+    "saas"
+  ],
+  "author": "Gestock Team",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "express-rate-limit": "^8.7.0",
+    "helmet": "^8.0.0",
+    "jsonwebtoken": "^9.0.3",
+    "pdf-parse": "^2.4.5",
+    "pg": "^8.13.3",
+    "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.0",
+    "@types/jest": "^29.5.14",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^22.13.9",
+    "@types/pdf-parse": "^1.1.5",
+    "@types/pg": "^8.11.11",
+    "@types/uuid": "^10.0.0",
+    "docx": "^9.7.1",
+    "jest": "^29.7.0",
+    "pg-mem": "^3.0.4",
+    "ts-jest": "^29.2.6",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.2"
+  }
+}
