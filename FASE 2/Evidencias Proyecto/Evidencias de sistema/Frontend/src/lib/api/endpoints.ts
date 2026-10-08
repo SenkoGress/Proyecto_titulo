@@ -10,6 +10,7 @@ export const endpoints = {
     login: `${API_V1}/auth/login`,
     registro: `${API_V1}/auth/register`,
     perfil: `${API_V1}/auth/me`,
+    usuarios: `${API_V1}/auth/users`,
   },
   sistema: {
     info: '/api',

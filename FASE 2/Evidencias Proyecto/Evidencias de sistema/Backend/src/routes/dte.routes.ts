@@ -227,17 +227,23 @@ dteRouter.get('/:id/receipt', (req: Request, res: Response) => {
       success: true,
       data: {
         dteId: dte.id,
+        dte_id: dte.id,
         tipoDte: dte.tipo_dte,
+        tipo_dte: dte.tipo_dte,
         nombreDocumento: dte.tipo_dte === 39 ? 'BOLETA ELECTRÓNICA' : dte.tipo_dte === 41 ? 'BOLETA EXENTA' : 'NOTA DE CRÉDITO',
+        nombre_documento: dte.tipo_dte === 39 ? 'BOLETA ELECTRÓNICA' : dte.tipo_dte === 41 ? 'BOLETA EXENTA' : 'NOTA DE CRÉDITO',
         folio: dte.folio,
         fechaEmision: dte.fecha_emision,
+        fecha_emision: dte.fecha_emision,
         emisor: {
           rut: dte.rut_emisor,
-          razonSocial: dte.razon_social_emisor
+          razonSocial: dte.razon_social_emisor,
+          razon_social: dte.razon_social_emisor
         },
         receptor: {
           rut: dte.rut_receptor,
-          razonSocial: dte.razon_social_receptor
+          razonSocial: dte.razon_social_receptor,
+          razon_social: dte.razon_social_receptor
         },
         totales: {
           neto: dte.monto_neto,
@@ -247,7 +253,9 @@ dteRouter.get('/:id/receipt', (req: Request, res: Response) => {
         },
         items,
         qrCodeUrl: dte.qr_code_content,
+        qr_code_url: dte.qr_code_content,
         tedXml: dte.ted_xml,
+        ted_xml: dte.ted_xml,
         leyendaFiscal: 'Timbre Electrónico DTE - Res. N° 53 del SII. Verifique documento en www.sii.cl'
       }
     });

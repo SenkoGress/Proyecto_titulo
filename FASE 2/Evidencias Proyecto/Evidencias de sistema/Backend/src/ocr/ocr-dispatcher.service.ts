@@ -34,8 +34,8 @@ export class OcrDispatcherService {
       // 2. Intentar extractor nativo de PDF (Digital Chilean DTE) si es un PDF o contiene texto DTE
       try {
         const pdfData = await defaultPdfInvoiceExtractor.extractFromPdf(input);
-        if (pdfData && pdfData.items.length > 0) {
-          logger.info('OcrDispatcher', `Successfully extracted ${pdfData.items.length} items using native Chilean PDF DTE Extractor`);
+        if (pdfData && (pdfData.items.length > 0 || pdfData.total > 0 || Boolean(pdfData.folio_factura))) {
+          logger.info('OcrDispatcher', `Successfully extracted invoice metadata using native Chilean PDF DTE Extractor`);
           return {
             data: pdfData,
             usedFallback: true,
@@ -46,7 +46,19 @@ export class OcrDispatcherService {
         logger.debug('OcrDispatcher', 'PDF native extraction attempt failed or not applicable', { error: String(pdfErr) });
       }
 
-      // 3. Fallback controlado en caso de fallas de red o entornos offline sin PDF
+      // 3. Fallback controlado
+      // Cuando GEMINI_API_KEY está configurada o en producción (NODE_ENV=production),
+      // el simulador MockOcrProvider NO participa (salvo simulación explícita simulateFailure: true),
+      // evitando inventar datos fiscales o proveedores no existentes en el inventario real.
+      const hasApiKey = Boolean(process.env.GEMINI_API_KEY);
+      const isProduction = process.env.NODE_ENV === 'production';
+      if ((hasApiKey || isProduction) && !input.simulateFailure) {
+        throw new Error(
+          'No fue posible digitalizar el documento mediante IA ni extracción nativa de PDF. ' +
+          'Verifique la legibilidad de la imagen o ingrese la factura manualmente.'
+        );
+      }
+
       logger.warn('OcrDispatcher', `Engaging fallback mock provider: ${this.fallbackProvider.name}`);
       const fallbackData = await this.fallbackProvider.extractInvoiceData(input);
       return {

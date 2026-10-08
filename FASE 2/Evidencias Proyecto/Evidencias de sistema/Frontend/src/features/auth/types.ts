@@ -30,3 +30,13 @@ export type RespuestaSesion = {
     usuario: Usuario
   }
 }
+
+export type RespuestaUsuarios = {
+  success: boolean
+  data: Usuario[]
+}
+
+export type RespuestaUsuarioCreado = {
+  success: boolean
+  data: { usuario: Usuario }
+}

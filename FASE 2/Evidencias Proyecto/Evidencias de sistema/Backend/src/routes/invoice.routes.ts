@@ -11,7 +11,8 @@ const router = Router();
  */
 router.post('/scan', async (req: Request, res: Response): Promise<void> => {
   const invoiceData = req.body.invoice_data || req.body.image_base64_or_pdf;
-  const { tenant_id, file_name, mime_type, simulate_failure } = req.body;
+  const { file_name, mime_type, simulate_failure } = req.body;
+  const tenant_id = req.body.tenant_id || (req as any).tenant_id || (req.headers['x-tenant-id'] as string) || (req.query.tenant_id as string);
 
   if (!tenant_id || !invoiceData) {
     res.status(400).json({
@@ -36,10 +37,12 @@ router.post('/scan', async (req: Request, res: Response): Promise<void> => {
     });
   } catch (error) {
     logger.error('InvoiceRoutes', 'Failed to scan invoice', error);
-    res.status(500).json({
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    const statusCode = errorMsg.includes('No fue posible digitalizar') ? 422 : 500;
+    res.status(statusCode).json({
       success: false,
-      message: 'Error al escanear la factura',
-      error: error instanceof Error ? error.message : String(error)
+      message: errorMsg.includes('No fue posible digitalizar') ? errorMsg : 'Error al escanear la factura',
+      error: errorMsg
     });
   }
 });
@@ -49,7 +52,8 @@ router.post('/scan', async (req: Request, res: Response): Promise<void> => {
  * Paso 2: Confirmación explícita del usuario para autorizar la ingesta transaccional
  */
 router.post('/confirm', async (req: Request, res: Response): Promise<void> => {
-  const { tenant_id, invoice_data } = req.body;
+  const { invoice_data } = req.body;
+  const tenant_id = req.body.tenant_id || (req as any).tenant_id || (req.headers['x-tenant-id'] as string) || (req.query.tenant_id as string);
 
   if (!tenant_id || !invoice_data) {
     res.status(400).json({

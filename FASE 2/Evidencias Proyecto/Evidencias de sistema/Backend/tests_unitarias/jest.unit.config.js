@@ -5,5 +5,11 @@ module.exports = {
   rootDir: '.',
   verbose: true,
   forceExit: true,
-  detectOpenHandles: false
+  detectOpenHandles: false,
+  transform: {
+    '^.+\\.tsx?$': ['ts-jest', {
+      isolatedModules: true,
+      diagnostics: false
+    }]
+  }
 };

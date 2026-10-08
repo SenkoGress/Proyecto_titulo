@@ -1,8 +1,9 @@
 import { Request, Response } from 'express';
 import {
   validateTenantAndAuth,
+  rbacAuthMiddleware,
   globalErrorHandler
-} from '../src/middleware/security.middleware';
+} from '../../src/middleware/security.middleware';
 
 describe('Pruebas Unitarias: Seguridad, Validacion de Tenant y Error Handling', () => {
   let mockRequest: Partial<Request>;
@@ -156,6 +157,93 @@ describe('Pruebas Unitarias: Seguridad, Validacion de Tenant y Error Handling', 
       expect(() => {
         jwt.verify(tokenManipulado, SECRET);
       }).toThrow();
+    });
+  });
+
+  describe('Control de Acceso Basado en Roles (RBAC Middleware)', () => {
+    const jwt = require('jsonwebtoken');
+    const SECRET = process.env.JWT_SECRET || 'super_secret_jwt_key_gestock_2026_change_in_production';
+
+    const adminToken = jwt.sign(
+      { id: 'admin-id', tenant_id: 't-1', email: 'admin@gestock.cl', rol: 'admin', nombre: 'Admin' },
+      SECRET,
+      { expiresIn: '1h' }
+    );
+
+    const cajeroToken = jwt.sign(
+      { id: 'cajero-id', tenant_id: 't-1', email: 'cajero@gestock.cl', rol: 'cajero', nombre: 'Cajero' },
+      SECRET,
+      { expiresIn: '1h' }
+    );
+
+    test('permite acceso al cajero a rutas del POS (/pos/products)', () => {
+      mockRequest.originalUrl = '/api/v1/pos/products';
+      mockRequest.headers = { authorization: `Bearer ${cajeroToken}` };
+
+      rbacAuthMiddleware(mockRequest as Request, mockResponse as Response, nextFunction);
+
+      expect(nextFunction).toHaveBeenCalledTimes(1);
+      expect(mockResponse.status).not.toHaveBeenCalled();
+    });
+
+    test('bloquea con HTTP 403 al cajero intentando acceder a ruta de administración (/dashboard)', () => {
+      mockRequest.originalUrl = '/api/v1/dashboard/overview';
+      mockRequest.headers = { authorization: `Bearer ${cajeroToken}` };
+
+      rbacAuthMiddleware(mockRequest as Request, mockResponse as Response, nextFunction);
+
+      expect(mockResponse.status).toHaveBeenCalledWith(403);
+      expect(mockResponse.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: false,
+          message: expect.stringContaining('administrador')
+        })
+      );
+      expect(nextFunction).not.toHaveBeenCalled();
+    });
+
+    test('permite acceso al administrador a rutas de administración (/dashboard)', () => {
+      mockRequest.originalUrl = '/api/v1/dashboard/overview';
+      mockRequest.headers = { authorization: `Bearer ${adminToken}` };
+
+      rbacAuthMiddleware(mockRequest as Request, mockResponse as Response, nextFunction);
+
+      expect(nextFunction).toHaveBeenCalledTimes(1);
+      expect(mockResponse.status).not.toHaveBeenCalled();
+    });
+
+    test('rechaza con HTTP 401 si el token JWT es inválido o adulterado', () => {
+      mockRequest.originalUrl = '/api/v1/pos/products';
+      mockRequest.headers = { authorization: 'Bearer token-invalido-o-expirado' };
+
+      rbacAuthMiddleware(mockRequest as Request, mockResponse as Response, nextFunction);
+
+      expect(mockResponse.status).toHaveBeenCalledWith(401);
+      expect(nextFunction).not.toHaveBeenCalled();
+    });
+
+    test('rechaza con HTTP 401 si no hay token y ENFORCE_AUTH está activado', () => {
+      const origEnforce = process.env.ENFORCE_AUTH;
+      process.env.ENFORCE_AUTH = 'true';
+
+      mockRequest.originalUrl = '/api/v1/pos/products';
+      mockRequest.headers = {};
+
+      rbacAuthMiddleware(mockRequest as Request, mockResponse as Response, nextFunction);
+
+      expect(mockResponse.status).toHaveBeenCalledWith(401);
+      expect(nextFunction).not.toHaveBeenCalled();
+
+      process.env.ENFORCE_AUTH = origEnforce;
+    });
+
+    test('omite verificación y permite paso libre en rutas públicas (/health, /api)', () => {
+      mockRequest.originalUrl = '/health';
+      mockRequest.headers = {};
+
+      rbacAuthMiddleware(mockRequest as Request, mockResponse as Response, nextFunction);
+
+      expect(nextFunction).toHaveBeenCalledTimes(1);
     });
   });
 });

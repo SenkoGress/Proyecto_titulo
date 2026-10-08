@@ -10,6 +10,7 @@ import { SeccionModeloSii } from '@/features/configuracion/components/SeccionMod
 import { SeccionEmisor } from '@/features/configuracion/components/SeccionEmisor'
 import { SeccionRedondeo } from '@/features/configuracion/components/SeccionRedondeo'
 import { SeccionPciDss } from '@/features/configuracion/components/SeccionPciDss'
+import { SeccionUsuarios } from '@/features/configuracion/components/SeccionUsuarios'
 import { useUsuario } from '@/features/auth/stores/sesionStore'
 
 // configuracion del sistema
@@ -37,6 +38,7 @@ export function ConfiguracionPage() {
 
         {esAdmin && (
           <>
+            <SeccionUsuarios />
             <SeccionMargen />
             <SeccionCorreo />
             <SeccionReposicion />

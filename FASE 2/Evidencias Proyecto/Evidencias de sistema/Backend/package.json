@@ -1,7 +1,7 @@
 {
   "name": "gestock-backend",
   "version": "0.1.0",
-  "description": "GesTock - Sistema Inteligente de Gestión de Inventarios & POS Offline-First (Backend API)",
+  "description": "Gestock - Predictive Inventory Management System (Cloud SaaS & POS Offline-First)",
   "main": "dist/src/index.js",
   "scripts": {
     "build": "tsc",
@@ -9,6 +9,8 @@
     "dev": "ts-node src/index.ts",
     "test": "jest --runInBand --detectOpenHandles",
     "test:unit": "jest --config tests_unitarias/jest.unit.config.js --runInBand",
+    "test:unit:backend": "jest --config tests_unitarias/jest.unit.config.js tests_unitarias/backend --runInBand",
+    "test:unit:frontend": "jest --config tests_unitarias/jest.unit.config.js tests_unitarias/frontend --runInBand",
     "test:coverage": "jest --runInBand --coverage",
     "migrate:pg": "ts-node src/database/postgres/run-migration.ts",
     "migrate:sqlite": "ts-node src/database/sqlite/run-migration.ts"

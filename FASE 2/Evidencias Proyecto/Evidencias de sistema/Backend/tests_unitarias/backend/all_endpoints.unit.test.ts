@@ -1,10 +1,10 @@
 import http from 'http';
 import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
-import app from '../src/index';
-import { initializeDatabase } from '../src/database/init-db';
-import { defaultPgClient } from '../src/database/postgres/client';
-import { defaultSqliteClient } from '../src/database/sqlite/client';
+import app from '../../src/index';
+import { initializeDatabase } from '../../src/database/init-db';
+import { defaultPgClient } from '../../src/database/postgres/client';
+import { defaultSqliteClient } from '../../src/database/sqlite/client';
 
 const DEMO_TENANT = '00000000-0000-0000-0000-000000000001';
 const DEMO_USER = '00000000-0000-0000-0000-000000000002';
@@ -230,7 +230,7 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (5
       const res = await requestApi('POST', '/api/v1/dte/config', {
         tenantId: DEMO_TENANT,
         modeloEmision: 'MODELO_A',
-        rut: '76.123.456-7',
+        rut: '76.123.456-0',
         razonSocial: 'Minimarket GesTock SpA'
       });
       expect(res.status).toBe(200);
@@ -329,7 +329,7 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (5
     test('27. POST /api/v1/dte/guias/emitir emite Guía de Despacho DTE 52', async () => {
       const res = await requestApi('POST', '/api/v1/dte/guias/emitir', {
         tenantId: DEMO_TENANT,
-        receptorRut: '76.123.456-7',
+        receptorRut: '76.123.456-0',
         receptorRazonSocial: 'Bodega Central',
         direccionDestino: 'Av. Industrial 123',
         items: [{ nombre: 'Harina 25kg', cantidad: 4, precioUnitario: 12000 }]
@@ -371,7 +371,7 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (5
     test('31. POST /api/v1/invoices/confirm confirma previsualización de factura', async () => {
       const payload = scannedExtracted || {
         folio_factura: 'FAC-88771',
-        rut_proveedor: '76.123.456-7',
+        rut_proveedor: '76.123.456-0',
         razon_social: 'Distribuidora del Sur',
         fecha_emision: '2026-09-16',
         items: [{ sku: 'PROD-01', descripcion: 'Aceite 1L', cantidad: 12, precio_unitario: 1200, subtotal: 14400 }]

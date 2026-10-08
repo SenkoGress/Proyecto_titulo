@@ -63,7 +63,7 @@ describe('Cumplimiento Normativo SII & Integración POS', () => {
     it('debe generar el Timbre Electrónico DTE (<TED>) con firma SHA1withRSA válida', () => {
       const caf = defaultCafManager.getOrCreateActiveCaf(tenantId, TipoDTE.BOLETA_ELECTRONICA);
       const ted = defaultCafManager.generateTed({
-        emisorRut: '76.123.456-7',
+        emisorRut: '76.123.456-0',
         tipoDte: TipoDTE.BOLETA_ELECTRONICA,
         folio: 9999,
         fechaEmision: '2026-03-10',
@@ -77,7 +77,7 @@ describe('Cumplimiento Normativo SII & Integración POS', () => {
 
       expect(ted.tedXml).toContain('<TED version="1.0">');
       expect(ted.tedXml).toContain('<DD>');
-      expect(ted.tedXml).toContain('<RE>76.123.456-7</RE>');
+      expect(ted.tedXml).toContain('<RE>76.123.456-0</RE>');
       expect(ted.tedXml).toContain('<TD>39</TD>');
       expect(ted.tedXml).toContain('<F>9999</F>');
       expect(ted.tedXml).toContain('<MNT>5990</MNT>');

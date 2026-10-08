@@ -117,46 +117,160 @@ describe('Auth Endpoints & RBAC (RF-01, RF-02, RF-03, RNF-SEG-01, RNF-SEG-02)', 
 
   describe('POST /api/v1/auth/register (RF-02)', () => {
     const testEmail = `cajero_test_${Date.now()}@gestock.cl`;
+    let adminToken: string;
+    let cajeroToken: string;
 
-    it('registra un nuevo cajero con clave Bcrypt y retorna sesión activa con JWT', async () => {
+    beforeAll(async () => {
+      const adminLogin = await postJson('/api/v1/auth/login', {
+        tenant_id: tenantId,
+        email: 'admin@gestock.cl',
+        password: 'admin123'
+      });
+      adminToken = adminLogin.data.token;
+
+      const cajeroLogin = await postJson('/api/v1/auth/login', {
+        tenant_id: tenantId,
+        email: 'cajero@gestock.cl',
+        password: 'cajero123'
+      });
+      cajeroToken = cajeroLogin.data.token;
+    });
+
+    it('rechaza registro con 401 si no se envía token de autenticación', async () => {
       const res = await postJson('/api/v1/auth/register', {
         tenant_id: tenantId,
-        nombre: 'Cajero de Turno',
-        email: testEmail,
+        nombre: 'Cajero Sin Auth',
+        email: 'sinauth@gestock.cl',
         password: 'PasswordSegura2026',
         rol: 'cajero'
       });
+
+      expect(res.status).toBe(401);
+      expect(res.data.success).toBe(false);
+    });
+
+    it('rechaza registro con 403 si el token pertenece a un rol cajero', async () => {
+      const res = await postJson(
+        '/api/v1/auth/register',
+        {
+          tenant_id: tenantId,
+          nombre: 'Cajero No Autorizado',
+          email: 'noauth@gestock.cl',
+          password: 'PasswordSegura2026',
+          rol: 'cajero'
+        },
+        { Authorization: `Bearer ${cajeroToken}` }
+      );
+
+      expect(res.status).toBe(403);
+      expect(res.data.success).toBe(false);
+      expect(res.data.message).toContain('solo administradores');
+    });
+
+    it('registra un nuevo cajero con token de admin y retorna usuario sin token', async () => {
+      const res = await postJson(
+        '/api/v1/auth/register',
+        {
+          tenant_id: tenantId,
+          nombre: 'Cajero de Turno',
+          email: testEmail,
+          password: 'PasswordSegura2026',
+          rol: 'cajero'
+        },
+        { Authorization: `Bearer ${adminToken}` }
+      );
 
       expect(res.status).toBe(201);
       expect(res.data.success).toBe(true);
-      expect(typeof res.data.token).toBe('string');
       expect(res.data.usuario.rol).toBe('cajero');
       expect(res.data.usuario.email).toBe(testEmail);
+      expect(res.data.token).toBeUndefined(); // David's contract: no token on register
     });
 
     it('rechaza registro duplicado con error 409', async () => {
-      const res = await postJson('/api/v1/auth/register', {
-        tenant_id: tenantId,
-        nombre: 'Cajero Duplicado',
-        email: testEmail,
-        password: 'PasswordSegura2026',
-        rol: 'cajero'
-      });
+      const res = await postJson(
+        '/api/v1/auth/register',
+        {
+          tenant_id: tenantId,
+          nombre: 'Cajero Duplicado',
+          email: testEmail,
+          password: 'PasswordSegura2026',
+          rol: 'cajero'
+        },
+        { Authorization: `Bearer ${adminToken}` }
+      );
 
       expect(res.status).toBe(409);
       expect(res.data.success).toBe(false);
     });
 
     it('rechaza registro con contraseña menor a 8 caracteres con error 400', async () => {
-      const res = await postJson('/api/v1/auth/register', {
-        tenant_id: tenantId,
-        nombre: 'Usuario Corto',
-        email: 'corto@gestock.cl',
-        password: '123'
-      });
+      const res = await postJson(
+        '/api/v1/auth/register',
+        {
+          tenant_id: tenantId,
+          nombre: 'Usuario Corto',
+          email: 'corto@gestock.cl',
+          password: '123'
+        },
+        { Authorization: `Bearer ${adminToken}` }
+      );
 
       expect(res.status).toBe(400);
       expect(res.data.success).toBe(false);
+    });
+  });
+
+  describe('GET /api/v1/auth/users (Gestión de Personal)', () => {
+    let adminToken: string;
+    let cajeroToken: string;
+
+    beforeAll(async () => {
+      const adminLogin = await postJson('/api/v1/auth/login', {
+        tenant_id: tenantId,
+        email: 'admin@gestock.cl',
+        password: 'admin123'
+      });
+      adminToken = adminLogin.data.token;
+
+      const cajeroLogin = await postJson('/api/v1/auth/login', {
+        tenant_id: tenantId,
+        email: 'cajero@gestock.cl',
+        password: 'cajero123'
+      });
+      cajeroToken = cajeroLogin.data.token;
+    });
+
+    it('rechaza consulta de usuarios con 401 si no hay token', async () => {
+      const res = await getJson('/api/v1/auth/users');
+      expect(res.status).toBe(401);
+      expect(res.data.success).toBe(false);
+    });
+
+    it('rechaza consulta de usuarios con 403 si el rol es cajero', async () => {
+      const res = await getJson('/api/v1/auth/users', {
+        Authorization: `Bearer ${cajeroToken}`
+      });
+      expect(res.status).toBe(403);
+      expect(res.data.success).toBe(false);
+    });
+
+    it('retorna la lista de usuarios del comercio para el administrador sin filtrar contraseñas', async () => {
+      const res = await getJson('/api/v1/auth/users', {
+        Authorization: `Bearer ${adminToken}`
+      });
+
+      expect(res.status).toBe(200);
+      expect(res.data.success).toBe(true);
+      expect(Array.isArray(res.data.data)).toBe(true);
+      expect(res.data.data.length).toBeGreaterThanOrEqual(2);
+
+      // Verificar que ningún usuario exponga su hash
+      for (const u of res.data.data) {
+        expect(u.password_hash).toBeUndefined();
+        expect(u.email).toBeDefined();
+        expect(u.rol).toBeDefined();
+      }
     });
   });
 
@@ -183,6 +297,55 @@ describe('Auth Endpoints & RBAC (RF-01, RF-02, RF-03, RNF-SEG-01, RNF-SEG-02)', 
       const meRes = await getJson('/api/v1/auth/me');
       expect(meRes.status).toBe(401);
       expect(meRes.data.success).toBe(false);
+    });
+  });
+
+  describe('RBAC Middleware (Control de Acceso Basado en Roles)', () => {
+    let adminToken: string;
+    let cajeroToken: string;
+
+    beforeAll(async () => {
+      const adminLogin = await postJson('/api/v1/auth/login', {
+        tenant_id: tenantId,
+        email: 'admin@gestock.cl',
+        password: 'admin123'
+      });
+      adminToken = adminLogin.data.token;
+
+      const cajeroLogin = await postJson('/api/v1/auth/login', {
+        tenant_id: tenantId,
+        email: 'cajero@gestock.cl',
+        password: 'cajero123'
+      });
+      cajeroToken = cajeroLogin.data.token;
+    });
+
+    it('bloquea con 403 a un cajero intentando acceder a rutas exclusivas de administración (/dashboard)', async () => {
+      const res = await getJson('/api/v1/dashboard/overview', {
+        Authorization: `Bearer ${cajeroToken}`
+      });
+
+      expect(res.status).toBe(403);
+      expect(res.data.success).toBe(false);
+      expect(res.data.message).toContain('administrador');
+    });
+
+    it('permite acceso al administrador a rutas exclusivas de administración (/dashboard)', async () => {
+      const res = await getJson('/api/v1/dashboard/overview', {
+        Authorization: `Bearer ${adminToken}`
+      });
+
+      expect(res.status).toBe(200);
+      expect(res.data.success).toBe(true);
+    });
+
+    it('permite acceso al cajero a rutas operativas del punto de venta (/pos/products)', async () => {
+      const res = await getJson('/api/v1/pos/products', {
+        Authorization: `Bearer ${cajeroToken}`
+      });
+
+      expect(res.status).toBe(200);
+      expect(res.data.success).toBe(true);
     });
   });
 });

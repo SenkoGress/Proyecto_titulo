@@ -26,6 +26,9 @@ export async function initializeDatabase(): Promise<void> {
 
     // Rellenar códigos de barra EAN-13 estándar para productos que no tengan
     backfillSqliteBarcodes();
+
+    // Parches idempotentes para bases existentes (RUT 76.123.456-0, hashes Bcrypt 60 chars y campos offline)
+    patchExistingDatabaseFixes();
   } catch (err) {
     logger.error('InitDB', 'Failed during SQLite initialization', err);
   }
@@ -47,6 +50,9 @@ export async function initializeDatabase(): Promise<void> {
 
       // Rellenar códigos de barra EAN-13 estándar para productos en PostgreSQL
       await backfillPostgresBarcodes();
+
+      // Parches idempotentes para bases PostgreSQL existentes
+      await patchPostgresExistingDatabaseFixes();
     } else {
       logger.warn('InitDB', 'PostgreSQL cloud is unreachable. Operating in standalone Offline-First POS mode.');
     }
@@ -56,31 +62,72 @@ export async function initializeDatabase(): Promise<void> {
 }
 
 function seedSqliteDemoData(): void {
-  const existingTenant = defaultSqliteClient.queryOne<{ id: string }>(
-    'SELECT id FROM tenants WHERE id = ?',
+  // 1. Asegurar Tenant Demo primero para satisfacer FK
+  defaultSqliteClient.execute(
+    `INSERT OR IGNORE INTO tenants (id, nombre, estado) 
+     VALUES (?, 'Almacén Don Tito (Microempresa Demo)', 'ACTIVO')`,
     [DEMO_TENANT_ID]
   );
 
-  if (existingTenant) {
-    return; // Ya fue sembrado
+  // 2. Asegurar que los usuarios esenciales (Admin y Cajero) existan siempre con hashes válidos
+  let adminUserId = DEMO_USER_ID;
+  try {
+    const existingAdmin = defaultSqliteClient.queryOne<{ id: string }>(
+      'SELECT id FROM usuarios WHERE tenant_id = ? AND LOWER(email) = LOWER(?)',
+      [DEMO_TENANT_ID, 'admin@gestock.cl']
+    );
+
+    if (existingAdmin) {
+      adminUserId = existingAdmin.id;
+      defaultSqliteClient.execute(
+        `UPDATE usuarios 
+         SET password_hash = '$2b$10$u5dEMh8bjEYmKPL2zvI/8O/QyIkh0j15a10eeSW0B8J40pbXz5Doy', rol = 'admin' 
+         WHERE id = ?`,
+        [existingAdmin.id]
+      );
+    } else {
+      defaultSqliteClient.execute(
+        `INSERT INTO usuarios (id, tenant_id, nombre, email, password_hash, rol) 
+         VALUES (?, ?, 'Admin Demo', 'admin@gestock.cl', '$2b$10$u5dEMh8bjEYmKPL2zvI/8O/QyIkh0j15a10eeSW0B8J40pbXz5Doy', 'admin')`,
+        [DEMO_USER_ID, DEMO_TENANT_ID]
+      );
+    }
+
+    const existingCajero = defaultSqliteClient.queryOne<{ id: string }>(
+      'SELECT id FROM usuarios WHERE tenant_id = ? AND LOWER(email) = LOWER(?)',
+      [DEMO_TENANT_ID, 'cajero@gestock.cl']
+    );
+
+    if (existingCajero) {
+      defaultSqliteClient.execute(
+        `UPDATE usuarios 
+         SET password_hash = '$2b$10$rQWrPUW3kSQhWliPf4923OB5cPbgIcJe4ml5Yibz2wZItTqJFvvU.', rol = 'cajero' 
+         WHERE id = ?`,
+        [existingCajero.id]
+      );
+    } else {
+      defaultSqliteClient.execute(
+        `INSERT INTO usuarios (id, tenant_id, nombre, email, password_hash, rol) 
+         VALUES ('00000000-0000-0000-0000-000000000003', ?, 'Cajero Demo', 'cajero@gestock.cl', '$2b$10$rQWrPUW3kSQhWliPf4923OB5cPbgIcJe4ml5Yibz2wZItTqJFvvU.', 'cajero')`,
+        [DEMO_TENANT_ID]
+      );
+    }
+  } catch (err) {
+    logger.warn('InitDB', 'Error garantizando usuarios iniciales en SQLite', { error: String(err) });
+  }
+
+  // 3. Verificar si el resto del catálogo demo ya fue sembrado
+  const existingMetodo = defaultSqliteClient.queryOne<{ id: string }>(
+    'SELECT id FROM metodos_pago LIMIT 1'
+  );
+
+  if (existingMetodo) {
+    return; // Ya fue sembrado el catálogo restante
   }
 
   logger.info('InitDB', 'Seeding demo initial dataset in SQLite...');
 
   defaultSqliteClient.withTransaction(() => {
-    // 1. Plan y Tenant
-    defaultSqliteClient.execute(
-      `INSERT INTO tenants (id, nombre, estado) 
-       VALUES (?, 'Almacén Don Tito (Microempresa Demo)', 'ACTIVO')`,
-      [DEMO_TENANT_ID]
-    );
-
-    // 2. Usuario Cajero / Admin (password: admin123 con hash real Bcrypt salt 10)
-    defaultSqliteClient.execute(
-      `INSERT INTO usuarios (id, tenant_id, nombre, email, password_hash, rol) 
-       VALUES (?, ?, 'Admin Demo', 'admin@gestock.cl', '$2b$10$UL9HVRwUfwIqug0w0pn8Oup4mCYktCkyKIorLGaMnSQfcNEi0XCE.', 'admin')`,
-      [DEMO_USER_ID, DEMO_TENANT_ID]
-    );
 
     // 3. Métodos de Pago
     const metodos = [
@@ -100,7 +147,7 @@ function seedSqliteDemoData(): void {
 
     // 4. Proveedores
     const proveedores = [
-      { id: '22222222-0000-0000-0000-000000000001', rut: '76.123.456-7', nombre: 'Embonor Coca-Cola Chile' },
+      { id: '22222222-0000-0000-0000-000000000001', rut: '76.123.456-0', nombre: 'Embonor Coca-Cola Chile' },
       { id: '22222222-0000-0000-0000-000000000002', rut: '76.999.888-K', nombre: 'Distribuidora Mayorista Central SpA' },
       { id: '22222222-0000-0000-0000-000000000003', rut: '81.444.222-1', nombre: 'Cooperativa Colun Lácteos' }
     ];
@@ -213,7 +260,7 @@ function seedSqliteDemoData(): void {
       defaultSqliteClient.execute(
         `INSERT INTO transacciones_venta (id, tenant_id, usuario_id, folio_local_sqlite, total, unidades, estado, is_dirty, sync_status, fecha)
          VALUES (?, ?, ?, ?, ?, 10, 'COMPLETADA', 0, 'SYNCED', datetime('now', '-2 days'))`,
-        [`v1-${p.id}`, DEMO_TENANT_ID, DEMO_USER_ID, `FOLIO-HIST-${p.sku}`, p.precio * 10]
+        [`v1-${p.id}`, DEMO_TENANT_ID, adminUserId, `FOLIO-HIST-${p.sku}`, p.precio * 10]
       );
       defaultSqliteClient.execute(
         `INSERT INTO detalle_venta (id, venta_id, producto_id, cantidad, precio_unitario, subtotal)
@@ -237,7 +284,7 @@ function seedSqliteDemoData(): void {
     // 9. Configuración Tributaria SII (Res. Ex. N° 176, Ley N° 20.727)
     const siiConfigs = [
       { k: 'sii_modelo_emision', v: 'MODELO_B', d: 'Modelo Emisión SII: MODELO_B (Voucher reemplaza boleta - Res. 176) / MODELO_A (Siempre emite boleta)' },
-      { k: 'sii_rut_emisor', v: '76.123.456-7', d: 'RUT Emisor de la empresa' },
+      { k: 'sii_rut_emisor', v: '76.123.456-0', d: 'RUT Emisor de la empresa' },
       { k: 'sii_razon_social', v: 'ALMACEN DON TITO SPA', d: 'Razón Social comercial' },
       { k: 'sii_giro_comercial', v: 'VENTA AL POR MENOR EN ALMACENES Y MINIMARKET', d: 'Giro comercial según SII' },
       { k: 'sii_acteco', v: '471100', d: 'Código actividad económica principal SII' },
@@ -266,6 +313,23 @@ async function seedPostgresDemoData(): Promise<void> {
     [DEMO_TENANT_ID]
   );
 
+  try {
+    await defaultPgClient.query(
+      `INSERT INTO usuarios (id, tenant_id, nombre, email, password_hash, rol) 
+       VALUES ($1, $2, 'Admin Demo', 'admin@gestock.cl', '$2b$10$u5dEMh8bjEYmKPL2zvI/8O/QyIkh0j15a10eeSW0B8J40pbXz5Doy', 'admin')
+       ON CONFLICT (tenant_id, email) DO UPDATE SET password_hash = EXCLUDED.password_hash, rol = EXCLUDED.rol`,
+      [DEMO_USER_ID, DEMO_TENANT_ID]
+    );
+    await defaultPgClient.query(
+      `INSERT INTO usuarios (id, tenant_id, nombre, email, password_hash, rol) 
+       VALUES ('00000000-0000-0000-0000-000000000002', $1, 'Cajero Demo', 'cajero@gestock.cl', '$2b$10$rQWrPUW3kSQhWliPf4923OB5cPbgIcJe4ml5Yibz2wZItTqJFvvU.', 'cajero')
+       ON CONFLICT (tenant_id, email) DO UPDATE SET password_hash = EXCLUDED.password_hash, rol = EXCLUDED.rol`,
+      [DEMO_TENANT_ID]
+    );
+  } catch (err) {
+    logger.warn('InitDB', 'Error garantizando usuarios iniciales en PostgreSQL', { error: String(err) });
+  }
+
   if (res.rows.length > 0) {
     return; // Ya existe en Postgres
   }
@@ -280,11 +344,18 @@ async function seedPostgresDemoData(): Promise<void> {
       [DEMO_TENANT_ID]
     );
 
-    // 2. Usuario (password: admin123 con hash real Bcrypt salt 10)
+    // 2. Usuarios del sistema (Admin Demo y Cajero Demo con hashes Bcrypt reales de 60 caracteres)
     await client.query(
       `INSERT INTO usuarios (id, tenant_id, nombre, email, password_hash, rol) 
-       VALUES ($1, $2, 'Admin Demo', 'admin@gestock.cl', '$2b$10$UL9HVRwUfwIqug0w0pn8Oup4mCYktCkyKIorLGaMnSQfcNEi0XCE.', 'admin') ON CONFLICT DO NOTHING`,
+       VALUES ($1, $2, 'Admin Demo', 'admin@gestock.cl', '$2b$10$u5dEMh8bjEYmKPL2zvI/8O/QyIkh0j15a10eeSW0B8J40pbXz5Doy', 'admin')
+       ON CONFLICT (tenant_id, email) DO UPDATE SET password_hash = EXCLUDED.password_hash, rol = EXCLUDED.rol`,
       [DEMO_USER_ID, DEMO_TENANT_ID]
+    );
+    await client.query(
+      `INSERT INTO usuarios (id, tenant_id, nombre, email, password_hash, rol) 
+       VALUES ('00000000-0000-0000-0000-000000000002', $1, 'Cajero Demo', 'cajero@gestock.cl', '$2b$10$rQWrPUW3kSQhWliPf4923OB5cPbgIcJe4ml5Yibz2wZItTqJFvvU.', 'cajero')
+       ON CONFLICT (tenant_id, email) DO UPDATE SET password_hash = EXCLUDED.password_hash, rol = EXCLUDED.rol`,
+      [DEMO_TENANT_ID]
     );
 
     // 2.1 Métodos de Pago
@@ -302,7 +373,7 @@ async function seedPostgresDemoData(): Promise<void> {
     await client.query(
       `INSERT INTO proveedores (id, tenant_id, rut_proveedor, nombre_proveedores, email, whatsapp_contacto) 
        VALUES 
-       ('22222222-0000-0000-0000-000000000001', $1, '76.123.456-7', 'Embonor Coca-Cola Chile', 'contacto@proveedor.cl', '+56911223344'),
+       ('22222222-0000-0000-0000-000000000001', $1, '76.123.456-0', 'Embonor Coca-Cola Chile', 'contacto@proveedor.cl', '+56911223344'),
        ('22222222-0000-0000-0000-000000000002', $1, '76.999.888-K', 'Distribuidora Mayorista Central SpA', 'contacto@proveedor.cl', '+56911223344'),
        ('22222222-0000-0000-0000-000000000003', $1, '81.444.222-1', 'Cooperativa Colun Lácteos', 'contacto@proveedor.cl', '+56911223344')
        ON CONFLICT DO NOTHING`,
@@ -396,3 +467,76 @@ async function backfillPostgresBarcodes(): Promise<void> {
     logger.warn('InitDB', 'Error backfilling barcodes in PostgreSQL', { error: String(err) });
   }
 }
+
+/**
+ * Parches de migración en caliente para corregir bases existentes sin requerir borrado:
+ * 1. Corrige sii_rut_emisor a 76.123.456-0 si quedó con el dígito verificador anterior (-7).
+ * 2. Normaliza el RUT del proveedor semilla emisor a 76.123.456-0.
+ * 3. Actualiza hashes Bcrypt a 60 caracteres reales para admin@gestock.cl y cajero@gestock.cl si estaban en texto plano.
+ * 4. Añade columnas de sincronización offline-first a factura_ingresos en SQLite si faltan.
+ */
+function patchExistingDatabaseFixes(): void {
+  try {
+    // 1. Corregir RUT del emisor en configuracion_sistema a 76.123.456-0
+    defaultSqliteClient.execute(
+      "UPDATE configuracion_sistema SET valor = '76.123.456-0', actualizado_at = datetime('now') WHERE clave = 'sii_rut_emisor' AND (valor = '76.123.456-7' OR valor LIKE '%-7')"
+    );
+
+    // 2. Corregir proveedor semilla si conservaba el RUT anterior
+    defaultSqliteClient.execute(
+      "UPDATE proveedores SET rut_proveedor = '76.123.456-0' WHERE rut_proveedor = '76.123.456-7'"
+    );
+
+    // 3. Garantizar hashes Bcrypt reales de 60 caracteres en usuarios existentes
+    const adminHash = '$2b$10$u5dEMh8bjEYmKPL2zvI/8O/QyIkh0j15a10eeSW0B8J40pbXz5Doy';
+    const cajeroHash = '$2b$10$fV3M334XyqIu8K1oW.xOLeM6M08iH8hNq8gLp3DkXn5rG9jQ5w12e';
+    defaultSqliteClient.execute(
+      "UPDATE usuarios SET password_hash = ? WHERE email = 'admin@gestock.cl' AND (length(password_hash) != 60 OR password_hash = 'admin123')",
+      [adminHash]
+    );
+    defaultSqliteClient.execute(
+      "UPDATE usuarios SET password_hash = ? WHERE email = 'cajero@gestock.cl' AND (length(password_hash) != 60 OR password_hash = 'cajero123')",
+      [cajeroHash]
+    );
+
+    // 4. Agregar columnas offline-first a factura_ingresos si no existen en SQLite
+    try {
+      defaultSqliteClient.execute("ALTER TABLE factura_ingresos ADD COLUMN is_dirty INTEGER NOT NULL DEFAULT 0");
+    } catch {}
+    try {
+      defaultSqliteClient.execute("ALTER TABLE factura_ingresos ADD COLUMN sync_attempts INTEGER NOT NULL DEFAULT 0");
+    } catch {}
+    try {
+      defaultSqliteClient.execute("ALTER TABLE factura_ingresos ADD COLUMN sync_status TEXT DEFAULT 'SYNCED'");
+    } catch {}
+
+    logger.info('InitDB', 'Idempotent patches for existing databases verified successfully in SQLite.');
+  } catch (err) {
+    logger.warn('InitDB', 'Error applying startup patches to existing SQLite database', { error: String(err) });
+  }
+}
+
+async function patchPostgresExistingDatabaseFixes(): Promise<void> {
+  try {
+    await defaultPgClient.query(
+      "UPDATE configuracion_sistema SET valor = '76.123.456-0', actualizado_at = NOW() WHERE clave = 'sii_rut_emisor' AND (valor = '76.123.456-7' OR valor LIKE '%-7')"
+    );
+    await defaultPgClient.query(
+      "UPDATE proveedores SET rut_proveedor = '76.123.456-0' WHERE rut_proveedor = '76.123.456-7'"
+    );
+    const adminHash = '$2b$10$u5dEMh8bjEYmKPL2zvI/8O/QyIkh0j15a10eeSW0B8J40pbXz5Doy';
+    const cajeroHash = '$2b$10$fV3M334XyqIu8K1oW.xOLeM6M08iH8hNq8gLp3DkXn5rG9jQ5w12e';
+    await defaultPgClient.query(
+      "UPDATE usuarios SET password_hash = $1 WHERE email = 'admin@gestock.cl' AND (length(password_hash) != 60 OR password_hash = 'admin123')",
+      [adminHash]
+    );
+    await defaultPgClient.query(
+      "UPDATE usuarios SET password_hash = $1 WHERE email = 'cajero@gestock.cl' AND (length(password_hash) != 60 OR password_hash = 'cajero123')",
+      [cajeroHash]
+    );
+    logger.info('InitDB', 'Idempotent patches for existing databases verified successfully in PostgreSQL.');
+  } catch (err) {
+    logger.warn('InitDB', 'Error applying startup patches to existing PostgreSQL database', { error: String(err) });
+  }
+}
+

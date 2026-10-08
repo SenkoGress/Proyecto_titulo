@@ -1,16 +1,13 @@
 // src/features/auth/pages/LoginPage.tsx
-import { useState } from 'react'
 import { Navigate, useLocation } from 'react-router'
 import Box from '@mui/material/Box'
 import Paper from '@mui/material/Paper'
 import Typography from '@mui/material/Typography'
 import PointOfSaleIcon from '@mui/icons-material/PointOfSale'
 import { FormularioLogin } from '@/features/auth/components/FormularioLogin'
-import { FormularioRegistro } from '@/features/auth/components/FormularioRegistro'
 import { useHaySesion } from '@/features/auth/stores/sesionStore'
 
 export function LoginPage() {
-  const [creandoCuenta, setCreandoCuenta] = useState(false)
   const haySesion = useHaySesion()
   const ubicacion = useLocation()
 
@@ -60,11 +57,7 @@ export function LoginPage() {
           </Box>
         </Box>
 
-        {creandoCuenta ? (
-          <FormularioRegistro onIrALogin={() => setCreandoCuenta(false)} />
-        ) : (
-          <FormularioLogin onIrARegistro={() => setCreandoCuenta(true)} />
-        )}
+        <FormularioLogin />
       </Paper>
     </Box>
   )

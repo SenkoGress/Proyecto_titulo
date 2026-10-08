@@ -1,6 +1,6 @@
 // src/features/auth/hooks/useAuth.ts
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { iniciarSesion, registrarUsuario } from '@/features/auth/api/auth.api'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { crearUsuario, iniciarSesion, obtenerUsuarios } from '@/features/auth/api/auth.api'
 import { useSesionStore } from '@/features/auth/stores/sesionStore'
 
 export function useIniciarSesion() {
@@ -12,12 +12,20 @@ export function useIniciarSesion() {
   })
 }
 
-export function useRegistrarUsuario() {
-  const iniciar = useSesionStore((estado) => estado.iniciar)
+// la gente del local, solo la pide el admin
+export function useUsuarios() {
+  return useQuery({
+    queryKey: ['auth', 'usuarios'],
+    queryFn: obtenerUsuarios,
+  })
+}
+
+export function useCrearUsuario() {
+  const clienteQuery = useQueryClient()
 
   return useMutation({
-    mutationFn: registrarUsuario,
-    onSuccess: (datos) => iniciar(datos.token, datos.usuario),
+    mutationFn: crearUsuario,
+    onSuccess: () => clienteQuery.invalidateQueries({ queryKey: ['auth', 'usuarios'] }),
   })
 }
 

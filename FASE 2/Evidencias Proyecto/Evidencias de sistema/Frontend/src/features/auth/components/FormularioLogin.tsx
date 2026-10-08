@@ -6,18 +6,13 @@ import TextField from '@mui/material/TextField'
 import InputAdornment from '@mui/material/InputAdornment'
 import IconButton from '@mui/material/IconButton'
 import Alert from '@mui/material/Alert'
-import Link from '@mui/material/Link'
 import Typography from '@mui/material/Typography'
 import Visibility from '@mui/icons-material/Visibility'
 import VisibilityOff from '@mui/icons-material/VisibilityOff'
 import { obtenerMensajeError } from '@/lib/api/apiError'
 import { useIniciarSesion } from '@/features/auth/hooks/useAuth'
 
-type Props = {
-  onIrARegistro: () => void
-}
-
-export function FormularioLogin({ onIrARegistro }: Props) {
+export function FormularioLogin() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [verClave, setVerClave] = useState(false)
@@ -89,11 +84,8 @@ export function FormularioLogin({ onIrARegistro }: Props) {
         {sesion.isPending ? 'Entrando...' : 'Entrar'}
       </Button>
 
-      <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center' }}>
-        ¿No tienes cuenta?{' '}
-        <Link component="button" type="button" onClick={onIrARegistro}>
-          Crear una
-        </Link>
+      <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center' }}>
+        Las cuentas las crea el administrador del local
       </Typography>
     </Box>
   )

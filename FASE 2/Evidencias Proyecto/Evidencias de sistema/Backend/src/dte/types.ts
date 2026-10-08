@@ -207,24 +207,39 @@ export interface ResumenF29Item {
 export interface F29Statement {
   periodo: string; // YYYY-MM
   tenantId: string;
+  tenant_id?: string;
   debitoFiscal: {
     items: ResumenF29Item[];
     totalNeto: number;
+    total_neto?: number;
     totalIvaDebito: number;
+    total_iva_debito?: number;
     totalIla: number;
+    total_ila?: number;
     totalBruto: number;
+    total_bruto?: number;
   };
+  debito_fiscal?: any;
   creditoFiscal: {
     items: ResumenF29Item[];
     totalNeto: number;
+    total_neto?: number;
     totalIvaCredito: number;
+    total_iva_credito?: number;
     totalBruto: number;
+    total_bruto?: number;
   };
+  credito_fiscal?: any;
   balance: {
     ivaDeterminadoAPagar: number; // max(0, debito - credito)
+    iva_determinado_a_pagar?: number;
     remanenteCreditoFiscal: number; // max(0, credito - debito)
+    remanente_credito_fiscal?: number;
     tasaPpm: number; // ej: 1.0%
+    tasa_ppm?: number;
     montoPpm: number;
+    monto_ppm?: number;
     totalImpuestoPagarF29: number; // ivaDeterminado + ppm + ila
+    total_impuesto_pagar_f29?: number;
   };
 }

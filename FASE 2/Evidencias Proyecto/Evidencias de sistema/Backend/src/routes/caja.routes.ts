@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { defaultCierreCajaService } from '../caja/cierre-caja.service';
+import { defaultSqliteClient } from '../database/sqlite/client';
 import { logger } from '../utils/logger';
 
 const router = Router();
@@ -155,17 +156,22 @@ router.post('/movimiento', async (req: Request, res: Response): Promise<void> =>
  * Obtiene los movimientos de una sesión de caja
  */
 router.get('/movimientos', async (req: Request, res: Response): Promise<void> => {
-  const sesionId = req.query.sesion_id as string;
-
-  if (!sesionId) {
-    res.status(400).json({ success: false, message: 'sesion_id is required' });
-    return;
-  }
+  let sesionId = (req.query.sesion_id || req.query.sesionId) as string;
+  const tenantId = (req.query.tenant_id as string) || (req.query.tenantId as string) || (req as any).tenant_id || (req.headers['x-tenant-id'] as string) || '00000000-0000-0000-0000-000000000001';
 
   try {
+    if (!sesionId) {
+      res.status(400).json({
+        success: false,
+        message: 'sesion_id es requerido para consultar movimientos de caja'
+      });
+      return;
+    }
+
     const movs = defaultCierreCajaService.obtenerMovimientos(sesionId);
     res.status(200).json({ success: true, data: movs });
   } catch (error) {
+    logger.error('CajaRoutes', 'Failed to fetch cash movements', error);
     res.status(500).json({ success: false, message: 'Failed to fetch cash movements' });
   }
 });

@@ -123,6 +123,81 @@ export const validateTenantAndAuth = (req: Request, res: Response, next: NextFun
   next();
 };
 
+const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_jwt_key_gestock_2026_change_in_production';
+
+/**
+ * Middleware de Control de Acceso Basado en Roles (RBAC) y Seguridad JWT
+ * - Rutas exclusivas de administrador: /dashboard, /invoices, /suppliers, /replenishment, /dte, /config
+ * - Rutas de cajero / admin: /pos, /caja
+ * - Cuando ENFORCE_AUTH=true, exige token en todas las rutas protegidas
+ * - Si no está activado ENFORCE_AUTH, respeta peticiones con Bearer token (aplicando RBAC)
+ *   o permite paso en modo desarrollo/pruebas si no hay token.
+ */
+export const rbacAuthMiddleware = (req: Request, res: Response, next: NextFunction): void => {
+  const fullPath = (req.originalUrl ? req.originalUrl.split('?')[0] : (req.baseUrl || '') + (req.path || '')).toLowerCase();
+
+  // Excluir rutas públicas o de autenticación inicial
+  if (
+    fullPath === '/health' ||
+    fullPath === '/api' ||
+    fullPath.startsWith('/css') ||
+    fullPath.startsWith('/js') ||
+    fullPath.startsWith('/api/v1/auth') ||
+    fullPath.startsWith('/auth')
+  ) {
+    return next();
+  }
+
+  const authHeader = req.headers.authorization;
+  const hasBearer = authHeader && authHeader.startsWith('Bearer ');
+  
+  // En producción (NODE_ENV=production), la autenticación está activa POR DEFECTO a menos que
+  // se declare explícitamente AUTH_DISABLED=true. En desarrollo, se activa con ENFORCE_AUTH=true.
+  const isProduction = process.env.NODE_ENV === 'production';
+  const isAuthDisabled = process.env.AUTH_DISABLED === 'true';
+  const enforceAuth = process.env.ENFORCE_AUTH === 'true' || (isProduction && !isAuthDisabled);
+
+  let decodedUser: any = null;
+
+  if (hasBearer) {
+    const token = authHeader.split(' ')[1];
+    try {
+      decodedUser = (require('jsonwebtoken') as typeof import('jsonwebtoken')).verify(token, JWT_SECRET) as any;
+      (req as any).user = decodedUser;
+    } catch {
+      res.status(401).json({
+        success: false,
+        message: 'Token inválido o expirado'
+      });
+      return;
+    }
+  } else if (enforceAuth) {
+    res.status(401).json({
+      success: false,
+      message: 'Autenticación requerida: cabecera Authorization: Bearer requerida'
+    });
+    return;
+  }
+
+  // Verificación estricta de RBAC si el usuario está autenticado
+  if (decodedUser) {
+    const isAdminRoute = /^\/api\/v1\/(dashboard|invoices|suppliers|replenishment|dte|config)(\/|$)/.test(fullPath);
+    if (isAdminRoute && decodedUser.rol !== 'admin') {
+      logger.warn('SecurityMiddleware', `Acceso denegado a ruta admin (${fullPath}) para rol ${decodedUser.rol}`, {
+        userId: decodedUser.id,
+        email: decodedUser.email
+      });
+      res.status(403).json({
+        success: false,
+        message: 'Acceso denegado: se requieren permisos de administrador'
+      });
+      return;
+    }
+  }
+
+  next();
+};
+
 /**
  * Middleware centralizado para captura y sanitizacion de errores de Express
  */
@@ -142,3 +217,4 @@ export const globalErrorHandler = (
     message: isProduction ? 'Ocurrio un error interno en el servidor' : (err.message || 'Error interno del servidor')
   });
 };
+

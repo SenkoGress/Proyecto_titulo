@@ -110,12 +110,37 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
   }
 });
 
+function extractAndVerifyToken(req: Request): { valid: boolean; status: number; message?: string; user?: any } {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return { valid: false, status: 401, message: 'Cabecera Authorization: Bearer requerida' };
+  }
+  const token = authHeader.split(' ')[1];
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET) as any;
+    return { valid: true, status: 200, user: decoded };
+  } catch {
+    return { valid: false, status: 401, message: 'Token inválido o expirado' };
+  }
+}
+
 /**
  * POST /api/v1/auth/register
  * Registro de usuario en el tenant con contraseña Bcrypt (work factor 10).
+ * Requiere token de administrador. Retorna datos del usuario creado sin emitir token.
  */
 router.post('/register', async (req: Request, res: Response): Promise<void> => {
   try {
+    const auth = extractAndVerifyToken(req);
+    if (!auth.valid) {
+      res.status(auth.status).json({ success: false, message: auth.message });
+      return;
+    }
+    if (auth.user?.rol !== 'admin') {
+      res.status(403).json({ success: false, message: 'Acceso denegado: solo administradores pueden registrar usuarios' });
+      return;
+    }
+
     const { tenant_id, nombre, email, password, rol } = req.body;
     if (!nombre || !email || !password) {
       res.status(400).json({ success: false, message: 'Nombre, email y contraseña requeridos' });
@@ -127,7 +152,7 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const tenant = tenant_id || (req.headers['x-tenant-id'] as string) || '00000000-0000-0000-0000-000000000001';
+    const tenant = tenant_id || auth.user?.tenant_id || (req.headers['x-tenant-id'] as string) || '00000000-0000-0000-0000-000000000001';
     const userRole = (rol === 'admin' ? 'admin' : 'cajero') as 'admin' | 'cajero';
 
     // Verificar duplicado por tenant y email
@@ -165,18 +190,6 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
       // Silencioso: nodo local retiene la persistencia
     }
 
-    const token = jwt.sign(
-      {
-        id: newId,
-        tenant_id: tenant,
-        email: email.trim().toLowerCase(),
-        rol: userRole,
-        nombre: nombre.trim()
-      },
-      JWT_SECRET,
-      { expiresIn: '24h' }
-    );
-
     const safeUser = {
       id: newId,
       tenant_id: tenant,
@@ -188,10 +201,8 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
     res.status(201).json({
       success: true,
       data: {
-        token,
         usuario: safeUser
       },
-      token,
       usuario: safeUser
     });
   } catch (error) {
@@ -201,29 +212,76 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
 });
 
 /**
+ * GET /api/v1/auth/users
+ * Lista de usuarios del tenant (sin password_hash). Requiere rol de administrador.
+ */
+router.get('/users', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const auth = extractAndVerifyToken(req);
+    if (!auth.valid) {
+      res.status(auth.status).json({ success: false, message: auth.message });
+      return;
+    }
+    if (auth.user?.rol !== 'admin') {
+      res.status(403).json({ success: false, message: 'Acceso denegado: solo administradores pueden consultar usuarios' });
+      return;
+    }
+
+    const tenant = (req.headers['x-tenant-id'] as string) || auth.user?.tenant_id || (req.query.tenant_id as string) || '00000000-0000-0000-0000-000000000001';
+
+    let users: any[] = [];
+    try {
+      users = defaultSqliteClient.query<Omit<UserRow, 'password_hash'> & { created_at?: string; updated_at?: string }>(
+        'SELECT id, tenant_id, nombre, email, rol, created_at, updated_at FROM usuarios WHERE tenant_id = ? ORDER BY created_at DESC, nombre ASC',
+        [tenant]
+      );
+    } catch (err) {
+      logger.warn('AuthRoute', 'Error listando usuarios en SQLite', { error: String(err) });
+    }
+
+    if (users.length === 0) {
+      try {
+        const pgOnline = await defaultPgClient.healthCheck();
+        if (pgOnline) {
+          const pgRes = await defaultPgClient.query<Omit<UserRow, 'password_hash'> & { created_at?: string; updated_at?: string }>(
+            'SELECT id, tenant_id, nombre, email, rol, created_at, updated_at FROM usuarios WHERE tenant_id = $1 ORDER BY created_at DESC, nombre ASC',
+            [tenant]
+          );
+          users = pgRes.rows;
+        }
+      } catch (err) {
+        logger.warn('AuthRoute', 'Error listando usuarios en PostgreSQL', { error: String(err) });
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      data: users
+    });
+  } catch (error) {
+    logger.error('AuthRoute', 'Error en consulta de usuarios', error);
+    res.status(500).json({ success: false, message: 'Error interno consultando usuarios' });
+  }
+});
+
+/**
  * GET /api/v1/auth/me
  * Verificación de token Bearer y sesión activa.
  */
 router.get('/me', (req: Request, res: Response): void => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    res.status(401).json({ success: false, message: 'Cabecera Authorization: Bearer requerida' });
+  const auth = extractAndVerifyToken(req);
+  if (!auth.valid) {
+    res.status(auth.status).json({ success: false, message: auth.message });
     return;
   }
 
-  const token = authHeader.split(' ')[1];
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET) as Record<string, unknown>;
-    res.status(200).json({
-      success: true,
-      data: {
-        usuario: decoded
-      },
-      usuario: decoded
-    });
-  } catch {
-    res.status(401).json({ success: false, message: 'Token inválido o expirado' });
-  }
+  res.status(200).json({
+    success: true,
+    data: {
+      usuario: auth.user
+    },
+    usuario: auth.user
+  });
 });
 
 export default router;

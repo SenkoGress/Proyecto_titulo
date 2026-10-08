@@ -207,7 +207,7 @@ describe('Chilean Retail & Tax Compliance Pack Integration Tests', () => {
           }
         ],
         receptor: {
-          rut: '76.123.456-7',
+          rut: '76.123.456-0',
           razonSocial: 'ALMACEN DON TITO SUCURSAL 2',
           direccion: 'AV. PROVIDENCIA 999',
           comuna: 'PROVIDENCIA'

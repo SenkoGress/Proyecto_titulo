@@ -259,13 +259,21 @@ export class CafManagerService {
 
       return {
         tipoDte: r.tipo_dte,
+        tipo_dte: r.tipo_dte,
         nombreDte: nombres[r.tipo_dte] || `DTE Tipo ${r.tipo_dte}`,
+        nombre_dte: nombres[r.tipo_dte] || `DTE Tipo ${r.tipo_dte}`,
         folioDesde: r.folio_desde,
+        folio_desde: r.folio_desde,
         folioHasta: r.folio_hasta,
+        folio_hasta: r.folio_hasta,
         ultimoUsado: r.ultimo_folio_usado,
+        ultimo_usado: r.ultimo_folio_usado,
         foliosDisponibles: disponibles,
+        folios_disponibles: disponibles,
         porcentajeDisponible: pct,
+        porcentaje_disponible: pct,
         fechaAutorizacion: r.fecha_autorizacion,
+        fecha_autorizacion: r.fecha_autorizacion,
         activo: r.activo === 1
       };
     });

@@ -2,7 +2,13 @@
 import { httpClient } from '@/lib/api/httpClient'
 import { endpoints } from '@/lib/api/endpoints'
 import { env } from '@/config/env'
-import type { Credenciales, NuevoUsuario, RespuestaSesion } from '@/features/auth/types'
+import type {
+  Credenciales,
+  NuevoUsuario,
+  RespuestaSesion,
+  RespuestaUsuarioCreado,
+  RespuestaUsuarios,
+} from '@/features/auth/types'
 
 export async function iniciarSesion(credenciales: Credenciales) {
   const { data } = await httpClient.post<RespuestaSesion>(endpoints.auth.login, {
@@ -12,10 +18,16 @@ export async function iniciarSesion(credenciales: Credenciales) {
   return data.data
 }
 
-export async function registrarUsuario(usuario: NuevoUsuario) {
-  const { data } = await httpClient.post<RespuestaSesion>(endpoints.auth.registro, {
+// el admin crea la cuenta del cajero: no abre sesion, el admin sigue conectado
+export async function crearUsuario(usuario: NuevoUsuario) {
+  const { data } = await httpClient.post<RespuestaUsuarioCreado>(endpoints.auth.registro, {
     tenant_id: env.tenantId,
     ...usuario,
   })
+  return data.data.usuario
+}
+
+export async function obtenerUsuarios() {
+  const { data } = await httpClient.get<RespuestaUsuarios>(endpoints.auth.usuarios)
   return data.data
 }

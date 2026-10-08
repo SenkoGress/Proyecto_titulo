@@ -342,6 +342,7 @@ router.patch('/products/:id/stock', async (req: Request, res: Response): Promise
         producto_id: id,
         stock_anterior: prevStock,
         stock_nuevo: targetStock,
+        stock_actual: targetStock,
         diferencia: delta,
         motivo
       }
@@ -434,6 +435,7 @@ router.post('/mermas', async (req: Request, res: Response): Promise<void> => {
         motivo,
         stock_anterior: prevStock,
         stock_actual: nuevoStock,
+        stock_nuevo: nuevoStock,
         fecha: new Date().toISOString()
       }
     });
@@ -515,7 +517,7 @@ router.get('/stock-history', (req: Request, res: Response): void => {
       params.push(tipo_movimiento);
     }
 
-    sql += ' ORDER BY h.fecha_movimiento DESC LIMIT ?';
+    sql += ' ORDER BY h.fecha_movimiento DESC, h.rowid DESC LIMIT ?';
     params.push(Number(limit) || 100);
 
     const history = sqlite.query(sql, params);
@@ -549,7 +551,7 @@ router.get('/products/:id/history', (req: Request, res: Response): void => {
       params.push(tipo_movimiento);
     }
 
-    sql += ' ORDER BY h.fecha_movimiento DESC LIMIT ?';
+    sql += ' ORDER BY h.fecha_movimiento DESC, h.rowid DESC LIMIT ?';
     params.push(Number(limit) || 50);
 
     const history = sqlite.query(sql, params);

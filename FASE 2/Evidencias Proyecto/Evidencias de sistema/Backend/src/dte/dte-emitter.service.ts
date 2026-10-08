@@ -40,8 +40,11 @@ export class DteEmitterService {
 
     const modeloEmision = (map['sii_modelo_emision'] as SiiModeloEmision) || 'MODELO_B';
 
+    const rawRut = map['sii_rut_emisor'] || '76.123.456-0';
+    const rutEmisor = rawRut === '76.123.456-7' ? '76.123.456-0' : rawRut;
+
     const emisor: EmisorFiscal = {
-      rut: map['sii_rut_emisor'] || '76.123.456-7',
+      rut: rutEmisor,
       razonSocial: map['sii_razon_social'] || 'ALMACEN DON TITO SPA',
       giro: map['sii_giro_comercial'] || 'VENTA AL POR MENOR EN ALMACENES Y MINIMARKET',
       acteco: map['sii_acteco'] || '471100',

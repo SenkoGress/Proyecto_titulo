@@ -175,28 +175,47 @@ export class F29ReportService {
     const montoPpm = Math.max(0, Math.round(totalVentasNeto * (tasaPpm / 100)));
     const totalImpuestoPagarF29 = ivaDeterminadoAPagar + montoPpm + totalIla;
 
+    const debitoFiscalObj = {
+      items: debitoItems,
+      totalNeto: totalVentasNeto,
+      total_neto: totalVentasNeto,
+      totalIvaDebito,
+      total_iva_debito: totalIvaDebito,
+      totalIla,
+      total_ila: totalIla,
+      totalBruto: totalVentasBruto,
+      total_bruto: totalVentasBruto
+    };
+
+    const creditoFiscalObj = {
+      items: creditoItems,
+      totalNeto: comprasNeto,
+      total_neto: comprasNeto,
+      totalIvaCredito: comprasIva,
+      total_iva_credito: comprasIva,
+      totalBruto: comprasTotal,
+      total_bruto: comprasTotal
+    };
+
     return {
       periodo: targetMonth,
       tenantId,
-      debitoFiscal: {
-        items: debitoItems,
-        totalNeto: totalVentasNeto,
-        totalIvaDebito,
-        totalIla,
-        totalBruto: totalVentasBruto
-      },
-      creditoFiscal: {
-        items: creditoItems,
-        totalNeto: comprasNeto,
-        totalIvaCredito: comprasIva,
-        totalBruto: comprasTotal
-      },
+      tenant_id: tenantId,
+      debitoFiscal: debitoFiscalObj,
+      debito_fiscal: debitoFiscalObj,
+      creditoFiscal: creditoFiscalObj,
+      credito_fiscal: creditoFiscalObj,
       balance: {
         ivaDeterminadoAPagar,
+        iva_determinado_a_pagar: ivaDeterminadoAPagar,
         remanenteCreditoFiscal,
+        remanente_credito_fiscal: remanenteCreditoFiscal,
         tasaPpm,
+        tasa_ppm: tasaPpm,
         montoPpm,
-        totalImpuestoPagarF29
+        monto_ppm: montoPpm,
+        totalImpuestoPagarF29,
+        total_impuesto_pagar_f29: totalImpuestoPagarF29
       }
     };
   }

@@ -23,6 +23,7 @@ import {
   generalRateLimiter,
   mutationRateLimiter,
   validateTenantAndAuth,
+  rbacAuthMiddleware,
   globalErrorHandler
 } from './middleware/security.middleware';
 
@@ -60,6 +61,7 @@ app.use(express.json({ limit: '10mb' }));
 
 // Middleware de validacion de Tenant ID y autenticacion para clientes externos
 app.use('/api/v1', validateTenantAndAuth);
+app.use('/api/v1', rbacAuthMiddleware);
 
 // Servir frontend estatico del POS
 const publicDir = fs.existsSync(path.resolve(process.cwd(), 'backend/public'))

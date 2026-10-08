@@ -1,4 +1,4 @@
-import { aplicarRedondeoChileno, calcularPrecioVenta, desglosarIvaChileno } from '../src/utils/pricing';
+import { aplicarRedondeoChileno, calcularPrecioVenta, desglosarIvaChileno } from '../../src/utils/pricing';
 
 describe('Pruebas Unitarias: Normativa de Precios, Ley N° 20.956 e Impuestos Chilenos', () => {
   describe('Ley de Redondeo en Efectivo (Ley N° 20.956)', () => {

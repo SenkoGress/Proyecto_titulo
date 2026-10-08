@@ -2279,7 +2279,7 @@ function mostrarModalBoletaTermica(saleData) {
 
   const emisor = dte.emisor || {};
   document.getElementById('ticketEmisorNombre').innerText = emisor.razonSocial || 'ALMACÉN DON TITO SPA';
-  document.getElementById('ticketEmisorRut').innerText = emisor.rut || '76.123.456-7';
+  document.getElementById('ticketEmisorRut').innerText = emisor.rut || '76.123.456-0';
   document.getElementById('ticketEmisorGiro').innerText = 'GIRO: ' + (emisor.giro || 'VENTA AL POR MENOR EN MINIMARKET');
   document.getElementById('ticketEmisorDir').innerText = 'CASA MATRIZ: ' + (emisor.direccion || 'AV. LIBERTADOR B. OHIGGINS 1234');
   document.getElementById('ticketEmisorComuna').innerText = (emisor.comuna || 'SANTIAGO') + ' - CHILE';
@@ -2417,7 +2417,7 @@ async function abrirComprobantePorVenta(saleId) {
         esTributarioDte: false,
         emisor: {
           razonSocial: 'ALMACÉN DON TITO SPA',
-          rut: '76.123.456-7',
+          rut: '76.123.456-0',
           giro: 'VENTA AL POR MENOR EN MINIMARKET',
           direccion: 'AV. LIBERTADOR BERNARDO OHIGGINS 1234',
           comuna: 'SANTIAGO'
