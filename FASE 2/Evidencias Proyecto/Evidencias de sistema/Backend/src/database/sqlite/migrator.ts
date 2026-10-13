@@ -42,6 +42,36 @@ export class SqliteMigrator {
     return rows.map((r) => r.name);
   }
 
+  /**
+   * SQLite no admite `ADD COLUMN IF NOT EXISTS`, y el archivo de migración se ejecuta completo
+   * dentro de una transacción: un ALTER sobre una columna existente abortaba la migración entera,
+   * que al no quedar registrada en `_migrations` se reintentaba y fallaba en cada arranque.
+   *
+   * Aquí se neutralizan únicamente los ALTER cuya columna ya está presente, que es exactamente lo
+   * que significa IF NOT EXISTS. Cualquier otro error sigue abortando la migración.
+   */
+  private omitirColumnasExistentes(sql: string, archivo: string): string {
+    const patron = /ALTER\s+TABLE\s+[`"[]?(\w+)[`"\]]?\s+ADD\s+COLUMN\s+[`"[]?(\w+)[`"\]]?[^;]*;/gi;
+
+    return sql.replace(patron, (sentencia, tabla: string, columna: string) => {
+      let columnas: string[] = [];
+      try {
+        columnas = this.client
+          .query<{ name: string }>(`PRAGMA table_info(${tabla})`)
+          .map((c) => c.name.toLowerCase());
+      } catch {
+        return sentencia; // si no se puede inspeccionar la tabla, se deja que la migración decida
+      }
+
+      if (columnas.length === 0 || !columnas.includes(columna.toLowerCase())) {
+        return sentencia;
+      }
+
+      logger.info('SqliteMigrator', `Columna ya presente, se omite el ALTER: ${tabla}.${columna}`, { archivo });
+      return '';
+    });
+  }
+
   public migrate(): string[] {
     this.initMigrationTable();
     const applied = this.getAppliedMigrations();
@@ -60,7 +90,7 @@ export class SqliteMigrator {
 
     for (const file of pending) {
       const filePath = path.join(this.migrationsDir, file);
-      const sql = fs.readFileSync(filePath, 'utf-8');
+      const sql = this.omitirColumnasExistentes(fs.readFileSync(filePath, 'utf-8'), file);
 
       logger.info('SqliteMigrator', `Applying SQLite migration: ${file}`);
 

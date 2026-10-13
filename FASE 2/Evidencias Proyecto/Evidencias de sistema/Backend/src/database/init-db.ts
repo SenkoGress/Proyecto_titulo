@@ -4,9 +4,96 @@ import { defaultSqliteClient } from './sqlite/client';
 import { SqliteMigrator } from './sqlite/migrator';
 import { logger } from '../utils/logger';
 import { generateChileanBarcode } from '../utils/barcode.utils';
+import bcrypt from 'bcryptjs';
+import { v4 as uuidv4 } from 'uuid';
 
 const DEMO_TENANT_ID = '00000000-0000-0000-0000-000000000001';
 const DEMO_USER_ID = '00000000-0000-0000-0000-000000000002';
+const DEMO_CASHIER_ID = '00000000-0000-0000-0000-000000000003';
+const DEMO_ADMIN_HASH = '$2b$10$u5dEMh8bjEYmKPL2zvI/8O/QyIkh0j15a10eeSW0B8J40pbXz5Doy'; // admin123
+const DEMO_CASHIER_HASH = '$2b$10$rQWrPUW3kSQhWliPf4923OB5cPbgIcJe4ml5Yibz2wZItTqJFvvU.'; // cajero123
+
+interface InitialUser {
+  id: string;
+  nombre: string;
+  email: string;
+  passwordHash: string;
+  rol: 'admin' | 'cajero';
+}
+
+/**
+ * Usuarios a crear en un comercio sin cuentas.
+ * - Fuera de producción (o con SEED_DEMO_USERS=true): admin y cajero demo con claves conocidas.
+ * - En producción: solo un administrador definido por INITIAL_ADMIN_EMAIL / INITIAL_ADMIN_PASSWORD.
+ */
+function resolveInitialUsers(): InitialUser[] {
+  const isProduction = process.env.NODE_ENV === 'production';
+  if (!isProduction || process.env.SEED_DEMO_USERS === 'true') {
+    return [
+      { id: DEMO_USER_ID, nombre: 'Admin Demo', email: 'admin@gestock.cl', passwordHash: DEMO_ADMIN_HASH, rol: 'admin' },
+      { id: DEMO_CASHIER_ID, nombre: 'Cajero Demo', email: 'cajero@gestock.cl', passwordHash: DEMO_CASHIER_HASH, rol: 'cajero' }
+    ];
+  }
+
+  const email = process.env.INITIAL_ADMIN_EMAIL?.trim().toLowerCase();
+  const password = process.env.INITIAL_ADMIN_PASSWORD;
+  if (!email || !password || password.length < 8) {
+    return [];
+  }
+
+  return [
+    { id: DEMO_USER_ID, nombre: 'Administrador', email, passwordHash: bcrypt.hashSync(password, 10), rol: 'admin' }
+  ];
+}
+
+function ensureSqliteInitialUsers(): void {
+  const hasAdmin = defaultSqliteClient.queryOne<{ id: string }>(
+    "SELECT id FROM usuarios WHERE tenant_id = ? AND rol = 'admin' LIMIT 1",
+    [DEMO_TENANT_ID]
+  );
+
+  const users = resolveInitialUsers();
+  if (users.length === 0) {
+    if (!hasAdmin) {
+      logger.error('InitDB', 'No existe administrador y faltan INITIAL_ADMIN_EMAIL / INITIAL_ADMIN_PASSWORD (min. 8 caracteres): no sera posible iniciar sesion');
+    }
+    warnDefaultCredentialsInProduction();
+    return;
+  }
+
+  for (const user of users) {
+    const existingByEmail = defaultSqliteClient.queryOne<{ id: string }>(
+      'SELECT id FROM usuarios WHERE tenant_id = ? AND LOWER(email) = LOWER(?)',
+      [DEMO_TENANT_ID, user.email]
+    );
+    const existingById = defaultSqliteClient.queryOne<{ id: string }>('SELECT id FROM usuarios WHERE id = ?', [user.id]);
+    if (existingByEmail || (user.rol === 'admin' && hasAdmin)) continue;
+
+    defaultSqliteClient.execute(
+      `INSERT INTO usuarios (id, tenant_id, nombre, email, password_hash, rol)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [existingById ? uuidv4() : user.id, DEMO_TENANT_ID, user.nombre, user.email, user.passwordHash, user.rol]
+    );
+    logger.info('InitDB', `Usuario inicial creado: ${user.email} (${user.rol})`);
+  }
+
+  warnDefaultCredentialsInProduction();
+}
+
+/**
+ * En producción, avisa si siguen activas las cuentas demo con su clave por defecto.
+ */
+function warnDefaultCredentialsInProduction(): void {
+  if (process.env.NODE_ENV !== 'production') return;
+
+  const demoUsers = defaultSqliteClient.query<{ email: string }>(
+    'SELECT email FROM usuarios WHERE password_hash IN (?, ?)',
+    [DEMO_ADMIN_HASH, DEMO_CASHIER_HASH]
+  );
+  for (const user of demoUsers) {
+    logger.error('InitDB', `La cuenta ${user.email} conserva la clave demo por defecto: cambiela con PUT /api/v1/auth/password`);
+  }
+}
 
 export async function initializeDatabase(): Promise<void> {
   logger.info('InitDB', 'Starting automated database initialization and migration check...');
@@ -69,49 +156,9 @@ function seedSqliteDemoData(): void {
     [DEMO_TENANT_ID]
   );
 
-  // 2. Asegurar que los usuarios esenciales (Admin y Cajero) existan siempre con hashes válidos
-  let adminUserId = DEMO_USER_ID;
+  // 2. Usuarios iniciales: se crean solo si faltan, nunca se sobrescribe una contraseña existente
   try {
-    const existingAdmin = defaultSqliteClient.queryOne<{ id: string }>(
-      'SELECT id FROM usuarios WHERE tenant_id = ? AND LOWER(email) = LOWER(?)',
-      [DEMO_TENANT_ID, 'admin@gestock.cl']
-    );
-
-    if (existingAdmin) {
-      adminUserId = existingAdmin.id;
-      defaultSqliteClient.execute(
-        `UPDATE usuarios 
-         SET password_hash = '$2b$10$u5dEMh8bjEYmKPL2zvI/8O/QyIkh0j15a10eeSW0B8J40pbXz5Doy', rol = 'admin' 
-         WHERE id = ?`,
-        [existingAdmin.id]
-      );
-    } else {
-      defaultSqliteClient.execute(
-        `INSERT INTO usuarios (id, tenant_id, nombre, email, password_hash, rol) 
-         VALUES (?, ?, 'Admin Demo', 'admin@gestock.cl', '$2b$10$u5dEMh8bjEYmKPL2zvI/8O/QyIkh0j15a10eeSW0B8J40pbXz5Doy', 'admin')`,
-        [DEMO_USER_ID, DEMO_TENANT_ID]
-      );
-    }
-
-    const existingCajero = defaultSqliteClient.queryOne<{ id: string }>(
-      'SELECT id FROM usuarios WHERE tenant_id = ? AND LOWER(email) = LOWER(?)',
-      [DEMO_TENANT_ID, 'cajero@gestock.cl']
-    );
-
-    if (existingCajero) {
-      defaultSqliteClient.execute(
-        `UPDATE usuarios 
-         SET password_hash = '$2b$10$rQWrPUW3kSQhWliPf4923OB5cPbgIcJe4ml5Yibz2wZItTqJFvvU.', rol = 'cajero' 
-         WHERE id = ?`,
-        [existingCajero.id]
-      );
-    } else {
-      defaultSqliteClient.execute(
-        `INSERT INTO usuarios (id, tenant_id, nombre, email, password_hash, rol) 
-         VALUES ('00000000-0000-0000-0000-000000000003', ?, 'Cajero Demo', 'cajero@gestock.cl', '$2b$10$rQWrPUW3kSQhWliPf4923OB5cPbgIcJe4ml5Yibz2wZItTqJFvvU.', 'cajero')`,
-        [DEMO_TENANT_ID]
-      );
-    }
+    ensureSqliteInitialUsers();
   } catch (err) {
     logger.warn('InitDB', 'Error garantizando usuarios iniciales en SQLite', { error: String(err) });
   }
@@ -256,11 +303,16 @@ function seedSqliteDemoData(): void {
     );
 
     // 7. Sembrar historial de ventas de los últimos 7 días para cálculo predictivo
-    for (const p of productos) {
+    const seedSeller = defaultSqliteClient.queryOne<{ id: string }>(
+      "SELECT id FROM usuarios WHERE tenant_id = ? ORDER BY CASE rol WHEN 'admin' THEN 0 ELSE 1 END LIMIT 1",
+      [DEMO_TENANT_ID]
+    );
+    const sellerId = seedSeller?.id;
+    for (const p of sellerId ? productos : []) {
       defaultSqliteClient.execute(
         `INSERT INTO transacciones_venta (id, tenant_id, usuario_id, folio_local_sqlite, total, unidades, estado, is_dirty, sync_status, fecha)
          VALUES (?, ?, ?, ?, ?, 10, 'COMPLETADA', 0, 'SYNCED', datetime('now', '-2 days'))`,
-        [`v1-${p.id}`, DEMO_TENANT_ID, adminUserId, `FOLIO-HIST-${p.sku}`, p.precio * 10]
+        [`v1-${p.id}`, DEMO_TENANT_ID, sellerId, `FOLIO-HIST-${p.sku}`, p.precio * 10]
       );
       defaultSqliteClient.execute(
         `INSERT INTO detalle_venta (id, venta_id, producto_id, cantidad, precio_unitario, subtotal)
@@ -307,6 +359,34 @@ function seedSqliteDemoData(): void {
   logger.info('InitDB', 'Demo initial dataset seeded successfully in SQLite.');
 }
 
+async function ensurePostgresInitialUsers(): Promise<void> {
+  const tenant = await defaultPgClient.query('SELECT id FROM tenants WHERE id = $1', [DEMO_TENANT_ID]);
+  if (tenant.rows.length === 0) {
+    await defaultPgClient.query(
+      `INSERT INTO tenants (id, nombre, estado)
+       VALUES ($1, 'Almacén Don Tito (Microempresa Demo)', 'ACTIVO') ON CONFLICT DO NOTHING`,
+      [DEMO_TENANT_ID]
+    );
+  }
+
+  const adminRes = await defaultPgClient.query(
+    "SELECT id FROM usuarios WHERE tenant_id = $1 AND rol = 'admin' LIMIT 1",
+    [DEMO_TENANT_ID]
+  );
+  const hasAdmin = adminRes.rows.length > 0;
+
+  for (const user of resolveInitialUsers()) {
+    if (user.rol === 'admin' && hasAdmin) continue;
+    const idRes = await defaultPgClient.query('SELECT id FROM usuarios WHERE id = $1', [user.id]);
+    await defaultPgClient.query(
+      `INSERT INTO usuarios (id, tenant_id, nombre, email, password_hash, rol)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (tenant_id, email) DO NOTHING`,
+      [idRes.rows.length > 0 ? uuidv4() : user.id, DEMO_TENANT_ID, user.nombre, user.email, user.passwordHash, user.rol]
+    );
+  }
+}
+
 async function seedPostgresDemoData(): Promise<void> {
   const res = await defaultPgClient.query(
     'SELECT id FROM tenants WHERE id = $1',
@@ -314,18 +394,7 @@ async function seedPostgresDemoData(): Promise<void> {
   );
 
   try {
-    await defaultPgClient.query(
-      `INSERT INTO usuarios (id, tenant_id, nombre, email, password_hash, rol) 
-       VALUES ($1, $2, 'Admin Demo', 'admin@gestock.cl', '$2b$10$u5dEMh8bjEYmKPL2zvI/8O/QyIkh0j15a10eeSW0B8J40pbXz5Doy', 'admin')
-       ON CONFLICT (tenant_id, email) DO UPDATE SET password_hash = EXCLUDED.password_hash, rol = EXCLUDED.rol`,
-      [DEMO_USER_ID, DEMO_TENANT_ID]
-    );
-    await defaultPgClient.query(
-      `INSERT INTO usuarios (id, tenant_id, nombre, email, password_hash, rol) 
-       VALUES ('00000000-0000-0000-0000-000000000002', $1, 'Cajero Demo', 'cajero@gestock.cl', '$2b$10$rQWrPUW3kSQhWliPf4923OB5cPbgIcJe4ml5Yibz2wZItTqJFvvU.', 'cajero')
-       ON CONFLICT (tenant_id, email) DO UPDATE SET password_hash = EXCLUDED.password_hash, rol = EXCLUDED.rol`,
-      [DEMO_TENANT_ID]
-    );
+    await ensurePostgresInitialUsers();
   } catch (err) {
     logger.warn('InitDB', 'Error garantizando usuarios iniciales en PostgreSQL', { error: String(err) });
   }
@@ -341,20 +410,6 @@ async function seedPostgresDemoData(): Promise<void> {
     await client.query(
       `INSERT INTO tenants (id, nombre, estado) 
        VALUES ($1, 'Almacén Don Tito (Microempresa Demo)', 'ACTIVO') ON CONFLICT DO NOTHING`,
-      [DEMO_TENANT_ID]
-    );
-
-    // 2. Usuarios del sistema (Admin Demo y Cajero Demo con hashes Bcrypt reales de 60 caracteres)
-    await client.query(
-      `INSERT INTO usuarios (id, tenant_id, nombre, email, password_hash, rol) 
-       VALUES ($1, $2, 'Admin Demo', 'admin@gestock.cl', '$2b$10$u5dEMh8bjEYmKPL2zvI/8O/QyIkh0j15a10eeSW0B8J40pbXz5Doy', 'admin')
-       ON CONFLICT (tenant_id, email) DO UPDATE SET password_hash = EXCLUDED.password_hash, rol = EXCLUDED.rol`,
-      [DEMO_USER_ID, DEMO_TENANT_ID]
-    );
-    await client.query(
-      `INSERT INTO usuarios (id, tenant_id, nombre, email, password_hash, rol) 
-       VALUES ('00000000-0000-0000-0000-000000000002', $1, 'Cajero Demo', 'cajero@gestock.cl', '$2b$10$rQWrPUW3kSQhWliPf4923OB5cPbgIcJe4ml5Yibz2wZItTqJFvvU.', 'cajero')
-       ON CONFLICT (tenant_id, email) DO UPDATE SET password_hash = EXCLUDED.password_hash, rol = EXCLUDED.rol`,
       [DEMO_TENANT_ID]
     );
 
@@ -488,8 +543,8 @@ function patchExistingDatabaseFixes(): void {
     );
 
     // 3. Garantizar hashes Bcrypt reales de 60 caracteres en usuarios existentes
-    const adminHash = '$2b$10$u5dEMh8bjEYmKPL2zvI/8O/QyIkh0j15a10eeSW0B8J40pbXz5Doy';
-    const cajeroHash = '$2b$10$fV3M334XyqIu8K1oW.xOLeM6M08iH8hNq8gLp3DkXn5rG9jQ5w12e';
+    const adminHash = DEMO_ADMIN_HASH;
+    const cajeroHash = DEMO_CASHIER_HASH;
     defaultSqliteClient.execute(
       "UPDATE usuarios SET password_hash = ? WHERE email = 'admin@gestock.cl' AND (length(password_hash) != 60 OR password_hash = 'admin123')",
       [adminHash]
@@ -524,8 +579,8 @@ async function patchPostgresExistingDatabaseFixes(): Promise<void> {
     await defaultPgClient.query(
       "UPDATE proveedores SET rut_proveedor = '76.123.456-0' WHERE rut_proveedor = '76.123.456-7'"
     );
-    const adminHash = '$2b$10$u5dEMh8bjEYmKPL2zvI/8O/QyIkh0j15a10eeSW0B8J40pbXz5Doy';
-    const cajeroHash = '$2b$10$fV3M334XyqIu8K1oW.xOLeM6M08iH8hNq8gLp3DkXn5rG9jQ5w12e';
+    const adminHash = DEMO_ADMIN_HASH;
+    const cajeroHash = DEMO_CASHIER_HASH;
     await defaultPgClient.query(
       "UPDATE usuarios SET password_hash = $1 WHERE email = 'admin@gestock.cl' AND (length(password_hash) != 60 OR password_hash = 'admin123')",
       [adminHash]
