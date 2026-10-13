@@ -4,6 +4,7 @@ import { defaultSqliteClient } from '../database/sqlite/client';
 import { OcrDispatcherService, defaultOcrDispatcher } from '../ocr/ocr-dispatcher.service';
 import { InvoiceInput, ExtractedInvoiceData } from '../ocr/types';
 import { defaultTenantConfigService } from '../config/tenant-config.service';
+import { DocumentoFactura, InvoiceFileStore, defaultInvoiceFileStore } from './invoice-file.store';
 import { calcularPrecioVenta, desglosarIvaChileno } from '../utils/pricing';
 import { generateChileanBarcode } from '../utils/barcode.utils';
 import { logger } from '../utils/logger';
@@ -55,15 +56,19 @@ export interface ScannedInvoicePreview {
   margin_used: number;
   items: ScannedItemPreview[];
   raw_data: ExtractedInvoiceData;
+  /** Referencia al documento original ya almacenado; debe reenviarse en confirm para vincularlo. */
+  documento?: DocumentoFactura;
 }
 
 export class InvoiceIngestionService {
   private pgClient: PostgresClient;
   private ocrDispatcher: OcrDispatcherService;
+  private fileStore: InvoiceFileStore;
 
-  constructor(customPgClient?: PostgresClient, customDispatcher?: OcrDispatcherService) {
+  constructor(customPgClient?: PostgresClient, customDispatcher?: OcrDispatcherService, customFileStore?: InvoiceFileStore) {
     this.pgClient = customPgClient || defaultPgClient;
     this.ocrDispatcher = customDispatcher || defaultOcrDispatcher;
+    this.fileStore = customFileStore || defaultInvoiceFileStore;
   }
 
   /**
@@ -71,6 +76,11 @@ export class InvoiceIngestionService {
    */
   public async scanInvoice(tenantId: string, input: InvoiceInput): Promise<ScannedInvoicePreview> {
     const startTime = Date.now();
+
+    // El documento se guarda antes de leerlo: es el respaldo tributario de la compra y debe
+    // conservarse tanto si el OCR acierta como si falla
+    const documento = this.persistirDocumento(tenantId, input);
+
     const ocrResult = await this.ocrDispatcher.processInvoice(input);
     const invoiceData = ocrResult.data;
     const configuredMargin = await defaultTenantConfigService.getProfitMargin(tenantId);
@@ -143,37 +153,232 @@ export class InvoiceIngestionService {
       raw_data: {
         ...invoiceData,
         dias_visita_proveedor
-      }
+      },
+      documento
     };
+  }
+
+  /** Lee del disco los bytes del documento; sin ellos la factura queda solo con respaldo local. */
+  private leerDocumento(ruta: string): Buffer | null {
+    try {
+      return this.fileStore.existe(ruta) ? this.fileStore.leerBuffer(ruta) : null;
+    } catch (error) {
+      logger.warn('InvoiceIngestionService', 'No se pudo leer el documento para respaldarlo en la nube', {
+        ruta,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      return null;
+    }
+  }
+
+  /**
+   * Respalda en la nube las facturas que quedaron solo en el equipo local, lo que ocurre cuando se
+   * ingresan sin conexión. Sube la factura completa con su documento, no solo los bytes: el motor
+   * de sincronización únicamente empuja ventas, así que una factura creada offline no existía en la
+   * nube y no había fila que actualizar.
+   */
+  public async respaldarFacturasEnNube(
+    tenantId: string
+  ): Promise<{ respaldados: number; pendientes: number; omitidos: number }> {
+    const resumen = { respaldados: 0, pendientes: 0, omitidos: 0 };
+
+    if (!this.pgClient.isCloudAvailable()) {
+      resumen.pendientes = this.contarDocumentosSinRespaldo(tenantId);
+      return resumen;
+    }
+
+    const porSubir = defaultSqliteClient.query<any>(
+      `SELECT * FROM factura_ingresos
+        WHERE tenant_id = ? AND archivo_respaldado = 0 AND archivo_ruta IS NOT NULL
+          AND estado NOT IN ('PENDIENTE_OCR', 'FALLIDA_OCR')
+        ORDER BY created_at ASC`,
+      [tenantId]
+    );
+
+    for (const factura of porSubir) {
+      const contenido = this.leerDocumento(factura.archivo_ruta);
+      if (!contenido) {
+        resumen.omitidos += 1;
+        continue;
+      }
+
+      try {
+        const proveedorId = await this.asegurarProveedorEnNube(tenantId, factura.proveedor_id);
+
+        await this.pgClient.query(
+          `INSERT INTO factura_ingresos
+             (id, tenant_id, proveedor_id, numero_factura, fecha_ingreso, estado, cantidad,
+              metodo_ingreso, rut_proveedor, total, json_ocr_raw,
+              archivo_ruta, archivo_nombre, archivo_mime, archivo_contenido, archivo_bytes, archivo_respaldado_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW())
+           ON CONFLICT (id) DO UPDATE SET
+             archivo_ruta = EXCLUDED.archivo_ruta,
+             archivo_nombre = EXCLUDED.archivo_nombre,
+             archivo_mime = EXCLUDED.archivo_mime,
+             archivo_contenido = EXCLUDED.archivo_contenido,
+             archivo_bytes = EXCLUDED.archivo_bytes,
+             archivo_respaldado_at = NOW()`,
+          [
+            factura.id,
+            tenantId,
+            proveedorId,
+            factura.numero_factura,
+            factura.fecha_ingreso,
+            factura.estado,
+            factura.cantidad ?? 0,
+            factura.metodo_ingreso ?? null,
+            factura.rut_proveedor ?? null,
+            factura.total ?? 0,
+            factura.json_ocr_raw ?? null,
+            factura.archivo_ruta,
+            factura.archivo_nombre ?? null,
+            factura.archivo_mime ?? null,
+            contenido,
+            contenido.length
+          ]
+        );
+
+        defaultSqliteClient.execute(
+          'UPDATE factura_ingresos SET archivo_respaldado = 1, archivo_bytes = ? WHERE id = ?',
+          [contenido.length, factura.id]
+        );
+        resumen.respaldados += 1;
+      } catch (error) {
+        resumen.omitidos += 1;
+        logger.warn('InvoiceIngestionService', 'No se pudo respaldar la factura en la nube', {
+          id: factura.id,
+          error: error instanceof Error ? error.message : String(error)
+        });
+      }
+    }
+
+    resumen.pendientes = this.contarDocumentosSinRespaldo(tenantId);
+    return resumen;
+  }
+
+  /**
+   * La factura referencia al proveedor por clave foránea. Si nació offline, ese proveedor puede no
+   * existir en la nube todavía: se replica desde el espejo local y se devuelve el id válido allá.
+   */
+  private async asegurarProveedorEnNube(tenantId: string, proveedorId: string | null): Promise<string | null> {
+    if (!proveedorId) return null;
+
+    const local = defaultSqliteClient.queryOne<any>(
+      'SELECT * FROM proveedores WHERE id = ? AND tenant_id = ?',
+      [proveedorId, tenantId]
+    );
+    if (!local) return null;
+
+    const existente = await this.pgClient.query<{ id: string }>(
+      'SELECT id FROM proveedores WHERE tenant_id = $1 AND rut_proveedor = $2',
+      [tenantId, local.rut_proveedor]
+    );
+    if (existente.rows.length > 0) return existente.rows[0].id;
+
+    await this.pgClient.query(
+      `INSERT INTO proveedores
+         (id, tenant_id, rut_proveedor, nombre_proveedores, dias_visita_proveedores, email,
+          whatsapp_contacto, giro, direccion, telefono, origen_creacion, factura_origen_folio)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+       ON CONFLICT (id) DO NOTHING`,
+      [
+        local.id, tenantId, local.rut_proveedor, local.nombre_proveedores,
+        local.dias_visita_proveedores ?? null, local.email ?? null, local.whatsapp_contacto ?? null,
+        local.giro ?? null, local.direccion ?? null, local.telefono ?? null,
+        local.origen_creacion ?? 'CATALOGO', local.factura_origen_folio ?? null
+      ]
+    );
+    return local.id;
+  }
+
+  public contarDocumentosSinRespaldo(tenantId: string): number {
+    const fila = defaultSqliteClient.queryOne<{ total: number }>(
+      `SELECT COUNT(*) as total FROM factura_ingresos
+        WHERE tenant_id = ? AND archivo_respaldado = 0 AND archivo_ruta IS NOT NULL`,
+      [tenantId]
+    );
+    return Number(fila?.total ?? 0);
+  }
+
+  /** Recupera el documento desde la nube cuando el archivo local ya no está disponible. */
+  public async recuperarDocumentoDeNube(tenantId: string, facturaId: string): Promise<Buffer | null> {
+    if (!this.pgClient.isCloudAvailable()) return null;
+
+    try {
+      const res = await this.pgClient.query<{ archivo_contenido: Buffer | null }>(
+        'SELECT archivo_contenido FROM factura_ingresos WHERE id = $1 AND tenant_id = $2',
+        [facturaId, tenantId]
+      );
+      const contenido = res.rows[0]?.archivo_contenido;
+      return contenido ? Buffer.from(contenido) : null;
+    } catch (error) {
+      logger.warn('InvoiceIngestionService', 'No se pudo recuperar el documento desde la nube', {
+        facturaId,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      return null;
+    }
+  }
+
+  /**
+   * Guarda el documento recibido y devuelve su referencia. Un fallo de almacenamiento no debe
+   * impedir la lectura de la factura: se registra y el flujo continúa sin respaldo vinculado.
+   */
+  private persistirDocumento(tenantId: string, input: InvoiceInput): DocumentoFactura | undefined {
+    try {
+      const guardado = this.fileStore.guardar(tenantId, input.invoiceData, input.fileName, input.mimeType);
+      return { ruta: guardado.ruta, nombre: guardado.nombre, mime: guardado.mime };
+    } catch (error) {
+      logger.warn('InvoiceIngestionService', 'No se pudo almacenar el documento original de la factura', {
+        error: error instanceof Error ? error.message : String(error)
+      });
+      return undefined;
+    }
   }
 
   /**
    * Paso 2: Confirmar la ingesta mediante transacción ACID persistiendo en SQLite y PostgreSQL
    * y marcando los productos nuevos con 'FACTURA' para etiquetado visual.
    */
-  public async confirmIngest(tenantId: string, invoiceData: ExtractedInvoiceData): Promise<IngestionResult> {
-    return this.executeIngestTransaction(tenantId, invoiceData, invoiceData.metodo_ingreso || 'CONFIRMED_SCAN', false);
+  public async confirmIngest(
+    tenantId: string,
+    invoiceData: ExtractedInvoiceData,
+    documento?: DocumentoFactura
+  ): Promise<IngestionResult> {
+    return this.executeIngestTransaction(tenantId, invoiceData, invoiceData.metodo_ingreso || 'CONFIRMED_SCAN', false, documento);
   }
 
   /**
    * Ingesta directa para retrocompatibilidad
    */
-  public async ingestInvoice(tenantId: string, input: InvoiceInput): Promise<IngestionResult> {
+  public async ingestInvoice(
+    tenantId: string,
+    input: InvoiceInput,
+    documento?: DocumentoFactura
+  ): Promise<IngestionResult> {
+    // La cola reenvía el documento que ya almacenó; en una ingesta directa se guarda aquí
+    const respaldo = documento || this.persistirDocumento(tenantId, input);
     const ocrResult = await this.ocrDispatcher.processInvoice(input);
-    return this.executeIngestTransaction(tenantId, ocrResult.data, ocrResult.providerName, ocrResult.usedFallback);
+    return this.executeIngestTransaction(tenantId, ocrResult.data, ocrResult.providerName, ocrResult.usedFallback, respaldo);
   }
 
   private async executeIngestTransaction(
     tenantId: string,
     invoiceData: ExtractedInvoiceData,
     ocrProvider: string,
-    usedFallback = false
+    usedFallback = false,
+    documento?: DocumentoFactura
   ): Promise<IngestionResult> {
     const startTime = Date.now();
     const configuredMargin = await defaultTenantConfigService.getProfitMargin(tenantId);
 
     let invoiceId = uuidv4();
     let supplierId = uuidv4();
+
+    // El documento se sube a la nube junto con la fila de la factura: la ruta local no sirve de
+    // respaldo si se pierde el equipo del local
+    const contenidoDocumento = documento ? this.leerDocumento(documento.ruta) : null;
+    let respaldadoEnNube = false;
 
     // 1. Transacción ACID en PostgreSQL Cloud (si está disponible)
     if (this.pgClient.isCloudAvailable()) {
@@ -205,8 +410,8 @@ export class InvoiceIngestionService {
         );
       } else {
         await client.query(
-          `INSERT INTO proveedores (id, tenant_id, rut_proveedor, nombre_proveedores, email, giro, direccion, telefono, dias_visita_proveedores)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          `INSERT INTO proveedores (id, tenant_id, rut_proveedor, nombre_proveedores, email, giro, direccion, telefono, dias_visita_proveedores, origen_creacion, factura_origen_folio)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'FACTURA', $10)`,
           [
             supplierId,
             tenantId,
@@ -216,7 +421,8 @@ export class InvoiceIngestionService {
             invoiceData.giro_proveedor || 'Distribuidora Mayorista',
             invoiceData.direccion_proveedor || 'Casa Matriz',
             invoiceData.telefono_proveedor || '+56 2 2345 6789',
-            invoiceData.dias_visita_proveedor || 'Lunes'
+            invoiceData.dias_visita_proveedor || 'Lunes',
+            invoiceData.folio_factura
           ]
         );
       }
@@ -227,8 +433,10 @@ export class InvoiceIngestionService {
 
       await client.query(
         `INSERT INTO factura_ingresos 
-         (id, tenant_id, proveedor_id, numero_factura, fecha_ingreso, estado, cantidad, metodo_ingreso, rut_proveedor, total, json_ocr_raw)
-         VALUES ($1, $2, $3, $4, $5, 'PROCESSED', $6, $7, $8, $9, $10)`,
+         (id, tenant_id, proveedor_id, numero_factura, fecha_ingreso, estado, cantidad, metodo_ingreso, rut_proveedor, total, json_ocr_raw,
+          archivo_ruta, archivo_nombre, archivo_mime, archivo_contenido, archivo_bytes, archivo_respaldado_at)
+         VALUES ($1, $2, $3, $4, $5, 'PROCESSED', $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
+                 CASE WHEN $14::bytea IS NULL THEN NULL ELSE NOW() END)`,
         [
           invoiceId,
           tenantId,
@@ -239,7 +447,12 @@ export class InvoiceIngestionService {
           invoiceData.metodo_ingreso || ocrProvider,
           invoiceData.rut_proveedor,
           invoiceTotal,
-          JSON.stringify(invoiceData)
+          JSON.stringify(invoiceData),
+          documento?.ruta ?? null,
+          documento?.nombre ?? null,
+          documento?.mime ?? null,
+          contenidoDocumento,
+          contenidoDocumento ? contenidoDocumento.length : null
         ]
       );
 
@@ -350,6 +563,7 @@ export class InvoiceIngestionService {
         );
       }
     });
+        respaldadoEnNube = contenidoDocumento !== null;
   } catch (pgErr) {
     logger.warn('InvoiceIngestionService', 'Cloud PostgreSQL unreachable for invoice ingestion, saving to local SQLite mirror', { pgErr });
   }
@@ -387,8 +601,8 @@ export class InvoiceIngestionService {
           );
         } else {
           defaultSqliteClient.execute(
-            `INSERT INTO proveedores (id, tenant_id, rut_proveedor, nombre_proveedores, email, whatsapp_contacto, giro, direccion, telefono, dias_visita_proveedores)
-             VALUES (?, ?, ?, ?, 'contacto@proveedor.cl', '+56911223344', ?, ?, ?, ?)`,
+            `INSERT INTO proveedores (id, tenant_id, rut_proveedor, nombre_proveedores, email, whatsapp_contacto, giro, direccion, telefono, dias_visita_proveedores, origen_creacion, factura_origen_folio)
+             VALUES (?, ?, ?, ?, 'contacto@proveedor.cl', '+56911223344', ?, ?, ?, ?, 'FACTURA', ?)`,
             [
               supplierId,
               tenantId,
@@ -397,15 +611,17 @@ export class InvoiceIngestionService {
               invoiceData.giro_proveedor || 'Distribución Mayorista',
               invoiceData.direccion_proveedor || 'Casa Matriz',
               invoiceData.telefono_proveedor || '+56 2 2345 6789',
-              invoiceData.dias_visita_proveedor || 'Lunes'
+              invoiceData.dias_visita_proveedor || 'Lunes',
+              invoiceData.folio_factura
             ]
           );
         }
 
         defaultSqliteClient.execute(
           `INSERT OR IGNORE INTO factura_ingresos 
-           (id, tenant_id, proveedor_id, numero_factura, fecha_ingreso, estado, cantidad, metodo_ingreso, rut_proveedor, total, json_ocr_raw)
-           VALUES (?, ?, ?, ?, ?, 'PROCESSED', ?, ?, ?, ?, ?)`,
+           (id, tenant_id, proveedor_id, numero_factura, fecha_ingreso, estado, cantidad, metodo_ingreso, rut_proveedor, total, json_ocr_raw,
+            archivo_ruta, archivo_nombre, archivo_mime, archivo_respaldado, archivo_bytes)
+           VALUES (?, ?, ?, ?, ?, 'PROCESSED', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             invoiceId,
             tenantId,
@@ -416,7 +632,12 @@ export class InvoiceIngestionService {
             invoiceData.metodo_ingreso || ocrProvider || 'CONFIRMED_SCAN',
             invoiceData.rut_proveedor || 'S/RUT',
             invoiceTotal,
-            JSON.stringify(invoiceData)
+            JSON.stringify(invoiceData),
+            documento?.ruta ?? null,
+            documento?.nombre ?? null,
+            documento?.mime ?? null,
+            respaldadoEnNube ? 1 : 0,
+            contenidoDocumento ? contenidoDocumento.length : null
           ]
         );
 
@@ -476,9 +697,20 @@ export class InvoiceIngestionService {
           );
         }
       });
+      persistidoLocal = true;
     } catch (sqliteErr) {
       persistidoLocal = false;
-      logger.warn('InvoiceIngestion', 'Failed to mirror invoice to SQLite local', { sqliteErr });
+      logger.error('InvoiceIngestion', 'Failed to mirror invoice to SQLite local', sqliteErr);
+    }
+
+    // Devolver éxito sin haber persistido en el nodo local es una mentira con consecuencias: la
+    // cola borraría su ticket y la factura no existiría en ninguna parte. Se falla para que el
+    // documento siga disponible y la operación se reintente o se derive a ingreso manual.
+    if (!persistidoLocal) {
+      throw new Error(
+        'La factura no pudo registrarse en el nodo local, por lo que no se da por ingresada. ' +
+        'Revise los datos extraídos e inténtelo de nuevo o ingrésela manualmente.'
+      );
     }
 
     const duration = Date.now() - startTime;
@@ -507,7 +739,7 @@ export class InvoiceIngestionService {
         `SELECT fi.*, p.nombre_proveedores as proveedor_nombre 
          FROM factura_ingresos fi
          LEFT JOIN proveedores p ON fi.proveedor_id = p.id
-         WHERE fi.tenant_id = $1
+         WHERE fi.tenant_id = $1 AND fi.estado NOT IN ('PENDIENTE_OCR', 'FALLIDA_OCR')
          ORDER BY fi.created_at DESC`,
         [tenantId]
       );
@@ -524,7 +756,7 @@ export class InvoiceIngestionService {
           `SELECT fi.*, p.nombre_proveedores as proveedor_nombre 
            FROM factura_ingresos fi
            LEFT JOIN proveedores p ON fi.proveedor_id = p.id
-           WHERE fi.tenant_id = ?
+           WHERE fi.tenant_id = ? AND fi.estado NOT IN ('PENDIENTE_OCR', 'FALLIDA_OCR')
            ORDER BY fi.fecha_ingreso DESC`,
           [tenantId]
         );
