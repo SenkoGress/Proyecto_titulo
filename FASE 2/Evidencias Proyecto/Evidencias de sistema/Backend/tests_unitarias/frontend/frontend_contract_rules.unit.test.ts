@@ -1,9 +1,4 @@
-// ============================================================================
-// Pruebas Unitarias: Reglas de Contrato Frontend y Validación de Negocio
-// Extraídas de la batería de pruebas de integración de endpoints (David / Frontend)
-// ============================================================================
-
-import { rutValido } from '../../src/utils/sii.utils';
+import { rutValido } from '../../backend/src/utils/sii.utils';
 
 describe('Pruebas Unitarias: Reglas de Contrato Frontend y Validación de Negocio', () => {
   describe('1. Validación Algorítmica de RUT Chileno (Módulo 11 - SII)', () => {
