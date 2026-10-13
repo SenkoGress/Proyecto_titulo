@@ -1,4 +1,4 @@
-import { TipoDTE, SiiModeloEmision } from '../../src/dte/types';
+import { TipoDTE, SiiModeloEmision } from '../../backend/src/dte/types';
 
 function verificarEmisionBoleta(modelo: SiiModeloEmision, metodoPago: string): boolean {
   return modelo === 'MODELO_A' || metodoPago === 'EFECTIVO';

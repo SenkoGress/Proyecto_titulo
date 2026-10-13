@@ -1,10 +1,10 @@
 import http from 'http';
 import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
-import app from '../../src/index';
-import { initializeDatabase } from '../../src/database/init-db';
-import { defaultPgClient } from '../../src/database/postgres/client';
-import { defaultSqliteClient } from '../../src/database/sqlite/client';
+import app from '../../backend/src/index';
+import { initializeDatabase } from '../../backend/src/database/init-db';
+import { defaultPgClient } from '../../backend/src/database/postgres/client';
+import { defaultSqliteClient } from '../../backend/src/database/sqlite/client';
 
 const DEMO_TENANT = '00000000-0000-0000-0000-000000000001';
 const DEMO_USER = '00000000-0000-0000-0000-000000000002';
@@ -17,7 +17,7 @@ const rsaKey = crypto.generateKeyPairSync('rsa', {
   privateKeyEncoding: { type: 'pkcs1', format: 'pem' }
 });
 
-describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (57/57)', () => {
+describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (72/72)', () => {
   let server: http.Server;
   let baseUrl: string;
   let dteId = 'demo-dte-01';
@@ -87,9 +87,6 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (5
     return { status: res.status, data };
   }
 
-  // ==========================================================================
-  // 1. Core Endpoints (2)
-  // ==========================================================================
   describe('1. Core & Health Endpoints', () => {
     test('1. GET /health responde con estado del servicio', async () => {
       const res = await requestApi('GET', '/health');
@@ -106,9 +103,6 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (5
     });
   });
 
-  // ==========================================================================
-  // 2. Módulo de Cierre de Caja (6)
-  // ==========================================================================
   describe('2. Módulo de Cierre de Caja (caja.routes.ts)', () => {
     test('3. POST /api/v1/caja/abrir abre sesión de caja', async () => {
       const res = await requestApi('POST', '/api/v1/caja/abrir', {
@@ -165,9 +159,6 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (5
     });
   });
 
-  // ==========================================================================
-  // 3. Configuración del Negocio (4)
-  // ==========================================================================
   describe('3. Módulo de Configuración (config.routes.ts)', () => {
     test('9. GET /api/v1/config/margin recupera margen de ganancia', async () => {
       const res = await requestApi('GET', `/api/v1/config/margin?tenant_id=${DEMO_TENANT}`);
@@ -202,9 +193,6 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (5
     });
   });
 
-  // ==========================================================================
-  // 4. Dashboard Global (1)
-  // ==========================================================================
   describe('4. Dashboard Global de Analítica (dashboard.routes.ts)', () => {
     test('13. GET /api/v1/dashboard/overview retorna métricas comerciales', async () => {
       const res = await requestApi('GET', `/api/v1/dashboard/overview?tenantId=${DEMO_TENANT}&periodo=mensual`);
@@ -215,9 +203,6 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (5
     });
   });
 
-  // ==========================================================================
-  // 5. Módulo Tributario DTE & SII (16)
-  // ==========================================================================
   describe('5. Módulo Tributario DTE & SII (dte.routes.ts)', () => {
     test('14. GET /api/v1/dte/config retorna configuración fiscal', async () => {
       const res = await requestApi('GET', `/api/v1/dte/config?tenantId=${DEMO_TENANT}`);
@@ -352,15 +337,13 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (5
     });
   });
 
-  // ==========================================================================
-  // 6. Módulo de Facturas e Ingesta OCR (4)
-  // ==========================================================================
   describe('6. Módulo de Facturas e Ingesta OCR (invoice.routes.ts)', () => {
     test('30. POST /api/v1/invoices/scan procesa escaneo con fallback tolerante', async () => {
       const res = await requestApi('POST', '/api/v1/invoices/scan', {
         tenant_id: DEMO_TENANT,
         file_name: 'factura_mock.pdf',
-        invoice_data: 'JVBERi0xLjQKJcTl8uXrp/Og0MTGCjQgMCBvYmoKPDw...'
+        invoice_data: 'JVBERi0xLjQKJcTl8uXrp/Og0MTGCjQgMCBvYmoKPDw...',
+        simulate_failure: true
       });
       expect(res.status).toBe(200);
       expect(res.data.success).toBe(true);
@@ -388,23 +371,47 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (5
       const res = await requestApi('POST', '/api/v1/invoices/ingest', {
         tenant_id: DEMO_TENANT,
         file_name: 'factura_ingesta.pdf',
-        invoice_data: 'JVBERi0xLjQKJcTl8uXrp/Og0MTGCjQgMCBvYmoKPDw...'
+        invoice_data: 'JVBERi0xLjQKJcTl8uXrp/Og0MTGCjQgMCBvYmoKPDw...',
+        simulate_failure: true
       });
       expect(res.status).toBe(200);
       expect(res.data.success).toBe(true);
+    });
+
+    test('70. GET /api/v1/invoices/pending consulta la cola de facturas sin digitalizar', async () => {
+      const res = await requestApi('GET', `/api/v1/invoices/pending?tenant_id=${DEMO_TENANT}`);
+
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.data.data)).toBe(true);
+      expect(res.data.intentos_maximos).toBeGreaterThan(0);
+    });
+
+    test('71. POST /api/v1/invoices/process-pending reintenta la digitalización de la cola', async () => {
+      const res = await requestApi('POST', '/api/v1/invoices/process-pending', { tenant_id: DEMO_TENANT });
+
+      expect(res.status).toBe(200);
+      expect(res.data.data).toHaveProperty('procesadas');
+      expect(res.data.data).toHaveProperty('fallidas');
+      expect(res.data.data).toHaveProperty('pendientes');
+    });
+
+    test('72. GET /api/v1/invoices/:id/document recupera el respaldo documental de la compra', async () => {
+      const res = await requestApi('GET', `/api/v1/invoices/00000000-0000-0000-0000-0000000000ff/document?tenant_id=${DEMO_TENANT}`);
+
+      // Una factura inexistente responde 404 con mensaje accionable, no un error opaco
+      expect(res.status).toBe(404);
+      expect(res.data.success).toBe(false);
     });
 
     test('33. GET /api/v1/invoices/ lista historial de facturas ingresadas', async () => {
       const res = await requestApi('GET', `/api/v1/invoices/?tenant_id=${DEMO_TENANT}`);
       expect(res.status).toBe(200);
       expect(res.data.success).toBe(true);
+      expect(Array.isArray(res.data.data)).toBe(true);
       expect(Array.isArray(res.data.invoices)).toBe(true);
     });
   });
 
-  // ==========================================================================
-  // 7. Inteligencia de Tendencias de Mercado (3)
-  // ==========================================================================
   describe('7. Módulo de Tendencias de Mercado (market.routes.ts)', () => {
     test('34. POST /api/v1/trends/sync sincroniza tendencias externas', async () => {
       const res = await requestApi('POST', '/api/v1/trends/sync', {
@@ -431,9 +438,6 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (5
     });
   });
 
-  // ==========================================================================
-  // 8. Pasarelas de Pago (3)
-  // ==========================================================================
   describe('8. Pasarelas de Pago & Contingencia (payment.routes.ts)', () => {
     test('37. POST /api/v1/payments/initiate inicia transacción de pago', async () => {
       const res = await requestApi('POST', '/api/v1/payments/initiate', {
@@ -466,9 +470,6 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (5
     });
   });
 
-  // ==========================================================================
-  // 9. Punto de Venta POS (8)
-  // ==========================================================================
   describe('9. Operación del Punto de Venta (pos.routes.ts)', () => {
     test('40. GET /api/v1/pos/products obtiene catálogo activo con IVA e ILA', async () => {
       const res = await requestApi('GET', `/api/v1/pos/products?tenant_id=${DEMO_TENANT}`);
@@ -538,9 +539,6 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (5
     });
   });
 
-  // ==========================================================================
-  // 10. Reabastecimiento Predictivo (5)
-  // ==========================================================================
   describe('10. Reabastecimiento Predictivo (replenishment.routes.ts)', () => {
     test('48. GET /api/v1/replenishment/velocity calcula rotación diaria de productos', async () => {
       const res = await requestApi('GET', `/api/v1/replenishment/velocity?tenant_id=${DEMO_TENANT}`);
@@ -581,9 +579,6 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (5
     });
   });
 
-  // ==========================================================================
-  // 11. Directorio de Proveedores (3)
-  // ==========================================================================
   describe('11. Directorio de Proveedores (supplier.routes.ts)', () => {
     test('53. GET /api/v1/suppliers/ lista proveedores registrados', async () => {
       const res = await requestApi('GET', `/api/v1/suppliers/?tenant_id=${DEMO_TENANT}`);
@@ -614,9 +609,6 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (5
     });
   });
 
-  // ==========================================================================
-  // 12. Motor de Sincronización Push / Pull (2)
-  // ==========================================================================
   describe('12. Motor de Sincronización Push / Pull (sync.routes.ts)', () => {
     test('56. POST /api/v1/sync/push procesa lotes de sincronización con idempotencia', async () => {
       const res = await requestApi('POST', '/api/v1/sync/push', {
@@ -629,6 +621,176 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (5
     test('57. GET /api/v1/sync/pull descarga delta del catálogo desde la nube', async () => {
       const res = await requestApi('GET', `/api/v1/sync/pull?tenant_id=${DEMO_TENANT}`);
       expect([200, 503]).toContain(res.status);
+    });
+  });
+  describe('13. Gestión de Productos, Stock y Mermas (pos.routes.ts)', () => {
+    const sufijo = Date.now();
+    const sku = `SKU-VERIF-${sufijo}`;
+    let productoId = '';
+
+    test('58. POST /api/v1/pos/products da de alta un producto en el catálogo', async () => {
+      const res = await requestApi('POST', '/api/v1/pos/products', {
+        tenant_id: DEMO_TENANT,
+        nombre: 'Producto de Verificación',
+        sku,
+        codigo_barra: `78${String(sufijo).slice(-11)}`,
+        precio_compra: 800,
+        precio_venta: 1500,
+        stock_actual: 20,
+        stock_minimo: 5,
+        categoria: 'Bebidas'
+      });
+
+      expect(res.status).toBe(201);
+      expect(res.data.success).toBe(true);
+      expect(res.data.data.sku).toBe(sku);
+      productoId = res.data.data.id;
+      expect(productoId).toBeTruthy();
+    });
+
+    test('59. PUT /api/v1/pos/products/:id actualiza nombre, precio y categoría', async () => {
+      const res = await requestApi('PUT', `/api/v1/pos/products/${productoId}`, {
+        nombre: 'Producto de Verificación Editado',
+        precio_venta: 1800,
+        categoria: 'Abarrotes'
+      });
+
+      expect(res.status).toBe(200);
+      expect(res.data.success).toBe(true);
+      expect(res.data.data.nombre).toBe('Producto de Verificación Editado');
+    });
+
+    test('60. PATCH /api/v1/pos/products/:id/stock ajusta el conteo físico', async () => {
+      const res = await requestApi('PATCH', `/api/v1/pos/products/${productoId}/stock`, {
+        tenant_id: DEMO_TENANT,
+        nuevo_stock: 15,
+        motivo: 'Ajuste por conteo físico de verificación'
+      });
+
+      expect(res.status).toBe(200);
+      expect(res.data.success).toBe(true);
+    });
+
+    test('61. POST /api/v1/pos/mermas registra una baja por vencimiento', async () => {
+      const res = await requestApi('POST', '/api/v1/pos/mermas', {
+        tenant_id: DEMO_TENANT,
+        producto_id: productoId,
+        cantidad: 3,
+        motivo: 'vencimiento',
+        observaciones: 'Unidades retiradas de góndola en la verificación'
+      });
+
+      expect(res.status).toBe(201);
+      expect(res.data.success).toBe(true);
+    });
+
+    test('62. GET /api/v1/pos/mermas lista las bajas registradas del comercio', async () => {
+      const res = await requestApi('GET', `/api/v1/pos/mermas?tenant_id=${DEMO_TENANT}`);
+
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.data.data)).toBe(true);
+      expect(res.data.data.some((m: any) => m.producto_id === productoId)).toBe(true);
+    });
+
+    test('63. GET /api/v1/pos/stock-history consulta el libro de movimientos', async () => {
+      const res = await requestApi('GET', `/api/v1/pos/stock-history?tenant_id=${DEMO_TENANT}&producto_id=${productoId}`);
+
+      expect(res.status).toBe(200);
+      expect(res.data.count).toBeGreaterThan(0);
+      expect(res.data.data.every((h: any) => h.producto_id === productoId)).toBe(true);
+    });
+
+    test('64. GET /api/v1/pos/products/:id/history traza el alta, el ajuste y la merma', async () => {
+      const res = await requestApi('GET', `/api/v1/pos/products/${productoId}/history?tenant_id=${DEMO_TENANT}`);
+
+      expect(res.status).toBe(200);
+      // El producto acumula tres movimientos: alta inicial, ajuste de conteo y merma
+      expect(res.data.data.length).toBeGreaterThanOrEqual(3);
+      expect(res.data.data.every((h: any) => h.producto_id === productoId)).toBe(true);
+    });
+  });
+
+  describe('14. Autenticación y Gestión de Personal (auth.routes.ts)', () => {
+    const correoCajero = `verificacion_${Date.now()}@gestock.cl`;
+    const claveInicial = 'ClaveVerificacion2026';
+    const claveRotada = 'ClaveRotada2026';
+    let adminToken = '';
+
+    test('65. POST /api/v1/auth/login emite un JWT firmado y perfil sin hash', async () => {
+      const res = await requestApi('POST', '/api/v1/auth/login', {
+        tenant_id: DEMO_TENANT,
+        email: 'admin@gestock.cl',
+        password: 'admin123'
+      });
+
+      expect(res.status).toBe(200);
+      expect(res.data.data.token.split('.')).toHaveLength(3);
+      expect(res.data.data.usuario.rol).toBe('admin');
+      expect(res.data.data.usuario.password_hash).toBeUndefined();
+      adminToken = res.data.data.token;
+    });
+
+    test('66. GET /api/v1/auth/me reconoce la sesión activa del token', async () => {
+      const res = await requestApi('GET', '/api/v1/auth/me', undefined, {
+        Authorization: `Bearer ${adminToken}`
+      });
+
+      expect(res.status).toBe(200);
+      expect(res.data.data.usuario.email).toBe('admin@gestock.cl');
+    });
+
+    test('67. GET /api/v1/auth/users lista el personal sin exponer contraseñas', async () => {
+      const res = await requestApi('GET', '/api/v1/auth/users', undefined, {
+        Authorization: `Bearer ${adminToken}`
+      });
+
+      expect(res.status).toBe(200);
+      expect(res.data.data.length).toBeGreaterThan(0);
+      expect(res.data.data.every((u: any) => u.password_hash === undefined)).toBe(true);
+    });
+
+    test('68. POST /api/v1/auth/register crea un cajero en el comercio del administrador', async () => {
+      const res = await requestApi('POST', '/api/v1/auth/register', {
+        tenant_id: DEMO_TENANT,
+        nombre: 'Cajero de Verificación',
+        email: correoCajero,
+        password: claveInicial,
+        rol: 'cajero'
+      }, { Authorization: `Bearer ${adminToken}` });
+
+      expect(res.status).toBe(201);
+      expect(res.data.data.usuario.rol).toBe('cajero');
+      expect(res.data.data.usuario.tenant_id).toBe(DEMO_TENANT);
+      expect(res.data.token).toBeUndefined();
+    });
+
+    test('69. PUT /api/v1/auth/password rota la clave y revoca la anterior', async () => {
+      const sesion = await requestApi('POST', '/api/v1/auth/login', {
+        tenant_id: DEMO_TENANT,
+        email: correoCajero,
+        password: claveInicial
+      });
+      expect(sesion.status).toBe(200);
+
+      const cambio = await requestApi('PUT', '/api/v1/auth/password', {
+        password_actual: claveInicial,
+        password_nueva: claveRotada
+      }, { Authorization: `Bearer ${sesion.data.data.token}` });
+      expect(cambio.status).toBe(200);
+
+      const conNueva = await requestApi('POST', '/api/v1/auth/login', {
+        tenant_id: DEMO_TENANT,
+        email: correoCajero,
+        password: claveRotada
+      });
+      expect(conNueva.status).toBe(200);
+
+      const conAnterior = await requestApi('POST', '/api/v1/auth/login', {
+        tenant_id: DEMO_TENANT,
+        email: correoCajero,
+        password: claveInicial
+      });
+      expect(conAnterior.status).toBe(401);
     });
   });
 });

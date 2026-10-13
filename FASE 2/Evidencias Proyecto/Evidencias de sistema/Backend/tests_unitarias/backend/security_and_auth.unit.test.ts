@@ -3,7 +3,8 @@ import {
   validateTenantAndAuth,
   rbacAuthMiddleware,
   globalErrorHandler
-} from '../../src/middleware/security.middleware';
+} from '../../backend/src/middleware/security.middleware';
+import { assertAuthConfig, getJwtSecret } from '../../backend/src/config/auth.config';
 
 describe('Pruebas Unitarias: Seguridad, Validacion de Tenant y Error Handling', () => {
   let mockRequest: Partial<Request>;
@@ -162,7 +163,7 @@ describe('Pruebas Unitarias: Seguridad, Validacion de Tenant y Error Handling', 
 
   describe('Control de Acceso Basado en Roles (RBAC Middleware)', () => {
     const jwt = require('jsonwebtoken');
-    const SECRET = process.env.JWT_SECRET || 'super_secret_jwt_key_gestock_2026_change_in_production';
+    const SECRET = getJwtSecret();
 
     const adminToken = jwt.sign(
       { id: 'admin-id', tenant_id: 't-1', email: 'admin@gestock.cl', rol: 'admin', nombre: 'Admin' },
@@ -200,6 +201,98 @@ describe('Pruebas Unitarias: Seguridad, Validacion de Tenant y Error Handling', 
         })
       );
       expect(nextFunction).not.toHaveBeenCalled();
+    });
+
+    test.each([
+      ['GET', '/api/v1/dte/config'],
+      ['GET', '/api/v1/dte/list'],
+      ['GET', '/api/v1/dte/3f2a9c1e-0000-4000-8000-000000000001/receipt'],
+      ['GET', '/api/v1/dte/3f2a9c1e-0000-4000-8000-000000000001/xml'],
+      ['POST', '/api/v1/dte/send-email'],
+    ])('permite al cajero las rutas DTE del comprobante de venta (%s %s)', (method, url) => {
+      mockRequest.method = method;
+      mockRequest.originalUrl = url;
+      mockRequest.headers = { authorization: `Bearer ${cajeroToken}` };
+
+      rbacAuthMiddleware(mockRequest as Request, mockResponse as Response, nextFunction);
+
+      expect(nextFunction).toHaveBeenCalledTimes(1);
+      expect(mockResponse.status).not.toHaveBeenCalled();
+    });
+
+    test.each([
+      ['POST', '/api/v1/dte/config'],
+      ['GET', '/api/v1/dte/f29'],
+      ['GET', '/api/v1/dte/rcof/list'],
+      ['GET', '/api/v1/dte/caf/status'],
+      ['POST', '/api/v1/dte/emit'],
+      ['GET', '/api/v1/config/email'],
+    ])('mantiene bloqueadas al cajero las demás rutas DTE y de configuración (%s %s)', (method, url) => {
+      mockRequest.method = method;
+      mockRequest.originalUrl = url;
+      mockRequest.headers = { authorization: `Bearer ${cajeroToken}` };
+
+      rbacAuthMiddleware(mockRequest as Request, mockResponse as Response, nextFunction);
+
+      expect(mockResponse.status).toHaveBeenCalledWith(403);
+      expect(nextFunction).not.toHaveBeenCalled();
+    });
+
+    test('bloquea con HTTP 403 si el tenant de la cabecera no coincide con el del token', () => {
+      mockRequest.method = 'GET';
+      mockRequest.originalUrl = '/api/v1/pos/products';
+      mockRequest.headers = { authorization: `Bearer ${adminToken}`, 'x-tenant-id': 't-2' };
+
+      rbacAuthMiddleware(mockRequest as Request, mockResponse as Response, nextFunction);
+
+      expect(mockResponse.status).toHaveBeenCalledWith(403);
+      expect(nextFunction).not.toHaveBeenCalled();
+    });
+
+    test('bloquea con HTTP 403 si el tenant del body o query pertenece a otro comercio', () => {
+      mockRequest.method = 'POST';
+      mockRequest.originalUrl = '/api/v1/pos/checkout';
+      mockRequest.headers = { authorization: `Bearer ${cajeroToken}`, 'x-tenant-id': 't-1' };
+      mockRequest.body = { tenant_id: 't-2' };
+
+      rbacAuthMiddleware(mockRequest as Request, mockResponse as Response, nextFunction);
+
+      expect(mockResponse.status).toHaveBeenCalledWith(403);
+      expect(nextFunction).not.toHaveBeenCalled();
+    });
+
+    test('bloquea con HTTP 403 la consulta de tendencias de otro comercio por parámetro de ruta', () => {
+      mockRequest.method = 'GET';
+      mockRequest.originalUrl = '/api/v1/trends/t-2';
+      mockRequest.headers = { authorization: `Bearer ${adminToken}` };
+
+      rbacAuthMiddleware(mockRequest as Request, mockResponse as Response, nextFunction);
+
+      expect(mockResponse.status).toHaveBeenCalledWith(403);
+    });
+
+    test('permite el paso cuando el tenant declarado coincide con el del token', () => {
+      mockRequest.method = 'GET';
+      mockRequest.originalUrl = '/api/v1/pos/products';
+      mockRequest.headers = { authorization: `Bearer ${cajeroToken}`, 'x-tenant-id': 't-1' };
+      mockRequest.query = { tenant_id: 't-1' };
+
+      rbacAuthMiddleware(mockRequest as Request, mockResponse as Response, nextFunction);
+
+      expect(nextFunction).toHaveBeenCalledTimes(1);
+      expect(mockResponse.status).not.toHaveBeenCalled();
+    });
+
+    test('reemplaza el usuario_id del body por el id del usuario autenticado', () => {
+      mockRequest.method = 'POST';
+      mockRequest.originalUrl = '/api/v1/pos/checkout';
+      mockRequest.headers = { authorization: `Bearer ${cajeroToken}` };
+      mockRequest.body = { tenant_id: 't-1', usuario_id: 'otro-usuario', items: [] };
+
+      rbacAuthMiddleware(mockRequest as Request, mockResponse as Response, nextFunction);
+
+      expect(nextFunction).toHaveBeenCalledTimes(1);
+      expect(mockRequest.body.usuario_id).toBe('cajero-id');
     });
 
     test('permite acceso al administrador a rutas de administración (/dashboard)', () => {
@@ -244,6 +337,42 @@ describe('Pruebas Unitarias: Seguridad, Validacion de Tenant y Error Handling', 
       rbacAuthMiddleware(mockRequest as Request, mockResponse as Response, nextFunction);
 
       expect(nextFunction).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('Validacion de JWT_SECRET al arranque', () => {
+    const originalEnv = process.env.NODE_ENV;
+    const originalSecret = process.env.JWT_SECRET;
+
+    afterEach(() => {
+      process.env.NODE_ENV = originalEnv;
+      if (originalSecret === undefined) delete process.env.JWT_SECRET;
+      else process.env.JWT_SECRET = originalSecret;
+    });
+
+    test('en produccion rechaza un JWT_SECRET ausente, de ejemplo o corto', () => {
+      process.env.NODE_ENV = 'production';
+
+      delete process.env.JWT_SECRET;
+      expect(() => assertAuthConfig()).toThrow('JWT_SECRET');
+
+      process.env.JWT_SECRET = 'super_secret_jwt_key_gestock_2026_change_in_production';
+      expect(() => assertAuthConfig()).toThrow('JWT_SECRET');
+
+      process.env.JWT_SECRET = 'corto';
+      expect(() => assertAuthConfig()).toThrow('JWT_SECRET');
+    });
+
+    test('en produccion acepta un JWT_SECRET propio de al menos 32 caracteres', () => {
+      process.env.NODE_ENV = 'production';
+      process.env.JWT_SECRET = 'a'.repeat(48);
+      expect(() => assertAuthConfig()).not.toThrow();
+    });
+
+    test('fuera de produccion no bloquea el arranque', () => {
+      process.env.NODE_ENV = 'development';
+      delete process.env.JWT_SECRET;
+      expect(() => assertAuthConfig()).not.toThrow();
     });
   });
 });

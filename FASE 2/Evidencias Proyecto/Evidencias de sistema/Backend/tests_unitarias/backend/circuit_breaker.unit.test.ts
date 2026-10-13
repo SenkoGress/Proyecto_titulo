@@ -1,4 +1,4 @@
-import { PostgresClient } from '../../src/database/postgres/client';
+import { PostgresClient } from '../../backend/src/database/postgres/client';
 
 describe('Pruebas Unitarias: Circuit Breaker de Base de Datos y Resiliencia Offline', () => {
   let client: PostgresClient;
