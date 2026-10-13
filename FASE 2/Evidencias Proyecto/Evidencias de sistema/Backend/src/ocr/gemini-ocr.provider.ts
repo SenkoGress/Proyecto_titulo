@@ -3,8 +3,9 @@ import { ExtractedInvoiceData, InvoiceInput } from './types';
 import { logger } from '../utils/logger';
 
 export class GeminiOcrProvider implements IOcrProvider {
-  // medido el 03-10: el alias 'latest' devolvia 503 siempre y este responde 3 de 3
-  private static readonly MODELO = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
+  // google deprecio 3.5 el 09-10 y redirige a este; medido 4 de 4 con la factura real
+  // no pasar a 3.8: tarda unos dos minutos, por encima del timeout del cliente
+  private static readonly MODELO = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
 
   public name = 'GoogleAiGemini';
   private apiKey?: string;
