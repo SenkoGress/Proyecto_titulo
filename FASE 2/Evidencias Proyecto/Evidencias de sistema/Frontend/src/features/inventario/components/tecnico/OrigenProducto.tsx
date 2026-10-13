@@ -2,18 +2,19 @@
 import Chip from '@mui/material/Chip'
 import Tooltip from '@mui/material/Tooltip'
 import AutoAwesomeOutlined from '@mui/icons-material/AutoAwesomeOutlined'
+import { esProductoNuevo } from '@/features/inventario/utils/productoNuevo'
 import type { ProductoInventario } from '@/features/inventario/types'
 
 type Props = {
   producto: ProductoInventario
+  ultimoZ: Date | null
 }
 
-// catalogo base o producto nuevo creado por la ingesta OCR
-export function OrigenProducto({ producto }: Props) {
-  const nacioDeFactura = producto.origen_creacion === 'FACTURA'
+// catalogo base, o producto que creo la ingesta OCR y todavia no pasa por un cierre
+export function OrigenProducto({ producto, ultimoZ }: Props) {
   const folio = producto.factura_origen_folio
 
-  if (nacioDeFactura) {
+  if (esProductoNuevo(producto, ultimoZ)) {
     return (
       <Tooltip title={`Producto nuevo: lo creo la lectura de la factura ${folio ?? 'sin folio'}`}>
         <Chip
@@ -32,11 +33,16 @@ export function OrigenProducto({ producto }: Props) {
     <Tooltip
       title={
         folio
-          ? `Ya estaba en el catalogo. Su ultima reposicion vino de la factura ${folio}.`
+          ? `Entro por la factura ${folio}. Ya paso por un cierre de caja.`
           : 'Producto del catalogo base, cargado en la puesta en marcha.'
       }
     >
-      <Chip label="Catalogo base" size="small" variant="outlined" sx={{ color: 'text.secondary' }} />
+      <Chip
+        label={folio ? 'Del catalogo' : 'Catalogo base'}
+        size="small"
+        variant="outlined"
+        sx={{ color: 'text.secondary' }}
+      />
     </Tooltip>
   )
 }

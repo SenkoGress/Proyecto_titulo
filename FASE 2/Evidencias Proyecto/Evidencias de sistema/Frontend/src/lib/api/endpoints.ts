@@ -5,12 +5,12 @@ const API_V1 = '/api/v1'
 
 // rutas del backend que usa el frontend
 export const endpoints = {
-  // pendiente: el backend todavia no expone estas rutas, ver AUTENTICACION-MARCELO.txt
   auth: {
     login: `${API_V1}/auth/login`,
     registro: `${API_V1}/auth/register`,
     perfil: `${API_V1}/auth/me`,
     usuarios: `${API_V1}/auth/users`,
+    clave: `${API_V1}/auth/password`,
   },
   sistema: {
     info: '/api',
@@ -67,6 +67,9 @@ export const endpoints = {
     scan: `${API_V1}/invoices/scan`,
     confirm: `${API_V1}/invoices/confirm`,
     listar: `${API_V1}/invoices/`,
+    pendientes: `${API_V1}/invoices/pending`,
+    procesarPendientes: `${API_V1}/invoices/process-pending`,
+    documento: (id: string) => `${API_V1}/invoices/${id}/document`,
   },
   caja: {
     abrir: `${API_V1}/caja/abrir`,
@@ -74,6 +77,5 @@ export const endpoints = {
     cerrar: `${API_V1}/caja/cerrar`,
     historial: `${API_V1}/caja/historial`,
     movimiento: `${API_V1}/caja/movimiento`,
-    movimientos: `${API_V1}/caja/movimientos`,
   },
 } as const

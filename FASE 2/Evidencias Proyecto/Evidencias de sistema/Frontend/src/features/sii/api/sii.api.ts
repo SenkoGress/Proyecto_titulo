@@ -1,7 +1,7 @@
 // src/features/sii/api/sii.api.ts
 import { httpClient } from '@/lib/api/httpClient'
 import { endpoints } from '@/lib/api/endpoints'
-import { env } from '@/config/env'
+import { tenantActual } from '@/features/auth/utils/identidad'
 import type {
   EstadoCaf,
   GuiaDespacho,
@@ -14,7 +14,7 @@ import type {
 } from '@/features/sii/types'
 
 // todas las rutas de dte leen "tenantId", no tenant_id
-const params = { tenantId: env.tenantId }
+const params = { tenantId: tenantActual() }
 
 // folios autorizados por el sii y cuantos quedan
 export async function obtenerFoliosCaf() {
@@ -39,7 +39,7 @@ export async function obtenerRcof() {
 // genera el consumo de folios de un dia
 export async function generarRcof(fechaReporte: string) {
   const { data } = await httpClient.post<{ data: RcofGenerado }>(endpoints.dte.rcofGenerar, {
-    tenantId: env.tenantId,
+    tenantId: tenantActual(),
     fechaReporte,
   })
   return data.data
@@ -54,7 +54,7 @@ export async function obtenerGuias() {
 export async function emitirGuia(guia: NuevaGuia) {
   const { data } = await httpClient.post<{ message: string; data: { folio: number } }>(
     endpoints.dte.guiasEmitir,
-    { tenantId: env.tenantId, ...guia },
+    { tenantId: tenantActual(), ...guia },
   )
   return data
 }
@@ -62,7 +62,7 @@ export async function emitirGuia(guia: NuevaGuia) {
 // set de prueba tecnico del sii: emite documentos de verdad
 export async function correrCertificacion() {
   const { data } = await httpClient.post<{ data: ResultadoCertificacion }>(endpoints.dte.certificacion, {
-    tenantId: env.tenantId,
+    tenantId: tenantActual(),
   })
   return data.data
 }

@@ -1,14 +1,14 @@
 // src/features/dte/api/dte.api.ts
 import { httpClient } from '@/lib/api/httpClient'
 import { endpoints } from '@/lib/api/endpoints'
-import { env } from '@/config/env'
 import type { EdicionConfigDte, RespuestaComprobante, RespuestaConfigDte } from '@/features/dte/types'
+import { tenantActual } from '@/features/auth/utils/identidad'
 
 // datos del emisor (nombre del local, comuna, rut)
 export async function obtenerConfigDte() {
   // esta ruta lee "tenantId" (no tenant_id)
   const { data } = await httpClient.get<RespuestaConfigDte>(endpoints.dte.config, {
-    params: { tenantId: env.tenantId },
+    params: { tenantId: tenantActual() },
   })
   return data.data
 }
@@ -16,7 +16,7 @@ export async function obtenerConfigDte() {
 // guardar el modelo de emision y los datos del emisor
 export async function guardarConfigDte(cambios: EdicionConfigDte) {
   const { data } = await httpClient.post<RespuestaConfigDte & { message: string }>(endpoints.dte.config, {
-    tenantId: env.tenantId,
+    tenantId: tenantActual(),
     ...cambios,
   })
   return data

@@ -34,7 +34,7 @@ export function PanelDatosExtraidos({ preview }: Props) {
         Datos DTE extraidos
       </Typography>
 
-      <Campo etiqueta="folio_factura" valor={preview.folio_factura} />
+      <Campo etiqueta="folio_factura" valor={preview.folio_factura ?? ""} />
       <Campo etiqueta="rut_proveedor" valor={preview.rut_proveedor} />
       <Campo etiqueta="razon_social" valor={preview.razon_social} />
       <Campo etiqueta="giro_proveedor" valor={preview.giro_proveedor ?? ''} />

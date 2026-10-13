@@ -7,6 +7,7 @@ import {
   obtenerMargen,
 } from '@/features/configuracion/api/configuracion.api'
 import { VIGENCIA_LARGA_MS } from '@/lib/query/queryClient'
+import { usePuedeAdministrar } from '@/features/auth/stores/sesionStore'
 
 // margen de ganancia del tenant
 export function useMargen() {
@@ -34,6 +35,7 @@ export function useCorreo() {
     queryKey: ['configuracion', 'correo'],
     queryFn: obtenerCorreo,
     staleTime: VIGENCIA_LARGA_MS,
+    enabled: usePuedeAdministrar(), // ruta solo de admin
   })
 }
 

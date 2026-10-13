@@ -9,6 +9,12 @@ export function obtenerMensajeError(error: unknown): string {
       return 'No se pudo conectar con el servidor de GesTock'
     }
 
+    // el backend responde 403 por rol o por local distinto al de la sesion
+    if (error.response.status === 403) {
+      const data = error.response.data as { message?: string } | undefined
+      return data?.message ?? 'No tienes permiso para esta accion'
+    }
+
     // el backend limita las peticiones por ip
     if (error.response.status === 429) {
       return 'El servidor recibio demasiadas peticiones seguidas. Espera un par de minutos y vuelve a intentar.'

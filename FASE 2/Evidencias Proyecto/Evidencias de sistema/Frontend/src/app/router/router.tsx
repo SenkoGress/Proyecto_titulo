@@ -4,17 +4,19 @@ import { MainLayout } from '@/shared/components/layout/MainLayout'
 import { RutaDeAdmin, RutaProtegida } from '@/app/router/RutaProtegida'
 import { LoginPage } from '@/features/auth/pages/LoginPage'
 import { CajaPage } from '@/features/pos/pages/CajaPage'
-import { IngresoFacturasPage } from '@/features/invoices/pages/IngresoFacturasPage'
-import { CierreCajaPage } from '@/features/caja/pages/CierreCajaPage'
-import { InventarioPage } from '@/features/inventario/pages/InventarioPage'
-import { ProveedoresPage } from '@/features/proveedores/pages/ProveedoresPage'
-import { DashboardPage } from '@/features/dashboard/pages/DashboardPage'
-import { NotificacionesPage } from '@/features/notificaciones/pages/NotificacionesPage'
-import { VentasPage } from '@/features/ventas/pages/VentasPage'
-import { SiiPage } from '@/features/sii/pages/SiiPage'
-import { ReabastecimientoPage } from '@/features/replenishment/pages/ReabastecimientoPage'
-import { ConfiguracionPage } from '@/features/configuracion/pages/ConfiguracionPage'
-import { NotFoundPage } from '@/shared/pages/NotFoundPage'
+import {
+  CierreCajaPage,
+  ConfiguracionPage,
+  DashboardPage,
+  IngresoFacturasPage,
+  InventarioPage,
+  NotFoundPage,
+  NotificacionesPage,
+  ProveedoresPage,
+  ReabastecimientoPage,
+  SiiPage,
+  VentasPage,
+} from '@/app/router/paginas'
 
 // rutas de la app
 export const router = createBrowserRouter([

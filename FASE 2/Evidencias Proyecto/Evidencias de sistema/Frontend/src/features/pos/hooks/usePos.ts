@@ -6,8 +6,8 @@ import {
   registrarVenta,
   sincronizarVentas,
 } from '@/features/pos/api/pos.api'
-import { env } from '@/config/env'
 import { INTERVALO_REFRESCO_MS } from '@/lib/query/queryClient'
+import { tenantActual } from '@/features/auth/utils/identidad'
 
 // productos
 export function useProductos() {
@@ -44,7 +44,7 @@ export function useSincronizar() {
   const clienteQuery = useQueryClient()
 
   return useMutation({
-    mutationFn: () => sincronizarVentas(env.tenantId),
+    mutationFn: () => sincronizarVentas(tenantActual()),
     onSuccess: () => {
       clienteQuery.invalidateQueries({ queryKey: ['pos', 'estado'] })
       clienteQuery.invalidateQueries({ queryKey: ['pos', 'productos'] })

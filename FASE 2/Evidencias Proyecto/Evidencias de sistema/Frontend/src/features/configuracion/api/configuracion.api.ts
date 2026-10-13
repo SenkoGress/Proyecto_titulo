@@ -1,8 +1,8 @@
 // src/features/configuracion/api/configuracion.api.ts
 import { httpClient } from '@/lib/api/httpClient'
 import { endpoints } from '@/lib/api/endpoints'
-import { env } from '@/config/env'
 import type { RespuestaCorreo, RespuestaGuardado, RespuestaMargen } from '@/features/configuracion/types'
+import { tenantActual } from '@/features/auth/utils/identidad'
 
 // margen que se aplica al costo de las facturas para calcular el precio de venta
 export async function obtenerMargen() {
@@ -12,7 +12,7 @@ export async function obtenerMargen() {
 
 export async function guardarMargen(margen: number) {
   const { data } = await httpClient.post<RespuestaGuardado>(endpoints.configuracion.margen, {
-    tenant_id: env.tenantId,
+    tenant_id: tenantActual(),
     margin: margen,
   })
   return data
@@ -26,7 +26,7 @@ export async function obtenerCorreo() {
 
 export async function guardarCorreo(correo: string, envioAutomatico: boolean) {
   const { data } = await httpClient.post<RespuestaGuardado>(endpoints.configuracion.correo, {
-    tenant_id: env.tenantId,
+    tenant_id: tenantActual(),
     email: correo,
     auto_send: envioAutomatico,
   })

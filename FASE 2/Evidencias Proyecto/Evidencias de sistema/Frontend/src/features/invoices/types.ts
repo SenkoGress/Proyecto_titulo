@@ -41,9 +41,16 @@ export type DatosExtraidosFactura = {
   metadata?: Record<string, unknown>
 }
 
+// referencia al archivo original, que es el respaldo tributario de la compra
+export type DocumentoFactura = {
+  ruta: string
+  nombre: string
+  mime: string
+}
+
 // respuesta completa de POST /invoices/scan (no toca la base de datos)
 export type PrevisualizacionFactura = {
-  folio_factura: string
+  folio_factura: string | null
   rut_proveedor: string
   razon_social: string
   giro_proveedor?: string
@@ -60,7 +67,25 @@ export type PrevisualizacionFactura = {
   margin_used: number
   items: ItemFactura[]
   raw_data: DatosExtraidosFactura
+  documento?: DocumentoFactura
 }
+
+// factura que ningun motor pudo leer y quedo esperando (HTTP 202)
+export type FacturaEnCola = {
+  id: string
+  numero_factura: string
+  archivo_nombre: string
+  estado: 'PENDIENTE_OCR' | 'FALLIDA_OCR'
+  intentos_maximos: number
+  sync_attempts?: number
+  ultimo_error?: string | null
+  created_at?: string
+}
+
+// POST /invoices/scan responde una de las dos
+export type ResultadoEscaneo =
+  | { tipo: 'leida'; preview: PrevisualizacionFactura }
+  | { tipo: 'encolada'; cola: FacturaEnCola; mensaje: string }
 
 // respuesta de POST /invoices/confirm
 export type ResultadoIngesta = {
@@ -91,6 +116,9 @@ export type FacturaRegistrada = {
   iva_credito: number
   total_factura: number
   created_at: string
+  archivo_nombre: string | null
+  archivo_ruta: string | null
+  archivo_mime: string | null
 }
 
 export type RespuestaFacturas = {

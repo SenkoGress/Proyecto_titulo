@@ -64,6 +64,7 @@ export function useNotificaciones() {
   return {
     lista,
     sinVer,
-    cargando: vencimientos.isPending || sugerencia.isPending || inventario.isPending,
+    // isLoading y no isPending: para el cajero la sugerencia esta apagada y quedaria pendiente para siempre
+    cargando: vencimientos.isPending || sugerencia.isLoading || inventario.isPending,
   }
 }

@@ -1,5 +1,6 @@
 // src/features/auth/stores/sesionStore.ts
 import { create } from 'zustand'
+import { env } from '@/config/env'
 import { persist } from 'zustand/middleware'
 import type { Usuario } from '@/features/auth/types'
 
@@ -33,6 +34,12 @@ export function useHaySesion(): boolean {
 
 export function useEsAdmin(): boolean {
   return useSesionStore((estado) => estado.usuario?.rol === 'admin')
+}
+
+// con la autenticacion apagada no hay sesion y el equipo entra como admin
+export function usePuedeAdministrar(): boolean {
+  const esAdmin = useEsAdmin()
+  return env.authActiva ? esAdmin : true
 }
 
 // para leer el token fuera de react (lo usa el interceptor de axios)

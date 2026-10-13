@@ -16,6 +16,8 @@ export type ProductoInventario = {
   updated_at: string
   origen_creacion: string | null // 'FACTURA' si nacio de una factura OCR
   factura_origen_folio: string | null
+  created_at: string | null
+  ultimo_ingreso_factura: string | null // fecha del ultimo ingreso por factura
   lote: string | null
   fecha_vencimiento: string | null
   impuesto_adicional_codigo: number | null

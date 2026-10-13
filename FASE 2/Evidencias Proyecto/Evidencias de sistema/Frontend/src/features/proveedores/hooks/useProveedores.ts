@@ -7,6 +7,7 @@ import {
 } from '@/features/proveedores/api/proveedores.api'
 import { obtenerFacturas } from '@/features/invoices/api/invoices.api'
 import { VIGENCIA_LARGA_MS } from '@/lib/query/queryClient'
+import { usePuedeAdministrar } from '@/features/auth/stores/sesionStore'
 import type { EdicionProveedor } from '@/features/proveedores/types'
 
 // directorio de proveedores
@@ -15,6 +16,7 @@ export function useProveedores() {
     queryKey: ['proveedores'],
     queryFn: obtenerProveedores,
     staleTime: VIGENCIA_LARGA_MS,
+    enabled: usePuedeAdministrar(), // ruta solo de admin
   })
 }
 

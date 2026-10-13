@@ -8,6 +8,9 @@ import { formatoClp } from '@/shared/utils/formatoClp'
 import { BarraStock } from '@/features/inventario/components/visual/BarraStock'
 import { calcularMargen } from '@/features/inventario/utils/calculosInventario'
 import { AccionesProducto } from '@/features/inventario/components/compartidos/AccionesProducto'
+import { EtiquetaProductoNuevo } from '@/features/inventario/components/compartidos/EtiquetaProductoNuevo'
+import { ultimoCierreZ } from '@/features/inventario/utils/productoNuevo'
+import { useHistorialCaja } from '@/features/caja/hooks/useCaja'
 import type { ProductoInventario } from '@/features/inventario/types'
 
 type Acciones = {
@@ -23,7 +26,7 @@ type Props = Acciones & {
 }
 
 // columnas de la tabla: todas vienen de GET /pos/inventory, nada inventado
-function armarColumnas(acciones: Acciones): GridColDef<ProductoInventario>[] {
+function armarColumnas(acciones: Acciones, ultimoZ: Date | null): GridColDef<ProductoInventario>[] {
   return [
   {
     field: 'sku',
@@ -47,9 +50,12 @@ function armarColumnas(acciones: Acciones): GridColDef<ProductoInventario>[] {
     minWidth: 220,
     renderCell: (parametros) => (
       <Box sx={{ py: 1 }}>
-        <Typography variant="body2" sx={{ fontWeight: 600 }}>
-          {parametros.row.nombre}
-        </Typography>
+        <Box sx={{ display: 'flex', gap: 0.75, alignItems: 'center', minWidth: 0 }}>
+          <Typography variant="body2" noWrap sx={{ fontWeight: 600, minWidth: 0 }}>
+            {parametros.row.nombre}
+          </Typography>
+          <EtiquetaProductoNuevo producto={parametros.row} ultimoZ={ultimoZ} />
+        </Box>
         <Typography variant="caption" color="text.secondary">
           {parametros.row.proveedor_nombre ?? 'Sin proveedor asignado'}
         </Typography>
@@ -121,9 +127,12 @@ function armarColumnas(acciones: Acciones): GridColDef<ProductoInventario>[] {
 
 // tabla del catalogo, con paginacion (mui x-data-grid)
 export function TablaInventario({ productos, cargando, onEditar, onAjustar, onMerma, onHistorial }: Props) {
+  const historial = useHistorialCaja()
+  const ultimoZ = useMemo(() => ultimoCierreZ(historial.data), [historial.data])
+
   const columnas = useMemo(
-    () => armarColumnas({ onEditar, onAjustar, onMerma, onHistorial }),
-    [onEditar, onAjustar, onMerma, onHistorial],
+    () => armarColumnas({ onEditar, onAjustar, onMerma, onHistorial }, ultimoZ),
+    [onEditar, onAjustar, onMerma, onHistorial, ultimoZ],
   )
 
   return (

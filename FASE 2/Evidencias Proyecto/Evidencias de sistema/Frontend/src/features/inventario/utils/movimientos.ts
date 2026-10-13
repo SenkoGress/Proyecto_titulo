@@ -1,5 +1,5 @@
 // src/features/inventario/utils/movimientos.ts
-import { env } from '@/config/env'
+import { nombreActual, usuarioActualId } from '@/features/auth/utils/identidad'
 import type { MovimientoStock, TipoMovimiento } from '@/features/inventario/types'
 
 type ColorChip = 'default' | 'success' | 'error' | 'warning' | 'info'
@@ -48,6 +48,6 @@ const PARECE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}
 // el backend guarda el id del usuario en las ventas y un nombre en la ingesta
 export function nombreRegistro(usuario: string | null): string {
   if (!usuario) return 'Sin registro'
-  if (usuario === env.usuarioId) return env.cajeroNombre
+  if (usuario === usuarioActualId()) return nombreActual()
   return PARECE_ID.test(usuario) ? 'Caja' : usuario
 }

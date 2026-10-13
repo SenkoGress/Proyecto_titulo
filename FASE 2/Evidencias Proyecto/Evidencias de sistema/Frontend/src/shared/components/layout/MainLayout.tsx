@@ -1,10 +1,12 @@
 // src/shared/components/layout/MainLayout.tsx
+import { Suspense } from 'react'
 import { Outlet } from 'react-router'
 import Box from '@mui/material/Box'
 import { MenuLateral } from '@/shared/components/layout/MenuLateral'
 import { BarraSuperior } from '@/shared/components/layout/BarraSuperior'
 import { BarraSuperiorTecnica } from '@/shared/components/layout/BarraSuperiorTecnica'
 import { useEsModoTecnico } from '@/shared/stores/modoVistaStore'
+import { Cargando } from '@/shared/components/ui/Cargando'
 
 // estructura comun: menu + barra + contenido
 export function MainLayout() {
@@ -20,7 +22,9 @@ export function MainLayout() {
 
         {/* pantalla actual */}
         <Box sx={{ flexGrow: 1, overflow: 'hidden', p: 2 }}>
-          <Outlet />
+          <Suspense fallback={<Cargando />}>
+            <Outlet />
+          </Suspense>
         </Box>
       </Box>
     </Box>

@@ -1,7 +1,7 @@
 // src/features/ventas/api/ventas.api.ts
 import { httpClient } from '@/lib/api/httpClient'
 import { endpoints } from '@/lib/api/endpoints'
-import { env } from '@/config/env'
+import { tenantActual, usuarioActualId } from '@/features/auth/utils/identidad'
 import type {
   ItemDevolucion,
   RespuestaDevolucion,
@@ -19,7 +19,7 @@ export async function obtenerTransacciones() {
 export async function obtenerDtesEmitidos() {
   // esta ruta lee "tenantId" (no tenant_id)
   const { data } = await httpClient.get<RespuestaDtes>(endpoints.dte.lista, {
-    params: { tenantId: env.tenantId, limit: 200 },
+    params: { tenantId: tenantActual(), limit: 200 },
   })
   return data.data
 }
@@ -31,8 +31,8 @@ export async function registrarDevolucion(variables: {
   items?: ItemDevolucion[]
 }) {
   const { data } = await httpClient.post<RespuestaDevolucion>(endpoints.pos.devolucion, {
-    tenant_id: env.tenantId,
-    usuario_id: env.usuarioId,
+    tenant_id: tenantActual(),
+    usuario_id: usuarioActualId(),
     venta_id: variables.ventaId,
     motivo: variables.motivo,
     items_devolucion: variables.items,

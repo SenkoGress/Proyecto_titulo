@@ -10,6 +10,8 @@ import { BarraStock } from '@/features/inventario/components/visual/BarraStock'
 import Tooltip from '@mui/material/Tooltip'
 import { EstadoFefoChip } from '@/features/inventario/components/tecnico/EstadoFefoChip'
 import { OrigenProducto } from '@/features/inventario/components/tecnico/OrigenProducto'
+import { ultimoCierreZ } from '@/features/inventario/utils/productoNuevo'
+import { useHistorialCaja } from '@/features/caja/hooks/useCaja'
 import { detalleIla, nombreIla, codigoIla } from '@/shared/utils/ila'
 import { calcularMargen } from '@/features/inventario/utils/calculosInventario'
 import { AccionesProducto } from '@/features/inventario/components/compartidos/AccionesProducto'
@@ -30,7 +32,7 @@ type Props = Acciones & {
 }
 
 // mismas columnas que el catalogo visual (GET /pos/inventory), mas estado fefo y lote/vencimiento
-function armarColumnas(acciones: Acciones): GridColDef<FilaFefo>[] {
+function armarColumnas(acciones: Acciones, ultimoZ: Date | null): GridColDef<FilaFefo>[] {
   return [
   {
     field: 'nivel',
@@ -156,7 +158,7 @@ function armarColumnas(acciones: Acciones): GridColDef<FilaFefo>[] {
     field: 'origen_creacion',
     headerName: 'Origen',
     width: 175,
-    renderCell: (parametros) => <OrigenProducto producto={parametros.row} />,
+    renderCell: (parametros) => <OrigenProducto producto={parametros.row} ultimoZ={ultimoZ} />,
     },
     {
       field: 'acciones',
@@ -188,9 +190,12 @@ export function TablaInventarioTecnico({
   onMerma,
   onHistorial,
 }: Props) {
+  const historial = useHistorialCaja()
+  const ultimoZ = useMemo(() => ultimoCierreZ(historial.data), [historial.data])
+
   const columnas = useMemo(
-    () => armarColumnas({ onEditar, onAjustar, onMerma, onHistorial }),
-    [onEditar, onAjustar, onMerma, onHistorial],
+    () => armarColumnas({ onEditar, onAjustar, onMerma, onHistorial }, ultimoZ),
+    [onEditar, onAjustar, onMerma, onHistorial, ultimoZ],
   )
 
   return (

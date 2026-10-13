@@ -6,6 +6,7 @@ import type {
   PeticionCheckout,
   RespuestaCheckout,
   RespuestaProductos,
+  ResultadoSync,
 } from '@/features/pos/types'
 
 // catalogo del terminal
@@ -28,6 +29,8 @@ export async function registrarVenta(peticion: PeticionCheckout) {
 
 // subir ventas pendientes
 export async function sincronizarVentas(tenantId: string) {
-  const { data } = await httpClient.post(endpoints.pos.sincronizar, { tenant_id: tenantId })
+  const { data } = await httpClient.post<ResultadoSync>(endpoints.pos.sincronizar, {
+    tenant_id: tenantId,
+  })
   return data
 }

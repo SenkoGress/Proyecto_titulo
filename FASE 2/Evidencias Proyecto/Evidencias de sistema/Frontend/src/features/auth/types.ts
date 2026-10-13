@@ -23,6 +23,11 @@ export type NuevoUsuario = {
   rol: RolUsuario
 }
 
+export type CambioDeClave = {
+  password_actual: string
+  password_nueva: string
+}
+
 export type RespuestaSesion = {
   success: boolean
   data: {
@@ -34,6 +39,11 @@ export type RespuestaSesion = {
 export type RespuestaUsuarios = {
   success: boolean
   data: Usuario[]
+}
+
+export type RespuestaPerfil = {
+  success: boolean
+  data: { usuario: Usuario }
 }
 
 export type RespuestaUsuarioCreado = {

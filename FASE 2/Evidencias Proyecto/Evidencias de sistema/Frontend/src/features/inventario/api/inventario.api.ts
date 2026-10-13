@@ -1,7 +1,7 @@
 // src/features/inventario/api/inventario.api.ts
 import { httpClient } from '@/lib/api/httpClient'
 import { endpoints } from '@/lib/api/endpoints'
-import { env } from '@/config/env'
+import { tenantActual } from '@/features/auth/utils/identidad'
 import type {
   AjusteStock,
   EdicionProducto,
@@ -30,7 +30,7 @@ export async function obtenerVencimientos() {
 // alta de producto
 export async function crearProducto(producto: NuevoProducto) {
   const { data } = await httpClient.post<{ data: ProductoInventario }>(endpoints.pos.productos, {
-    tenant_id: env.tenantId,
+    tenant_id: tenantActual(),
     ...producto,
   })
   return data.data
@@ -48,7 +48,7 @@ export async function editarProducto({ id, cambios }: EdicionProducto) {
 // conteo fisico: se manda el stock contado, el backend calcula la diferencia
 export async function ajustarStock({ id, nuevo_stock, motivo, usuario_id }: AjusteStock) {
   const { data } = await httpClient.patch<RespuestaAjusteStock>(endpoints.pos.stockProducto(id), {
-    tenant_id: env.tenantId,
+    tenant_id: tenantActual(),
     nuevo_stock,
     motivo,
     usuario_id,
@@ -58,7 +58,7 @@ export async function ajustarStock({ id, nuevo_stock, motivo, usuario_id }: Ajus
 
 export async function registrarMerma(merma: NuevaMerma) {
   const { data } = await httpClient.post(endpoints.pos.mermas, {
-    tenant_id: env.tenantId,
+    tenant_id: tenantActual(),
     ...merma,
   })
   return data

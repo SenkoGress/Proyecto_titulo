@@ -13,6 +13,7 @@ import Skeleton from '@mui/material/Skeleton'
 import Tooltip from '@mui/material/Tooltip'
 import { formatoClp } from '@/shared/utils/formatoClp'
 import { formatFechaSola } from '@/shared/utils/formatFecha'
+import { BotonDocumentoFactura } from '@/features/invoices/components/compartidos/BotonDocumentoFactura'
 import type { FacturaRegistrada } from '@/features/invoices/types'
 
 type Props = {
@@ -40,13 +41,14 @@ export function TablaFacturasCompra({ facturas, cargando, tecnico }: Props) {
               <TableCell align="right">Total factura</TableCell>
               {tecnico && <TableCell>Metodo ingesta</TableCell>}
               <TableCell>Estado</TableCell>
+              <TableCell align="center">Documento</TableCell>
             </TableRow>
           </TableHead>
 
           <TableBody>
             {facturas.length === 0 && (
               <TableRow>
-                <TableCell colSpan={tecnico ? 9 : 8}>
+                <TableCell colSpan={tecnico ? 10 : 9}>
                   <Typography variant="body2" color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>
                     Todavia no hay facturas de compra ingresadas. Se cargan desde la pantalla de Facturas.
                   </Typography>
@@ -91,6 +93,10 @@ export function TablaFacturasCompra({ facturas, cargando, tecnico }: Props) {
                   <Tooltip title="Estado con que el backend guarda la factura en factura_ingresos">
                     <Chip label={factura.estado} size="small" color="success" sx={{ fontWeight: 700 }} />
                   </Tooltip>
+                </TableCell>
+
+                <TableCell align="center">
+                  <BotonDocumentoFactura factura={factura} />
                 </TableCell>
               </TableRow>
             ))}

@@ -1,8 +1,8 @@
 // src/features/caja/api/caja.api.ts
 import { httpClient } from '@/lib/api/httpClient'
 import { endpoints } from '@/lib/api/endpoints'
-import { env } from '@/config/env'
 import type { RespuestaHistorialCaja, RespuestaResumenCaja, SesionCaja, TipoMovimiento} from '@/features/caja/types'
+import { tenantActual, usuarioActualId } from '@/features/auth/utils/identidad'
 
 // estado en vivo del turno actual (o null si no hay ninguno abierto)
 export async function obtenerResumenCaja() {
@@ -13,8 +13,8 @@ export async function obtenerResumenCaja() {
 // abrir turno con el fondo inicial de la gaveta
 export async function abrirCaja(montoApertura: number) {
   const { data } = await httpClient.post<{ success: boolean; data: SesionCaja }>(endpoints.caja.abrir, {
-    tenant_id: env.tenantId,
-    usuario_id: env.usuarioId,
+    tenant_id: tenantActual(),
+    usuario_id: usuarioActualId(),
     monto_apertura: montoApertura,
   })
   return data.data
@@ -23,8 +23,8 @@ export async function abrirCaja(montoApertura: number) {
 // arqueo y cierre: genera el balance del turno
 export async function cerrarCaja(montoRealEfectivo: number, observaciones?: string) {
   const { data } = await httpClient.post<{ success: boolean; data: SesionCaja }>(endpoints.caja.cerrar, {
-    tenant_id: env.tenantId,
-    usuario_id: env.usuarioId,
+    tenant_id: tenantActual(),
+    usuario_id: usuarioActualId(),
     monto_real_efectivo: montoRealEfectivo,
     observaciones,
   })
@@ -34,8 +34,8 @@ export async function cerrarCaja(montoRealEfectivo: number, observaciones?: stri
 // registrar un ingreso o egreso manual de efectivo
 export async function registrarMovimiento(tipo: TipoMovimiento, monto: number, motivo: string) {
   const { data } = await httpClient.post(endpoints.caja.movimiento, {
-    tenant_id: env.tenantId,
-    usuario_id: env.usuarioId,
+    tenant_id: tenantActual(),
+    usuario_id: usuarioActualId(),
     tipo,
     monto,
     motivo,

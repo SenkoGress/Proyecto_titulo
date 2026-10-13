@@ -5,12 +5,16 @@ import Typography from '@mui/material/Typography'
 import { Migas } from '@/shared/components/ui/Migas'
 import { useEsModoTecnico } from '@/shared/stores/modoVistaStore'
 import { SubirFactura } from '@/features/invoices/components/compartidos/SubirFactura'
+import { FacturaEncolada } from '@/features/invoices/components/compartidos/FacturaEncolada'
+import { PanelColaFacturas } from '@/features/invoices/components/compartidos/PanelColaFacturas'
+import { FacturaIlegible } from '@/features/invoices/components/compartidos/FacturaIlegible'
+import { noSePudoLeer } from '@/features/invoices/utils/lecturaFactura'
 import { DialogoIngresoExitoso } from '@/features/invoices/components/compartidos/DialogoIngresoExitoso'
 import { RevisionFacturaVisual } from '@/features/invoices/components/visual/RevisionFacturaVisual'
 import { RevisionFacturaTecnica } from '@/features/invoices/components/tecnico/RevisionFacturaTecnica'
 import { useConfirmarFactura } from '@/features/invoices/hooks/useInvoices'
 import { recalcularFila } from '@/features/invoices/utils/calculosFactura'
-import type { ItemFactura, PrevisualizacionFactura } from '@/features/invoices/types'
+import type { ItemFactura, PrevisualizacionFactura, ResultadoEscaneo } from '@/features/invoices/types'
 
 // fila en blanco para cuando el ocr se salto un producto de la factura
 function filaVacia(): ItemFactura {
@@ -34,16 +38,29 @@ export function IngresoFacturasPage() {
   const esModoTecnico = useEsModoTecnico()
 
   const [preview, setPreview] = useState<PrevisualizacionFactura | null>(null)
+  const [encolada, setEncolada] = useState<Extract<ResultadoEscaneo, { tipo: 'encolada' }> | null>(null)
+  const [ilegible, setIlegible] = useState<string | null>(null)
   const [items, setItems] = useState<ItemFactura[]>([])
   const [totalDeclarado, setTotalDeclarado] = useState(0)
 
   const confirmar = useConfirmarFactura()
 
-  // el ocr termino de leer la factura
-  function alEscanear(nuevaPreview: PrevisualizacionFactura) {
-    setPreview(nuevaPreview)
-    setItems(nuevaPreview.items)
-    setTotalDeclarado(nuevaPreview.total_factura)
+  // el ocr termino, quedo en cola, o la imagen no se entendio
+  function alEscanear(resultado: ResultadoEscaneo, nombreArchivo: string) {
+    if (resultado.tipo === 'encolada') {
+      setEncolada(resultado)
+      return
+    }
+
+    // el ocr respondio bien pero sin productos: no sirve de nada seguir
+    if (noSePudoLeer(resultado.preview)) {
+      setIlegible(nombreArchivo)
+      return
+    }
+
+    setPreview(resultado.preview)
+    setItems(resultado.preview.items)
+    setTotalDeclarado(resultado.preview.total_factura)
   }
 
   function cambiarFila(indice: number, cambios: Partial<ItemFactura>) {
@@ -61,6 +78,8 @@ export function IngresoFacturasPage() {
   // volver a la pantalla de subir sin guardar nada
   function cancelar() {
     setPreview(null)
+    setEncolada(null)
+    setIlegible(null)
     setItems([])
     confirmar.reset()
   }
@@ -70,16 +89,19 @@ export function IngresoFacturasPage() {
     if (!preview) return
 
     confirmar.mutate({
-      ...preview.raw_data,
-      total: totalDeclarado,
-      items: items.map((item) => ({
-        sku: item.sku,
-        descripcion: item.descripcion,
-        cantidad: item.cantidad,
-        precio_unitario: item.precio_unitario,
-        subtotal: item.subtotal,
-        unidad: item.unidad,
-      })),
+      datos: {
+        ...preview.raw_data,
+        total: totalDeclarado,
+        items: items.map((item) => ({
+          sku: item.sku,
+          descripcion: item.descripcion,
+          cantidad: item.cantidad,
+          precio_unitario: item.precio_unitario,
+          subtotal: item.subtotal,
+          unidad: item.unidad,
+        })),
+      },
+      documento: preview.documento,
     })
   }
 
@@ -91,7 +113,22 @@ export function IngresoFacturasPage() {
         Ingreso de Facturas de Proveedores
       </Typography>
 
-      {!preview && <SubirFactura onEscaneada={alEscanear} />}
+      {!preview && !encolada && !ilegible && (
+        <>
+          <PanelColaFacturas />
+          <SubirFactura onEscaneada={alEscanear} />
+        </>
+      )}
+
+      {ilegible && <FacturaIlegible nombreArchivo={ilegible} onSubirOtra={cancelar} />}
+
+      {encolada && (
+        <FacturaEncolada
+          cola={encolada.cola}
+          mensaje={encolada.mensaje}
+          onSubirOtra={cancelar}
+        />
+      )}
 
       {preview &&
         (esModoTecnico ? (

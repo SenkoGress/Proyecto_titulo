@@ -1,11 +1,11 @@
 // src/features/pos/hooks/useCobrarVenta.ts
 import { useState } from 'react'
-import { env } from '@/config/env'
 import { desglosarImpuestos } from '@/shared/utils/impuestos'
 import { useRegistrarVenta } from '@/features/pos/hooks/usePos'
 import { useCarritoStore } from '@/features/pos/stores/carritoStore'
 import { tieneAlcohol } from '@/features/pos/utils/alcohol'
 import type { ItemCheckout, VentaRegistrada } from '@/features/pos/types'
+import { tenantActual, usuarioActualId } from '@/features/auth/utils/identidad'
 
 // la venta cobrada y su redondeo, que se pierde al vaciar el carrito
 export type VentaCobrada = {
@@ -53,8 +53,8 @@ export function useCobrarVenta() {
 
     registrarVenta.mutate(
       {
-        tenant_id: env.tenantId,
-        usuario_id: env.usuarioId,
+        tenant_id: tenantActual(),
+        usuario_id: usuarioActualId(),
         items,
         metodo_pago: metodoPago,
         tipo_comprobante: tipoComprobante,

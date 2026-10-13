@@ -24,6 +24,8 @@ export type Proveedor = {
   proxima_visita: ProximaVisita
   created_at: string
   updated_at: string
+  origen_creacion: string | null // 'FACTURA' si lo creo la lectura de una factura
+  factura_origen_folio: string | null
 }
 
 export type RespuestaProveedores = {

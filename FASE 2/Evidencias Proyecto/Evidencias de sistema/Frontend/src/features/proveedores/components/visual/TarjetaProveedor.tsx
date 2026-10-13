@@ -88,7 +88,28 @@ export function TarjetaProveedor({ ficha, onPedir, onVerFacturas, onEditar }: Pr
 
           <Box sx={{ flexGrow: 1, minWidth: 0 }}>
             <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start', justifyContent: 'space-between' }}>
-              <Typography sx={{ fontWeight: 700, lineHeight: 1.3 }}>{ficha.nombre_proveedores}</Typography>
+              <Box sx={{ display: 'flex', gap: 0.75, alignItems: 'center', minWidth: 0 }}>
+                <Typography noWrap sx={{ fontWeight: 700, lineHeight: 1.3, minWidth: 0 }}>
+                  {ficha.nombre_proveedores}
+                </Typography>
+                {ficha.origen_creacion === 'FACTURA' && (
+                  <Tooltip
+                    title={
+                      ficha.factura_origen_folio
+                        ? `Lo creo la lectura de la factura ${ficha.factura_origen_folio}. Conviene revisar el RUT y el nombre.`
+                        : 'Lo creo la lectura de una factura. Conviene revisar el RUT y el nombre.'
+                    }
+                  >
+                    <Chip
+                      label="Leido de factura"
+                      size="small"
+                      color="info"
+                      variant="outlined"
+                      sx={{ height: 19, fontSize: 11, fontWeight: 700, flexShrink: 0 }}
+                    />
+                  </Tooltip>
+                )}
+              </Box>
 
               <Tooltip title="Editar proveedor">
                 <IconButton size="small" onClick={() => onEditar(ficha)}>

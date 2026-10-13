@@ -10,10 +10,10 @@ import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
 import { ErrorBox } from '@/shared/components/ui/ErrorBox'
 import { archivoABase64, validarArchivo } from '@/features/invoices/utils/archivoBase64'
 import { useEscanearFactura } from '@/features/invoices/hooks/useInvoices'
-import type { PrevisualizacionFactura } from '@/features/invoices/types'
+import type { ResultadoEscaneo } from '@/features/invoices/types'
 
 type Props = {
-  onEscaneada: (preview: PrevisualizacionFactura) => void
+  onEscaneada: (resultado: ResultadoEscaneo, nombreArchivo: string) => void
 }
 
 // paso 1: subir el archivo, antes de que pase por el ocr
@@ -38,7 +38,7 @@ export function SubirFactura({ onEscaneada }: Props) {
     const base64 = await archivoABase64(archivo)
     escanear.mutate(
       { base64, nombre: archivo.name, tipo: archivo.type },
-      { onSuccess: onEscaneada },
+      { onSuccess: (resultado) => onEscaneada(resultado, archivo.name) },
     )
   }
 

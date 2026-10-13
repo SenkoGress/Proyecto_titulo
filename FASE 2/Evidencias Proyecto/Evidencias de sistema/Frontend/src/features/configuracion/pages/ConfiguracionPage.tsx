@@ -11,13 +11,13 @@ import { SeccionEmisor } from '@/features/configuracion/components/SeccionEmisor
 import { SeccionRedondeo } from '@/features/configuracion/components/SeccionRedondeo'
 import { SeccionPciDss } from '@/features/configuracion/components/SeccionPciDss'
 import { SeccionUsuarios } from '@/features/configuracion/components/SeccionUsuarios'
-import { useUsuario } from '@/features/auth/stores/sesionStore'
+import { SeccionClave } from '@/features/configuracion/components/SeccionClave'
+import { usePuedeAdministrar } from '@/features/auth/stores/sesionStore'
 
 // configuracion del sistema
 export function ConfiguracionPage() {
-  const usuario = useUsuario()
   // las reglas del negocio las toca solo quien administra
-  const esAdmin = !usuario || usuario.rol === 'admin'
+  const esAdmin = usePuedeAdministrar()
 
   return (
     <Box sx={{ height: '100%', overflowY: 'auto' }}>
@@ -35,6 +35,7 @@ export function ConfiguracionPage() {
 
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, maxWidth: 980 }}>
         <SeccionApariencia />
+        <SeccionClave />
 
         {esAdmin && (
           <>

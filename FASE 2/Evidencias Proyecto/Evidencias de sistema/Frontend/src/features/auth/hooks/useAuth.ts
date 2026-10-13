@@ -1,6 +1,6 @@
 // src/features/auth/hooks/useAuth.ts
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { crearUsuario, iniciarSesion, obtenerUsuarios } from '@/features/auth/api/auth.api'
+import { cambiarClave, crearUsuario, iniciarSesion, obtenerUsuarios } from '@/features/auth/api/auth.api'
 import { useSesionStore } from '@/features/auth/stores/sesionStore'
 
 export function useIniciarSesion() {
@@ -27,6 +27,11 @@ export function useCrearUsuario() {
     mutationFn: crearUsuario,
     onSuccess: () => clienteQuery.invalidateQueries({ queryKey: ['auth', 'usuarios'] }),
   })
+}
+
+// cada uno cambia su propia clave
+export function useCambiarClave() {
+  return useMutation({ mutationFn: cambiarClave })
 }
 
 // al salir se borra la cache: el siguiente usuario no deberia ver datos del anterior
