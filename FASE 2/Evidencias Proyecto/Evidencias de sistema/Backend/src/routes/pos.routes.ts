@@ -10,6 +10,8 @@ import { defaultDteEmitter } from '../dte/dte-emitter.service';
 import { TipoDTE } from '../dte/types';
 import { defaultReplenishmentService } from '../replenishment/replenishment.service';
 import { defaultTenantConfigService } from '../config/tenant-config.service';
+import { defaultInvoiceQueue } from '../invoices/invoice-queue.service';
+import { defaultInvoiceIngestionService } from '../invoices/invoice-ingestion.service';
 
 import { generateChileanBarcode } from '../utils/barcode.utils';
 
@@ -893,20 +895,53 @@ router.post('/sync', async (req: Request, res: Response): Promise<void> => {
       });
     }
 
-    // 3. Obtener conteo actualizado de pendientes
+    // 3. Reintentar las facturas que quedaron sin digitalizar por falta de conexión (RF-43)
+    let colaFacturas = { procesadas: 0, fallidas: 0, pendientes: 0 };
+    try {
+      const resultadoCola = await defaultInvoiceQueue.procesarPendientes(tenantId);
+      colaFacturas = {
+        procesadas: resultadoCola.procesadas,
+        fallidas: resultadoCola.fallidas,
+        pendientes: resultadoCola.pendientes
+      };
+    } catch (colaErr) {
+      logger.warn('PosRoutes', 'La cola de facturas pendientes no pudo procesarse en esta sincronización', {
+        error: colaErr instanceof Error ? colaErr.message : String(colaErr)
+      });
+    }
+
+    // 4. Subir a la nube los documentos de factura que quedaron solo en disco (RF-46)
+    let respaldoNube = { respaldados: 0, pendientes: 0, omitidos: 0 };
+    try {
+      respaldoNube = await defaultInvoiceIngestionService.respaldarFacturasEnNube(tenantId);
+    } catch (respErr) {
+      logger.warn('PosRoutes', 'El respaldo de documentos en la nube no pudo completarse', {
+        error: respErr instanceof Error ? respErr.message : String(respErr)
+      });
+    }
+
+    // 5. Obtener conteo actualizado de pendientes
     const dirtyCountResult = sqlite.queryOne<{ count: number }>(
       'SELECT COUNT(*) as count FROM transacciones_venta WHERE is_dirty = 1'
     );
 
+    const partes = [
+      result.synced_ids.length > 0
+        ? `${result.synced_ids.length} ventas respaldadas en la nube`
+        : 'ventas ya sincronizadas',
+      colaFacturas.procesadas > 0 ? `${colaFacturas.procesadas} facturas digitalizadas desde la cola` : null,
+      respaldoNube.respaldados > 0 ? `${respaldoNube.respaldados} documentos respaldados en la nube` : null
+    ].filter(Boolean);
+
     res.status(200).json({
       success: true,
-      message: result.synced_ids.length > 0
-        ? `Sincronización completada: ${result.synced_ids.length} ventas respaldadas en la nube.`
-        : 'Todos los datos ya se encuentran sincronizados con la nube.',
+      message: `Sincronización completada: ${partes.join(' y ')}.`,
       synced_sales_count: result.synced_ids.length,
       failed_sales_count: result.failed_ids.length,
       catalog_updated_count: catalogUpdatedCount,
       pending_dirty_count: dirtyCountResult?.count || 0,
+      invoice_queue: colaFacturas,
+      invoice_document_backup: respaldoNube,
       cloud_online: true,
       result
     });
@@ -929,11 +964,13 @@ router.get('/inventory', (req: Request, res: Response): void => {
 
   try {
     const products = sqlite.query<any>(
-      `SELECT p.id, p.tenant_id, p.proveedor_id, p.sku, p.codigo_barra, p.nombre, p.stock_actual, p.stock_minimo, 
-              p.precio_compra, p.precio_venta, p.categoria, p.activo, p.updated_at,
+      `SELECT p.id, p.tenant_id, p.proveedor_id, p.sku, p.codigo_barra, p.nombre, p.stock_actual, p.stock_minimo,
+              p.precio_compra, p.precio_venta, p.categoria, p.activo, p.created_at, p.updated_at,
               p.origen_creacion, p.factura_origen_folio,
               p.lote, p.fecha_vencimiento, p.impuesto_adicional_codigo, p.impuesto_adicional_tasa,
-              pr.nombre_proveedores as proveedor_nombre
+              pr.nombre_proveedores as proveedor_nombre,
+              (SELECT MAX(h.fecha_movimiento) FROM historial_stock h
+                WHERE h.producto_id = p.id AND h.tipo_movimiento = 'ingreso_factura') as ultimo_ingreso_factura
        FROM productos p
        LEFT JOIN proveedores pr ON p.proveedor_id = pr.id
        WHERE p.tenant_id = ?

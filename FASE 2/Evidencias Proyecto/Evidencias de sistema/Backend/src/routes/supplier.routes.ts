@@ -27,6 +27,8 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
          p.email,
          COALESCE(p.dias_visita_proveedores, 'Lunes') as dias_visita_proveedores,
          (SELECT COUNT(*) FROM productos prod WHERE prod.tenant_id = p.tenant_id AND prod.proveedor_id = p.id) as productos_count,
+         COALESCE(p.origen_creacion, 'CATALOGO') as origen_creacion,
+         p.factura_origen_folio,
          p.created_at,
          p.updated_at
        FROM proveedores p

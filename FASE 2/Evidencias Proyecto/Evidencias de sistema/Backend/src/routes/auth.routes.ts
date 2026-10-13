@@ -5,9 +5,10 @@ import { v4 as uuidv4 } from 'uuid';
 import { defaultSqliteClient } from '../database/sqlite/client';
 import { defaultPgClient } from '../database/postgres/client';
 import { logger } from '../utils/logger';
+import { getJwtSecret } from '../config/auth.config';
 
 const router = Router();
-const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_jwt_key_gestock_2026_change_in_production';
+const MIN_PASSWORD_LENGTH = 8;
 
 interface UserRow {
   id: string;
@@ -83,7 +84,7 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
         rol: user.rol,
         nombre: user.nombre
       },
-      JWT_SECRET,
+      getJwtSecret(),
       { expiresIn: '24h' }
     );
 
@@ -117,7 +118,7 @@ function extractAndVerifyToken(req: Request): { valid: boolean; status: number; 
   }
   const token = authHeader.split(' ')[1];
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as any;
+    const decoded = jwt.verify(token, getJwtSecret()) as any;
     return { valid: true, status: 200, user: decoded };
   } catch {
     return { valid: false, status: 401, message: 'Token inválido o expirado' };
@@ -147,12 +148,17 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    if (password.length < 8) {
-      res.status(400).json({ success: false, message: 'La contraseña debe tener al menos 8 caracteres' });
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      res.status(400).json({ success: false, message: `La contraseña debe tener al menos ${MIN_PASSWORD_LENGTH} caracteres` });
       return;
     }
 
-    const tenant = tenant_id || auth.user?.tenant_id || (req.headers['x-tenant-id'] as string) || '00000000-0000-0000-0000-000000000001';
+    // El usuario se crea siempre en el comercio del administrador autenticado
+    const tenant = auth.user?.tenant_id as string;
+    if (!tenant || (tenant_id && tenant_id !== tenant)) {
+      res.status(403).json({ success: false, message: 'Acceso denegado: solo se pueden registrar usuarios del propio comercio' });
+      return;
+    }
     const userRole = (rol === 'admin' ? 'admin' : 'cajero') as 'admin' | 'cajero';
 
     // Verificar duplicado por tenant y email
@@ -227,7 +233,7 @@ router.get('/users', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const tenant = (req.headers['x-tenant-id'] as string) || auth.user?.tenant_id || (req.query.tenant_id as string) || '00000000-0000-0000-0000-000000000001';
+    const tenant = auth.user?.tenant_id as string;
 
     let users: any[] = [];
     try {
@@ -282,6 +288,66 @@ router.get('/me', (req: Request, res: Response): void => {
     },
     usuario: auth.user
   });
+});
+
+/**
+ * PUT /api/v1/auth/password
+ * Cambio de contraseña del usuario autenticado. Exige la contraseña actual.
+ */
+router.put('/password', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const auth = extractAndVerifyToken(req);
+    if (!auth.valid) {
+      res.status(auth.status).json({ success: false, message: auth.message });
+      return;
+    }
+
+    const { password_actual, password_nueva } = req.body;
+    if (!password_actual || !password_nueva) {
+      res.status(400).json({ success: false, message: 'Contraseña actual y nueva requeridas' });
+      return;
+    }
+    if (typeof password_nueva !== 'string' || password_nueva.length < MIN_PASSWORD_LENGTH) {
+      res.status(400).json({ success: false, message: `La contraseña debe tener al menos ${MIN_PASSWORD_LENGTH} caracteres` });
+      return;
+    }
+    if (password_nueva === password_actual) {
+      res.status(400).json({ success: false, message: 'La contraseña nueva debe ser distinta a la actual' });
+      return;
+    }
+
+    const user = defaultSqliteClient.queryOne<UserRow>(
+      'SELECT id, tenant_id, nombre, email, password_hash, rol FROM usuarios WHERE id = ? AND tenant_id = ?',
+      [auth.user?.id, auth.user?.tenant_id]
+    );
+    if (!user || !bcrypt.compareSync(password_actual, user.password_hash)) {
+      res.status(401).json({ success: false, message: 'La contraseña actual no es correcta' });
+      return;
+    }
+
+    const passwordHash = bcrypt.hashSync(password_nueva, 10);
+    defaultSqliteClient.execute(
+      "UPDATE usuarios SET password_hash = ?, updated_at = datetime('now') WHERE id = ?",
+      [passwordHash, user.id]
+    );
+
+    try {
+      const pgOnline = await defaultPgClient.healthCheck();
+      if (pgOnline) {
+        await defaultPgClient.query(
+          'UPDATE usuarios SET password_hash = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3',
+          [passwordHash, user.id, user.tenant_id]
+        );
+      }
+    } catch (err) {
+      logger.warn('AuthRoute', 'No se pudo replicar el cambio de contraseña en PostgreSQL', { error: String(err) });
+    }
+
+    res.status(200).json({ success: true, message: 'Contraseña actualizada' });
+  } catch (error) {
+    logger.error('AuthRoute', 'Error en cambio de contraseña', error);
+    res.status(500).json({ success: false, message: 'Error interno en cambio de contraseña' });
+  }
 });
 
 export default router;
