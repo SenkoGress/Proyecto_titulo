@@ -2,6 +2,8 @@ import { PostgresClient } from '../../src/database/postgres/client';
 import { InvoiceIngestionService } from '../../src/invoices/invoice-ingestion.service';
 import { OcrDispatcherService } from '../../src/ocr/ocr-dispatcher.service';
 import { createTestPostgresClient } from '../helpers/db-test-helper';
+import { defaultSqliteClient } from '../../src/database/sqlite/client';
+import { SqliteMigrator } from '../../src/database/sqlite/migrator';
 import {
   createFixtureIds,
   sampleProducto,
@@ -14,7 +16,18 @@ describe('Smart Invoice Ingestion & Resilient OCR Fallback', () => {
   let dispatcher: OcrDispatcherService;
   let ingestionService: InvoiceIngestionService;
 
+  const enableMockOcrPrevio = process.env.ENABLE_MOCK_OCR;
+
   beforeAll(async () => {
+    // Esta suite usa MockOcrProvider como extractor determinista: devuelve el JSON que recibe,
+    // lo que permite fijar la factura de entrada sin depender de Gemini. Hay que habilitarlo
+    // de forma explícita porque, por política, el simulador no participa por defecto.
+    process.env.ENABLE_MOCK_OCR = 'true';
+
+    // El espejo local necesita su esquema: esta suite nunca lo migraba, asi que la replica en
+    // SQLite fallaba con "no such table" y la ingesta solo se verificaba contra la nube
+    new SqliteMigrator(defaultSqliteClient).migrate();
+
     const pgSetup = await createTestPostgresClient();
     pgClient = pgSetup.client;
     dispatcher = new OcrDispatcherService();
@@ -22,6 +35,8 @@ describe('Smart Invoice Ingestion & Resilient OCR Fallback', () => {
   });
 
   afterAll(async () => {
+    if (enableMockOcrPrevio === undefined) delete process.env.ENABLE_MOCK_OCR;
+    else process.env.ENABLE_MOCK_OCR = enableMockOcrPrevio;
     await pgClient.close();
   });
 
@@ -36,6 +51,18 @@ describe('Smart Invoice Ingestion & Resilient OCR Fallback', () => {
     await pgClient.query(
       `INSERT INTO productos (id, tenant_id, sku, nombre, stock_actual, precio_compra, precio_venta)
        VALUES ($1, $2, $3, $4, 10.0, 500, 1000)`,
+      [prod.id, prod.tenant_id, prod.sku, prod.nombre]
+    );
+
+    // El espejo local tambien necesita el tenant y el producto: sin esto la replica en SQLite
+    // fallaba por clave foranea y la ingesta se daba por buena habiendo persistido solo en la nube
+    defaultSqliteClient.execute(
+      `INSERT OR IGNORE INTO tenants (id, nombre, estado) VALUES (?, ?, ?)`,
+      [tenant.id, tenant.nombre, tenant.estado]
+    );
+    defaultSqliteClient.execute(
+      `INSERT OR IGNORE INTO productos (id, tenant_id, sku, nombre, stock_actual, precio_compra, precio_venta)
+       VALUES (?, ?, ?, ?, 10.0, 500, 1000)`,
       [prod.id, prod.tenant_id, prod.sku, prod.nombre]
     );
 
@@ -70,7 +97,9 @@ describe('Smart Invoice Ingestion & Resilient OCR Fallback', () => {
     expect(duration).toBeLessThan(500);
 
     // Verificaciones de la ingesta
-    expect(result.folio_factura).toBe(invoicePayload.folio_factura);
+    // El folio se unifica entre motores: se quita el prefijo cuando el resto es numerico, para
+    // que la misma factura no se duplique segun si la leyo Gemini o el extractor nativo
+    expect(result.folio_factura).toBe(invoicePayload.folio_factura.replace('FAC-', ''));
     expect(result.total).toBe(20400.0);
     expect(result.items_count).toBe(1);
 
@@ -88,7 +117,7 @@ describe('Smart Invoice Ingestion & Resilient OCR Fallback', () => {
     );
     expect(invCheck.rows[0].estado).toBe('PROCESSED');
     expect(Number(invCheck.rows[0].total)).toBe(20400.0);
-    expect(invCheck.rows[0].numero_factura).toBe(invoicePayload.folio_factura);
+    expect(invCheck.rows[0].numero_factura).toBe(invoicePayload.folio_factura.replace('FAC-', ''));
 
     // 3. Comprobar que en historial_stock se registró el movimiento de tipo ingreso_factura
     const historyCheck = await pgClient.query<{ cambio: string; tipo_movimiento: string; cambio_anterior: string; nuevo_stock: string }>(
@@ -108,6 +137,10 @@ describe('Smart Invoice Ingestion & Resilient OCR Fallback', () => {
     const tenant = sampleTenant(ids.tenantId);
 
     await pgClient.query(`INSERT INTO tenants (id, nombre, estado) VALUES ($1, $2, $3)`, [tenant.id, tenant.nombre, tenant.estado]);
+    defaultSqliteClient.execute(
+      `INSERT OR IGNORE INTO tenants (id, nombre, estado) VALUES (?, ?, ?)`,
+      [tenant.id, tenant.nombre, tenant.estado]
+    );
 
     // Simulamos fallo del proveedor primario (Gemini 429 Rate Limit / Timeout)
     const result = await ingestionService.ingestInvoice(ids.tenantId, {

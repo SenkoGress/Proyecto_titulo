@@ -22,14 +22,14 @@ describe('Auth Endpoints & RBAC (RF-01, RF-02, RF-03, RNF-SEG-01, RNF-SEG-02)', 
     testServer.close(done);
   });
 
-  async function postJson(endpoint: string, body: any, headers: Record<string, string> = {}) {
+  async function postJson(endpoint: string, body: any, headers: Record<string, string> = {}, method = 'POST') {
     return new Promise<{ status: number; data: any }>((resolve, reject) => {
       const payload = JSON.stringify(body);
       const url = new URL(endpoint, baseUrl);
       const req = http.request(
         url,
         {
-          method: 'POST',
+          method,
           headers: {
             'Content-Type': 'application/json',
             'Content-Length': Buffer.byteLength(payload),
@@ -204,6 +204,23 @@ describe('Auth Endpoints & RBAC (RF-01, RF-02, RF-03, RNF-SEG-01, RNF-SEG-02)', 
       expect(res.data.success).toBe(false);
     });
 
+    it('rechaza con 403 el registro de usuarios en un comercio distinto al del token', async () => {
+      const res = await postJson(
+        '/api/v1/auth/register',
+        {
+          tenant_id: '99999999-0000-0000-0000-000000000099',
+          nombre: 'Intruso Otro Comercio',
+          email: `intruso_${Date.now()}@gestock.cl`,
+          password: 'PasswordSegura2026',
+          rol: 'admin'
+        },
+        { Authorization: `Bearer ${adminToken}` }
+      );
+
+      expect(res.status).toBe(403);
+      expect(res.data.success).toBe(false);
+    });
+
     it('rechaza registro con contraseña menor a 8 caracteres con error 400', async () => {
       const res = await postJson(
         '/api/v1/auth/register',
@@ -346,6 +363,71 @@ describe('Auth Endpoints & RBAC (RF-01, RF-02, RF-03, RNF-SEG-01, RNF-SEG-02)', 
 
       expect(res.status).toBe(200);
       expect(res.data.success).toBe(true);
+    });
+  });
+
+  describe('PUT /api/v1/auth/password (cambio de contraseña)', () => {
+    const email = `clave_test_${Date.now()}@gestock.cl`;
+    const claveInicial = 'ClaveInicial2026';
+    const claveNueva = 'ClaveNueva2026!';
+    let userToken: string;
+
+    beforeAll(async () => {
+      const adminLogin = await postJson('/api/v1/auth/login', {
+        tenant_id: tenantId,
+        email: 'admin@gestock.cl',
+        password: 'admin123'
+      });
+      await postJson(
+        '/api/v1/auth/register',
+        { tenant_id: tenantId, nombre: 'Usuario Cambio Clave', email, password: claveInicial, rol: 'cajero' },
+        { Authorization: `Bearer ${adminLogin.data.token}` }
+      );
+      const login = await postJson('/api/v1/auth/login', { tenant_id: tenantId, email, password: claveInicial });
+      userToken = login.data.token;
+    });
+
+    it('rechaza con 401 si no hay token', async () => {
+      const res = await postJson('/api/v1/auth/password', { password_actual: claveInicial, password_nueva: claveNueva }, {}, 'PUT');
+      expect(res.status).toBe(401);
+    });
+
+    it('rechaza con 401 si la contraseña actual es incorrecta', async () => {
+      const res = await postJson(
+        '/api/v1/auth/password',
+        { password_actual: 'otra_clave_123', password_nueva: claveNueva },
+        { Authorization: `Bearer ${userToken}` },
+        'PUT'
+      );
+      expect(res.status).toBe(401);
+      expect(res.data.success).toBe(false);
+    });
+
+    it('rechaza con 400 una contraseña nueva menor a 8 caracteres', async () => {
+      const res = await postJson(
+        '/api/v1/auth/password',
+        { password_actual: claveInicial, password_nueva: '123' },
+        { Authorization: `Bearer ${userToken}` },
+        'PUT'
+      );
+      expect(res.status).toBe(400);
+    });
+
+    it('cambia la contraseña: la nueva permite entrar y la anterior deja de servir', async () => {
+      const res = await postJson(
+        '/api/v1/auth/password',
+        { password_actual: claveInicial, password_nueva: claveNueva },
+        { Authorization: `Bearer ${userToken}` },
+        'PUT'
+      );
+      expect(res.status).toBe(200);
+      expect(res.data.success).toBe(true);
+
+      const loginNueva = await postJson('/api/v1/auth/login', { tenant_id: tenantId, email, password: claveNueva });
+      expect(loginNueva.status).toBe(200);
+
+      const loginAnterior = await postJson('/api/v1/auth/login', { tenant_id: tenantId, email, password: claveInicial });
+      expect(loginAnterior.status).toBe(401);
     });
   });
 });
