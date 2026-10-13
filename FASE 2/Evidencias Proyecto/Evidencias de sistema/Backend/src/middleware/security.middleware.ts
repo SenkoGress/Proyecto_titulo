@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { logger } from '../utils/logger';
+import { getJwtSecret } from '../config/auth.config';
 
 /**
  * Configuracion de CORS (Cross-Origin Resource Sharing)
@@ -123,12 +124,47 @@ export const validateTenantAndAuth = (req: Request, res: Response, next: NextFun
   next();
 };
 
-const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_jwt_key_gestock_2026_change_in_production';
+/**
+ * Tenants que la petición declara (cabecera, query, body o /trends/:tenantId).
+ * Se comparan contra el tenant del token para impedir operar sobre otro comercio.
+ */
+function requestedTenantIds(req: Request, fullPath: string): string[] {
+  const candidates: unknown[] = [
+    req.headers['x-tenant-id'],
+    req.query?.tenant_id,
+    req.query?.tenantId,
+    req.body?.tenant_id,
+    req.body?.tenantId
+  ];
+
+  const trendsMatch = req.method === 'GET' ? /^\/api\/v1\/trends\/([^/]+)$/.exec(fullPath) : null;
+  if (trendsMatch && trendsMatch[1] !== 'sync') {
+    candidates.push(trendsMatch[1]);
+  }
+
+  return candidates
+    .flatMap((value) => (Array.isArray(value) ? value : [value]))
+    .filter((value): value is string => typeof value === 'string' && value.trim() !== '')
+    .map((value) => value.trim().toLowerCase());
+}
+
+/**
+ * Rutas DTE que el cajero necesita para entregar el comprobante de una venta
+ * (datos del emisor, ticket, XML y envío por correo). El resto de /dte sigue siendo solo admin.
+ */
+function isCashierDteRoute(method: string | undefined, fullPath: string): boolean {
+  if (method === 'GET') {
+    return /^\/api\/v1\/dte\/(config|list|[^/]+\/(receipt|xml))$/.test(fullPath);
+  }
+  return method === 'POST' && fullPath === '/api/v1/dte/send-email';
+}
 
 /**
  * Middleware de Control de Acceso Basado en Roles (RBAC) y Seguridad JWT
  * - Rutas exclusivas de administrador: /dashboard, /invoices, /suppliers, /replenishment, /dte, /config
- * - Rutas de cajero / admin: /pos, /caja
+ * - Rutas de cajero / admin: /pos, /caja y las rutas DTE del comprobante de venta (isCashierDteRoute)
+ * - Con token, el tenant declarado en la petición debe coincidir con el del token (aislamiento multi-tenant)
+ * - Con token, el usuario_id del body se reemplaza por el id del usuario autenticado
  * - Cuando ENFORCE_AUTH=true, exige token en todas las rutas protegidas
  * - Si no está activado ENFORCE_AUTH, respeta peticiones con Bearer token (aplicando RBAC)
  *   o permite paso en modo desarrollo/pruebas si no hay token.
@@ -162,7 +198,7 @@ export const rbacAuthMiddleware = (req: Request, res: Response, next: NextFuncti
   if (hasBearer) {
     const token = authHeader.split(' ')[1];
     try {
-      decodedUser = (require('jsonwebtoken') as typeof import('jsonwebtoken')).verify(token, JWT_SECRET) as any;
+      decodedUser = (require('jsonwebtoken') as typeof import('jsonwebtoken')).verify(token, getJwtSecret()) as any;
       (req as any).user = decodedUser;
     } catch {
       res.status(401).json({
@@ -181,8 +217,28 @@ export const rbacAuthMiddleware = (req: Request, res: Response, next: NextFuncti
 
   // Verificación estricta de RBAC si el usuario está autenticado
   if (decodedUser) {
+    const tokenTenant = String(decodedUser.tenant_id || '').toLowerCase();
+    const foreignTenant = requestedTenantIds(req, fullPath).find((tenant) => tenant !== tokenTenant);
+    if (foreignTenant) {
+      logger.warn('SecurityMiddleware', 'Acceso denegado: tenant solicitado distinto al del token', {
+        userId: decodedUser.id,
+        tokenTenant,
+        requestedTenant: foreignTenant
+      });
+      res.status(403).json({
+        success: false,
+        message: 'Acceso denegado: el comercio solicitado no corresponde a la sesion'
+      });
+      return;
+    }
+
+    // El autor de ventas, aperturas de caja y devoluciones es el usuario de la sesion, no el que declare el cliente
+    if (req.body && typeof req.body === 'object' && 'usuario_id' in req.body && decodedUser.id) {
+      req.body.usuario_id = decodedUser.id;
+    }
+
     const isAdminRoute = /^\/api\/v1\/(dashboard|invoices|suppliers|replenishment|dte|config)(\/|$)/.test(fullPath);
-    if (isAdminRoute && decodedUser.rol !== 'admin') {
+    if (isAdminRoute && decodedUser.rol !== 'admin' && !isCashierDteRoute(req.method, fullPath)) {
       logger.warn('SecurityMiddleware', `Acceso denegado a ruta admin (${fullPath}) para rol ${decodedUser.rol}`, {
         userId: decodedUser.id,
         email: decodedUser.email

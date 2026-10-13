@@ -17,6 +17,7 @@ import { dteRouter } from './routes/dte.routes';
 import { dashboardRouter } from './routes/dashboard.routes';
 import authRoutes from './routes/auth.routes';
 import { logger } from './utils/logger';
+import { assertAuthConfig } from './config/auth.config';
 
 import {
   corsMiddleware,
@@ -26,6 +27,9 @@ import {
   rbacAuthMiddleware,
   globalErrorHandler
 } from './middleware/security.middleware';
+
+// Detiene el arranque en produccion si la firma JWT no es segura
+assertAuthConfig();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
