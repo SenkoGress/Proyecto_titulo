@@ -10,6 +10,7 @@ import { useReloj } from '@/shared/hooks/useReloj'
 import { useConfigDte } from '@/features/dte/hooks/useConfigDte'
 import { useEstadoPos } from '@/features/pos/hooks/usePos'
 import { BotonSincronizar } from '@/shared/components/layout/BotonSincronizar'
+import { IndicadorClima } from '@/shared/components/layout/IndicadorClima'
 
 // color del punto por estado
 const colorEstado = {
@@ -81,6 +82,9 @@ export function BarraSuperiorTecnica() {
           {ahora.toLocaleTimeString('es-CL')}
         </Typography>
       </Box>
+
+      {/* clima de hoy */}
+      <IndicadorClima compacto />
 
       <BotonSincronizar />
     </Paper>

@@ -15,6 +15,9 @@ import type {
 // leer una factura con gemini toma cerca de 20 segundos, mas que el resto de llamadas
 const ESPERA_OCR_MS = 60_000
 
+// la cola puede traer varias facturas y cada una pasa por el ocr
+const ESPERA_COLA_MS = 180_000
+
 // paso 1: escanear con ocr, no modifica la base de datos.
 // si ningun motor logra leerla el backend responde 202 y la deja en cola
 export async function escanearFactura(
@@ -89,7 +92,11 @@ export async function procesarPendientes() {
   const { data } = await httpClient.post<{
     success: boolean
     data: { procesadas: number; fallidas: number; pendientes: number }
-  }>(endpoints.invoices.procesarPendientes, { tenant_id: tenantActual() })
+  }>(
+    endpoints.invoices.procesarPendientes,
+    { tenant_id: tenantActual() },
+    { timeout: ESPERA_COLA_MS },
+  )
   return data.data
 }
 

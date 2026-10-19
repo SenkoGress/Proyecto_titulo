@@ -3,7 +3,6 @@ import { Navigate, useLocation } from 'react-router'
 import Box from '@mui/material/Box'
 import Paper from '@mui/material/Paper'
 import Typography from '@mui/material/Typography'
-import PointOfSaleIcon from '@mui/icons-material/PointOfSale'
 import { FormularioLogin } from '@/features/auth/components/FormularioLogin'
 import { useHaySesion } from '@/features/auth/stores/sesionStore'
 
@@ -35,18 +34,11 @@ export function LoginPage() {
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
           <Box
-            sx={{
-              width: 44,
-              height: 44,
-              borderRadius: 2,
-              bgcolor: 'primary.main',
-              color: 'primary.contrastText',
-              display: 'grid',
-              placeItems: 'center',
-            }}
-          >
-            <PointOfSaleIcon />
-          </Box>
+            component="img"
+            src="/logo-gestock.png"
+            alt="GesTock"
+            sx={{ width: 48, height: 48, objectFit: 'contain' }}
+          />
           <Box>
             <Typography variant="h6" sx={{ fontWeight: 800, lineHeight: 1.1 }}>
               GesTock

@@ -102,11 +102,23 @@ export function MenuLateral() {
       {/* logo */}
       <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', px: 2, py: 1.25, flexShrink: 0 }}>
         <Box
-          component="img"
-          src="/logo-gestock.png"
-          alt="GesTock"
-          sx={{ width: 34, height: 34, objectFit: 'contain' }}
-        />
+          sx={{
+            width: 38,
+            height: 38,
+            borderRadius: 2,
+            bgcolor: '#ffffff',
+            display: 'grid',
+            placeItems: 'center',
+            flexShrink: 0,
+          }}
+        >
+          <Box
+            component="img"
+            src="/logo-gestock.png"
+            alt="GesTock"
+            sx={{ width: 30, height: 30, objectFit: 'contain' }}
+          />
+        </Box>
         <Box>
           <Typography sx={{ fontWeight: 700, lineHeight: 1.2 }}>GesTock</Typography>
           <Typography variant="caption" sx={{ color: coloresMenu.textoApagado }}>

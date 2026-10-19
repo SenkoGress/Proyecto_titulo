@@ -8,6 +8,7 @@ import Divider from '@mui/material/Divider'
 import Alert from '@mui/material/Alert'
 import ScheduleOutlined from '@mui/icons-material/ScheduleOutlined'
 import { usePendientes, useProcesarPendientes } from '@/features/invoices/hooks/useInvoices'
+import { obtenerMensajeError } from '@/lib/api/apiError'
 import { formatFecha } from '@/shared/utils/formatFecha'
 import type { FacturaEnCola } from '@/features/invoices/types'
 
@@ -53,6 +54,12 @@ export function PanelColaFacturas() {
           <FilaCola key={factura.id} factura={factura} maximo={cola.data?.intentos_maximos ?? 3} />
         ))}
       </Box>
+
+      {procesar.isError && (
+        <Alert severity="error" sx={{ mt: 1.5 }}>
+          {obtenerMensajeError(procesar.error)}
+        </Alert>
+      )}
 
       {procesar.isSuccess && (
         <Alert severity={procesar.data.procesadas > 0 ? 'success' : 'info'} sx={{ mt: 1.5 }}>

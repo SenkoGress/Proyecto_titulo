@@ -2,9 +2,11 @@
 import Box from '@mui/material/Box'
 import Paper from '@mui/material/Paper'
 import Typography from '@mui/material/Typography'
+import Divider from '@mui/material/Divider'
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday'
 import { useReloj } from '@/shared/hooks/useReloj'
 import { BotonSincronizar } from '@/shared/components/layout/BotonSincronizar'
+import { IndicadorClima } from '@/shared/components/layout/IndicadorClima'
 
 // barra superior del modo visual
 export function BarraSuperior() {
@@ -33,6 +35,11 @@ export function BarraSuperior() {
           {ahora.toLocaleTimeString('es-CL')}
         </Typography>
       </Box>
+
+      <Divider orientation="vertical" flexItem />
+
+      {/* clima de hoy */}
+      <IndicadorClima />
 
       <Box sx={{ flexGrow: 1 }} />
 
