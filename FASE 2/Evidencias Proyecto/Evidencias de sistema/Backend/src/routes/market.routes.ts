@@ -5,6 +5,14 @@ import { logger } from '../utils/logger';
 
 const router = Router();
 
+const FUENTES_SOLICITABLES: MarketSource[] = ['MercadoLibre', 'AliExpress'];
+
+/** El cliente puede escribir la fuente en cualquier caja; 'Simulado' no es solicitable. */
+function fuenteCanonica(valor: unknown): MarketSource | null {
+  if (typeof valor !== 'string') return null;
+  return FUENTES_SOLICITABLES.find((f) => f.toLowerCase() === valor.trim().toLowerCase()) || null;
+}
+
 /**
  * POST /api/v1/trends/sync
  * Sincroniza tendencias de demanda de producto desde MercadoLibre o AliExpress
@@ -20,12 +28,23 @@ router.post('/sync', async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
+  // 'Simulado' es un desenlace del servidor, no una fuente que el cliente pueda pedir,
+  // y una fuente desconocida terminaba en un 500 al chocar con la restriccion de la tabla.
+  const fuente = fuenteCanonica(source);
+  if (!fuente) {
+    res.status(400).json({
+      success: false,
+      message: `source debe ser una de: ${FUENTES_SOLICITABLES.join(', ')}`
+    });
+    return;
+  }
+
   try {
     const trend = await defaultMarketTrendsService.syncMarketTrend(
       tenant_id,
       sku,
       keyword,
-      source as MarketSource,
+      fuente,
       simulate_failure === true
     );
     res.status(200).json({ success: true, trend });

@@ -93,7 +93,9 @@ describe('Market Intelligence Trends & Replenishment Integration', () => {
     );
 
     expect(fallbackTrend).toBeDefined();
-    expect(fallbackTrend.source).toBe('MercadoLibre');
+    // La contingencia se declara como tal: esta afirmacion exigia antes 'MercadoLibre', con lo
+    // que el dato que calcula el propio sistema quedaba atribuido a un tercero que no respondio
+    expect(fallbackTrend.source).toBe('Simulado');
     expect(fallbackTrend.demandIndex).toBe(70.0); // Valor del mock de contingencia
     expect(fallbackTrend.averageMarketPrice).toBe(1500.0);
 

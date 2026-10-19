@@ -43,8 +43,9 @@ export class MarketTrendsService {
       logger.warn('MarketTrendsService', `Market API ${source} no respondio. Activando proveedor simulado de contingencia.`, {
         error: err instanceof Error ? err.message : String(err)
       });
+      // El dato de contingencia conserva su propia fuente: atribuirlo al proveedor
+      // externo que no respondio deja al usuario creyendo que el numero vino de ahi.
       trend = await this.fallbackProvider.fetchTrend(tenantId, sku, keyword);
-      trend.source = source;
     }
 
     const trendId = uuidv4();

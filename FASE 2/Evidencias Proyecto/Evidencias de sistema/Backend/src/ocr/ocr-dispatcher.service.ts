@@ -23,9 +23,27 @@ export class OcrDispatcherService {
     // Distingue el documento ilegible (reintentar no sirve) de la falla de servicio (sí sirve)
     let algunMotorRespondio = false;
 
-    // 1. Intentar proveedor primario (Google Gemini AI) si está configurado
+    // 1. Extractor nativo de PDF primero: corre en el equipo del local, no sale nada a internet,
+    // no cuesta nada y resuelve las facturas digitales, que son la mayoría. Solo si no logra sacar
+    // los campos se recurre al servicio externo.
     try {
-      logger.info('OcrDispatcher', `Attempting OCR extraction with primary provider: ${this.primaryProvider.name}`);
+      const pdfData = await defaultPdfInvoiceExtractor.extractFromPdf(input);
+      if (pdfData) algunMotorRespondio = true;
+      if (extraccionUtilizable(pdfData)) {
+        logger.info('OcrDispatcher', 'Invoice read locally with the native Chilean PDF DTE extractor');
+        return {
+          data: this.normalizar(pdfData as ExtractedInvoiceData),
+          usedFallback: false,
+          providerName: 'ChileanPdfDteExtractor'
+        };
+      }
+    } catch (pdfErr) {
+      logger.debug('OcrDispatcher', 'Native PDF extraction not applicable', { error: String(pdfErr) });
+    }
+
+    // 2. Servicio externo (Google Gemini), que recorre su propia lista de modelos
+    try {
+      logger.info('OcrDispatcher', `Falling back to the external provider: ${this.primaryProvider.name}`);
       const data = await this.primaryProvider.extractInvoiceData(input);
       algunMotorRespondio = true;
 
@@ -34,32 +52,14 @@ export class OcrDispatcherService {
       if (extraccionUtilizable(data)) {
         return {
           data: this.normalizar(data),
-          usedFallback: false,
+          usedFallback: true,
           providerName: this.primaryProvider.name
         };
       }
 
-      // Se deriva a la cadena de respaldo igual que una falla: el extractor nativo puede resolver
-      // un PDF digital que Gemini no supo leer.
       throw new Error(`${this.primaryProvider.name} respondió sin folio ni detalle utilizable`);
     } catch (primaryError) {
-      logger.warn('OcrDispatcher', `Primary provider ${this.primaryProvider.name} unavailable or failed: ${primaryError instanceof Error ? primaryError.message : String(primaryError)}`);
-
-      // 2. Intentar extractor nativo de PDF (Digital Chilean DTE) si es un PDF o contiene texto DTE
-      try {
-        const pdfData = await defaultPdfInvoiceExtractor.extractFromPdf(input);
-        if (pdfData) algunMotorRespondio = true;
-        if (extraccionUtilizable(pdfData)) {
-          logger.info('OcrDispatcher', `Successfully extracted invoice metadata using native Chilean PDF DTE Extractor`);
-          return {
-            data: this.normalizar(pdfData as ExtractedInvoiceData),
-            usedFallback: true,
-            providerName: 'ChileanPdfDteExtractor'
-          };
-        }
-      } catch (pdfErr) {
-        logger.debug('OcrDispatcher', 'PDF native extraction attempt failed or not applicable', { error: String(pdfErr) });
-      }
+      logger.warn('OcrDispatcher', `External provider ${this.primaryProvider.name} unavailable or failed: ${primaryError instanceof Error ? primaryError.message : String(primaryError)}`);
 
       // 3. Fallback controlado
       // El simulador solo participa si se habilita por configuración (ENABLE_MOCK_OCR=true) o si

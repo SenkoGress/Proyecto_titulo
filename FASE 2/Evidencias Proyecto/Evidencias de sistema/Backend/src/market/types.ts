@@ -1,4 +1,6 @@
-export type MarketSource = 'MercadoLibre' | 'AliExpress';
+// 'Simulado' identifica al proveedor de contingencia. Sin ese valor el dato que el
+// sistema calcula localmente queda registrado bajo la fuente externa solicitada.
+export type MarketSource = 'MercadoLibre' | 'AliExpress' | 'Simulado';
 
 export interface MarketTrendItem {
   id?: string;

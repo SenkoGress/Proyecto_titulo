@@ -3,7 +3,7 @@ import { MarketSource, MarketTrendItem } from './types';
 import { logger } from '../utils/logger';
 
 export class MockMarketProvider implements IMarketIntelligenceProvider {
-  public source: MarketSource = 'MercadoLibre';
+  public source: MarketSource = 'Simulado';
 
   public async fetchTrend(
     tenantId: string,
