@@ -482,9 +482,14 @@ export class InvoiceIngestionService {
           const newStock = previousStock + itemCantidad;
 
           await client.query(
+            // La fecha que se conserva es la mas proxima, no la ultima recibida: al reponer un
+            // producto el stock antiguo sigue en gondola, y quedarse con la fecha del lote nuevo
+            // oculta lo que vence antes. Un solo campo por producto no puede representar dos
+            // lotes, asi que ante la duda el sistema avisa de mas y no de menos.
             `UPDATE productos 
              SET stock_actual = $1, precio_compra = $2, factura_origen_folio = $3,
-                 lote = COALESCE($6, lote), fecha_vencimiento = COALESCE($7, fecha_vencimiento),
+                 lote = COALESCE($6, lote),
+                 fecha_vencimiento = LEAST(COALESCE($7, fecha_vencimiento), COALESCE(fecha_vencimiento, $7)),
                  updated_at = now() 
              WHERE id = $4 AND tenant_id = $5`,
             [newStock, unitPrice, invoiceData.folio_factura, productId, tenantId, item.lote ?? null, item.fecha_vencimiento ?? null]
@@ -659,8 +664,8 @@ export class InvoiceIngestionService {
             productId = sqliteProd.id;
             prevStock = Number(sqliteProd.stock_actual);
             defaultSqliteClient.execute(
-              "UPDATE productos SET stock_actual = stock_actual + ?, precio_compra = ?, factura_origen_folio = ?, lote = COALESCE(?, lote), fecha_vencimiento = COALESCE(?, fecha_vencimiento), updated_at = datetime('now') WHERE id = ?",
-              [itemCantidad, unitPrice, invoiceData.folio_factura, item.lote ?? null, item.fecha_vencimiento ?? null, productId]
+              "UPDATE productos SET stock_actual = stock_actual + ?, precio_compra = ?, factura_origen_folio = ?, lote = COALESCE(?, lote), fecha_vencimiento = MIN(COALESCE(?, fecha_vencimiento), COALESCE(fecha_vencimiento, ?)), updated_at = datetime('now') WHERE id = ?",
+              [itemCantidad, unitPrice, invoiceData.folio_factura, item.lote ?? null, item.fecha_vencimiento ?? null, item.fecha_vencimiento ?? null, productId]
             );
           } else {
             productId = uuidv4();
