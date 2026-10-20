@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { PostgresClient, defaultPgClient } from '../database/postgres/client';
 import { Producto } from '../database/types';
 import { logger } from '../utils/logger';
+import { defaultLotesService } from '../inventory/lotes.service';
 import { SyncPullResponse, SyncPushPayload, SyncPushResponse } from './types';
 
 export class CloudSyncReceiverService {
@@ -12,6 +13,7 @@ export class CloudSyncReceiverService {
   }
 
   public async ingestPushBatch(payload: SyncPushPayload): Promise<SyncPushResponse> {
+    const consumosDeLote: Array<{ productoId: string; cantidad: number }> = [];
     const startTime = Date.now();
     const syncedIds: string[] = [];
     const failedIds: string[] = [];
@@ -150,6 +152,13 @@ export class CloudSyncReceiverService {
                   ]
                 );
 
+                // El descuento por lote se acumula y se aplica una vez confirmada la venta:
+                // la contabilidad de lotes no puede hacer fracasar la sincronizacion
+                consumosDeLote.push({
+                  productoId: detail.producto_id,
+                  cantidad: Math.abs(delta)
+                });
+
                 // Registrar auditoría en movimientos_inventario
                 await client.query(
                   `INSERT INTO movimientos_inventario 
@@ -177,6 +186,9 @@ export class CloudSyncReceiverService {
           }
         }
       });
+
+      // Fuera de la transaccion y a prueba de fallos: la venta ya quedo registrada
+      await defaultLotesService.consumirFefoEnNube(payload.tenant_id, consumosDeLote);
 
       const duration = Date.now() - startTime;
       logger.info('CloudSyncReceiver', `Successfully ingested sync push batch in ${duration}ms`, {

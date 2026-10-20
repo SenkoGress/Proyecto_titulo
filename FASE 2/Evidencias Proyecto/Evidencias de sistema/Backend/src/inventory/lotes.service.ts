@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import { defaultSqliteClient, SqliteClient } from '../database/sqlite/client';
+import { defaultPgClient, PostgresClient } from '../database/postgres/client';
 import { logger } from '../utils/logger';
 
 export interface Lote {
@@ -147,6 +148,81 @@ export class LotesService {
         productoId,
         error: error instanceof Error ? error.message : String(error)
       });
+    }
+  }
+
+  /**
+   * Replica el lote en la nube al ingresar la compra. La nube mantiene su propia existencia por
+   * lote, igual que mantiene su propio `stock_actual`: ambas van por detras del nodo local hasta
+   * que la sincronizacion las alcanza, que es la condicion normal de un sistema sin conexion.
+   */
+  public async registrarEnNube(
+    tenantId: string,
+    productoId: string,
+    cantidad: number,
+    fechaVencimiento: string | null | undefined,
+    codigoLote?: string | null,
+    folio?: string | null,
+    pg: PostgresClient = defaultPgClient
+  ): Promise<void> {
+    if (!fechaVencimiento || Number(cantidad) <= 0 || !pg.isCloudAvailable()) return;
+
+    try {
+      await pg.query(
+        `INSERT INTO lotes (tenant_id, producto_id, codigo_lote, cantidad, fecha_vencimiento, factura_origen_folio, origen)
+         VALUES ($1, $2, $3, $4, $5, $6, 'INGESTA')`,
+        [tenantId, productoId, codigoLote ?? null, Number(cantidad), fechaVencimiento, folio ?? null]
+      );
+    } catch (error) {
+      logger.warn('LotesService', 'No fue posible replicar el lote en la nube', {
+        productoId,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  }
+
+  /**
+   * Descuenta en la nube lo vendido, con el mismo orden de vencimiento que el nodo local.
+   *
+   * Se ejecuta DESPUES de que la venta quedo confirmada, y en su propia consulta, nunca dentro de
+   * la transaccion de la venta. El motivo es concreto: pg-mem no admite SAVEPOINT, de modo que un
+   * error aqui dentro de esa transaccion la abortaria entera y la venta sincronizada se perderia.
+   * Los lotes son contabilidad sobre el stock y no pueden hacer fracasar el registro de una venta.
+   */
+  public async consumirFefoEnNube(
+    tenantId: string,
+    consumos: Array<{ productoId: string; cantidad: number }>,
+    pg: PostgresClient = defaultPgClient
+  ): Promise<void> {
+    if (consumos.length === 0 || !pg.isCloudAvailable()) return;
+
+    for (const { productoId, cantidad } of consumos) {
+      let restante = Number(cantidad);
+      if (restante <= 0) continue;
+
+      try {
+        const lotes = await pg.query<{ id: string; cantidad: string }>(
+          `SELECT id, cantidad FROM lotes
+           WHERE tenant_id = $1 AND producto_id = $2 AND cantidad > 0
+           ORDER BY fecha_vencimiento ASC, created_at ASC`,
+          [tenantId, productoId]
+        );
+
+        for (const lote of lotes.rows) {
+          if (restante <= 0) break;
+          const toma = Math.min(Number(lote.cantidad), restante);
+          await pg.query(
+            'UPDATE lotes SET cantidad = cantidad - $1, updated_at = now() WHERE id = $2',
+            [toma, lote.id]
+          );
+          restante -= toma;
+        }
+      } catch (error) {
+        logger.warn('LotesService', 'No fue posible descontar el lote en la nube', {
+          productoId,
+          error: error instanceof Error ? error.message : String(error)
+        });
+      }
     }
   }
 

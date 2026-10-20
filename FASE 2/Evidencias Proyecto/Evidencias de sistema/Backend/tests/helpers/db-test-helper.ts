@@ -7,22 +7,38 @@ import { SqliteMigrator } from '../../src/database/sqlite/migrator';
 import path from 'path';
 
 export async function createTestPostgresClient(): Promise<{ client: PostgresClient; migrator: PostgresMigrator }> {
+  // Pedir PostgreSQL real y recibir pg-mem en silencio hacia que una suite corriera sobre un
+  // motor distinto al del resto de la corrida, sin dejar rastro. Asi se oculto durante dos
+  // ejecuciones una sentencia valida en PostgreSQL que pg-mem no implementa: la suite que caia
+  // al motor en memoria fallaba, las demas pasaban, y el fallo parecia intermitente.
+  // Si se pidio el motor real y no esta disponible, la corrida se detiene y lo dice.
   if (process.env.USE_REAL_PG === 'true') {
-    try {
-      const realClient = new PostgresClient();
-      const isHealthy = await realClient.healthCheck(500);
+    const realClient = new PostgresClient();
+    let detalle = '';
+    let isHealthy = false;
 
-      if (isHealthy) {
-        const migrator = new PostgresMigrator(
-          realClient,
-          path.resolve(__dirname, '../../src/database/postgres/migrations')
-        );
-        await migrator.migrate();
-        return { client: realClient, migrator };
-      }
-    } catch {
-      // If connection to real Postgres fails, proceed with in-memory pg-mem
+    try {
+      // Un contenedor recien levantado puede tardar mas de medio segundo en contestar
+      isHealthy = await realClient.healthCheck(5000);
+    } catch (err) {
+      detalle = err instanceof Error ? err.message : String(err);
     }
+
+    if (!isHealthy) {
+      throw new Error(
+        'USE_REAL_PG=true pero PostgreSQL no respondio la sonda de salud. La corrida se detiene ' +
+          'en vez de continuar sobre el motor en memoria, porque eso haria pasar por verificado ' +
+          'contra PostgreSQL algo que no lo esta. Levante el contenedor o quite USE_REAL_PG. ' +
+          (detalle ? `Detalle: ${detalle}` : '')
+      );
+    }
+
+    const migrator = new PostgresMigrator(
+      realClient,
+      path.resolve(__dirname, '../../src/database/postgres/migrations')
+    );
+    await migrator.migrate();
+    return { client: realClient, migrator };
   }
 
   const mem = newDb({

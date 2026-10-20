@@ -371,6 +371,7 @@ export class InvoiceIngestionService {
     documento?: DocumentoFactura
   ): Promise<IngestionResult> {
     const startTime = Date.now();
+    const lotesParaLaNube: Array<{ productoId: string; cantidad: number; fechaVencimiento: string; codigoLote: string | null }> = [];
     const configuredMargin = await defaultTenantConfigService.getProfitMargin(tenantId);
 
     let invoiceId = uuidv4();
@@ -699,6 +700,18 @@ export class InvoiceIngestionService {
             'INGESTA'
           );
 
+          // La nube mantiene su propia existencia por lote y la descuenta cuando la venta
+          // sincroniza, igual que hace con el stock del producto. El bloque local es sincrono,
+          // asi que la replica se acumula y se envia al terminar.
+          if (item.fecha_vencimiento) {
+            lotesParaLaNube.push({
+              productoId: productId,
+              cantidad: itemCantidad,
+              fechaVencimiento: item.fecha_vencimiento,
+              codigoLote: item.lote ?? null
+            });
+          }
+
           // Registrar en producto_proveedores en SQLite
           defaultSqliteClient.execute(
             `INSERT INTO producto_proveedores 
@@ -733,6 +746,18 @@ export class InvoiceIngestionService {
       throw new Error(
         'La factura no pudo registrarse en el nodo local, por lo que no se da por ingresada. ' +
         'Revise los datos extraídos e inténtelo de nuevo o ingrésela manualmente.'
+      );
+    }
+
+    // Replica de los lotes en la nube, una vez que el nodo local ya los registro
+    for (const l of lotesParaLaNube) {
+      await defaultLotesService.registrarEnNube(
+        tenantId,
+        l.productoId,
+        l.cantidad,
+        l.fechaVencimiento,
+        l.codigoLote,
+        invoiceData.folio_factura
       );
     }
 
