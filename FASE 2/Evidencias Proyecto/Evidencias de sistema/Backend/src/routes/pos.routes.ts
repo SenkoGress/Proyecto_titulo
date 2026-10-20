@@ -6,6 +6,7 @@ import { defaultPaymentDispatcher } from '../payments/payment-dispatcher.service
 import { defaultPosSyncEngine } from '../sync/pos-sync-engine.service';
 import { aplicarRedondeoChileno } from '../utils/pricing';
 import { logger } from '../utils/logger';
+import { defaultLotesService } from '../inventory/lotes.service';
 import { defaultDteEmitter } from '../dte/dte-emitter.service';
 import { TipoDTE } from '../dte/types';
 import { defaultReplenishmentService } from '../replenishment/replenishment.service';
@@ -417,6 +418,9 @@ router.post('/mermas', async (req: Request, res: Response): Promise<void> => {
 
       sqlite.execute("UPDATE productos SET stock_actual = ?, updated_at = datetime('now') WHERE id = ?", [nuevoStock, producto_id]);
 
+      // Una merma suele ser justamente el lote vencido: se descuenta por el mismo orden
+      defaultLotesService.consumirFefo(tenant_id, producto_id, Number(cantidad));
+
       // 3. Registrar en historial de stock (tipo_movimiento 'merma')
       sqlite.execute(
         `INSERT INTO historial_stock 
@@ -691,6 +695,10 @@ router.post('/checkout', async (req: Request, res: Response): Promise<void> => {
           'UPDATE productos SET stock_actual = stock_actual - ? WHERE id = ?',
           [item.cantidad, item.producto_id]
         );
+
+        // Descuento por lote, lo que vence antes sale antes. No interrumpe la venta si los
+        // lotes no cubren la cantidad: el stock del producto manda y la diferencia se registra.
+        defaultLotesService.consumirFefo(tenant_id, item.producto_id, Number(item.cantidad));
 
         // Registrar en historial_stock
         const historyId = uuidv4();
@@ -1003,6 +1011,8 @@ router.get('/vencimientos', (req: Request, res: Response): void => {
       [tenantId]
     );
 
+    const unidadesPorLote = defaultLotesService.unidadesPorProducto(tenantId);
+
     const clasificados = rows.map(r => {
       const dias = Math.round(Number(r.dias_restantes));
       let estado = 'VIGENTE';
@@ -1026,7 +1036,11 @@ router.get('/vencimientos', (req: Request, res: Response): void => {
         ...r,
         dias_restantes: dias,
         estado,
-        nivel_riesgo: nivelRiesgo
+        nivel_riesgo: nivelRiesgo,
+        // Unidades que vencen en esa fecha segun los lotes. Null cuando ningun lote respalda
+        // al producto, que es el caso de la existencia anterior a la gestion por lote: ahi el
+        // sistema conoce la fecha pero no la cantidad, y decirlo es mejor que suponer el total.
+        unidades_por_vencer: unidadesPorLote.has(r.id) ? Number(unidadesPorLote.get(r.id)) : null
       };
     });
 
@@ -1036,7 +1050,11 @@ router.get('/vencimientos', (req: Request, res: Response): void => {
       riesgo_medio_15d: clasificados.filter(c => c.dias_restantes > 7 && c.dias_restantes <= 15).length,
       vence_30_dias: clasificados.filter(c => c.dias_restantes > 15 && c.dias_restantes <= 30).length,
       total_con_vencimiento: clasificados.length,
-      total_en_riesgo: clasificados.filter(c => c.dias_restantes <= 30).length
+      total_en_riesgo: clasificados.filter(c => c.dias_restantes <= 30).length,
+      unidades_en_riesgo_30d: clasificados
+        .filter(c => c.dias_restantes <= 30 && c.unidades_por_vencer !== null)
+        .reduce((suma, c) => suma + Number(c.unidades_por_vencer), 0),
+      productos_sin_detalle_de_lote: clasificados.filter(c => c.unidades_por_vencer === null).length
     };
 
     res.status(200).json({ success: true, total: clasificados.length, resumen, data: clasificados });

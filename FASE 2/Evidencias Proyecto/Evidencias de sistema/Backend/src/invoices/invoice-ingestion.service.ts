@@ -8,6 +8,7 @@ import { DocumentoFactura, InvoiceFileStore, defaultInvoiceFileStore } from './i
 import { calcularPrecioVenta, desglosarIvaChileno } from '../utils/pricing';
 import { generateChileanBarcode } from '../utils/barcode.utils';
 import { logger } from '../utils/logger';
+import { defaultLotesService } from '../inventory/lotes.service';
 
 export interface IngestionResult {
   invoice_id: string;
@@ -489,7 +490,12 @@ export class InvoiceIngestionService {
             `UPDATE productos 
              SET stock_actual = $1, precio_compra = $2, factura_origen_folio = $3,
                  lote = COALESCE($6, lote),
-                 fecha_vencimiento = LEAST(COALESCE($7, fecha_vencimiento), COALESCE(fecha_vencimiento, $7)),
+                 fecha_vencimiento = CASE
+                   WHEN $7::date IS NULL THEN fecha_vencimiento
+                   WHEN fecha_vencimiento IS NULL THEN $7::date
+                   WHEN $7::date < fecha_vencimiento THEN $7::date
+                   ELSE fecha_vencimiento
+                 END,
                  updated_at = now() 
              WHERE id = $4 AND tenant_id = $5`,
             [newStock, unitPrice, invoiceData.folio_factura, productId, tenantId, item.lote ?? null, item.fecha_vencimiento ?? null]
@@ -680,6 +686,18 @@ export class InvoiceIngestionService {
           }
 
           const newStock = prevStock + itemCantidad;
+
+          // Cada compra con fecha de vencimiento entra como un lote propio. Asi el sistema sabe
+          // cuantas unidades vencen en cada fecha y no solo cual es la mas proxima.
+          defaultLotesService.registrar(
+            tenantId,
+            productId,
+            itemCantidad,
+            item.fecha_vencimiento,
+            item.lote,
+            invoiceData.folio_factura,
+            'INGESTA'
+          );
 
           // Registrar en producto_proveedores en SQLite
           defaultSqliteClient.execute(
