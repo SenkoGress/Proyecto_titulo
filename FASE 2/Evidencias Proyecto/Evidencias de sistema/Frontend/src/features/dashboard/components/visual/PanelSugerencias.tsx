@@ -18,8 +18,8 @@ type Props = {
 }
 
 const ETIQUETA = {
-  reponer: { texto: 'Repone', color: 'warning' },
-  liquidar: { texto: 'Liquida', color: 'error' },
+  rotacion: { texto: 'Rotacion', color: 'warning' },
+  vencimiento: { texto: 'Por vencer', color: 'error' },
 } as const
 
 function Fila({ sugerencia }: { sugerencia: Sugerencia }) {
@@ -40,7 +40,7 @@ function Fila({ sugerencia }: { sugerencia: Sugerencia }) {
   )
 }
 
-// que conviene hacer hoy, calculado sobre las ventas y los vencimientos del local
+// sugerencias de promocion sobre datos propios: rotacion y vencimiento proximo
 export function PanelSugerencias({ velocidades, vencimientos, cargando }: Props) {
   const sugerencias = armarSugerencias(velocidades, vencimientos)
 
@@ -49,12 +49,12 @@ export function PanelSugerencias({ velocidades, vencimientos, cargando }: Props)
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
         <LightbulbOutlined color="action" />
         <Typography variant="h6" sx={{ fontWeight: 700 }}>
-          Sugerencias para el local
+          Sugerencias de promocion
         </Typography>
       </Box>
 
       <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-        Calculadas sobre tus ventas de los ultimos 30 dias y las fechas de vencimiento cargadas.
+        Calculadas sobre las ventas de los ultimos 30 dias y las fechas de vencimiento cargadas.
       </Typography>
 
       <Divider />

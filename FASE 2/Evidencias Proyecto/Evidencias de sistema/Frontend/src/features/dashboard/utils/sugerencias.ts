@@ -2,7 +2,7 @@
 import type { ProductoVencimiento } from '@/features/inventario/types'
 import type { VelocidadProducto } from '@/features/replenishment/types'
 
-export type TipoSugerencia = 'reponer' | 'liquidar'
+export type TipoSugerencia = 'rotacion' | 'vencimiento'
 
 export type Sugerencia = {
   id: string
@@ -26,7 +26,7 @@ export function sugerenciasPorRotacion(velocidades: VelocidadProducto[]): Sugere
     .map((p) => ({
       id: p.productId,
       nombre: p.nombre,
-      tipo: 'reponer' as const,
+      tipo: 'rotacion' as const,
       motivo: p.isAgotado
         ? `Agotado y se vende ${p.velocityDaily} al dia`
         : `Quedan ${p.stockActual} y se vende ${p.velocityDaily} al dia`,
@@ -47,7 +47,7 @@ export function sugerenciasPorVencimiento(vencimientos: ProductoVencimiento[]): 
     .map((p) => ({
       id: p.id,
       nombre: p.nombre,
-      tipo: 'liquidar' as const,
+      tipo: 'vencimiento' as const,
       motivo: `${p.unidades_por_vencer} un. vencen en ${p.dias_restantes} dias`,
       urgencia: p.dias_restantes,
     }))

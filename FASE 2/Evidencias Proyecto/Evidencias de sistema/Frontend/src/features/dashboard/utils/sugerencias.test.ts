@@ -38,7 +38,7 @@ describe('sugerenciasPorRotacion', () => {
   it('sugiere reponer lo que se vende y esta bajo el punto de reorden', () => {
     const r = sugerenciasPorRotacion([velocidad({})])
     expect(r).toHaveLength(1)
-    expect(r[0].tipo).toBe('reponer')
+    expect(r[0].tipo).toBe('rotacion')
     expect(r[0].motivo).toContain('Quedan 3')
   })
 
@@ -59,7 +59,7 @@ describe('sugerenciasPorRotacion', () => {
 describe('sugerenciasPorVencimiento', () => {
   it('sugiere liquidar lo que vence pronto y tiene stock', () => {
     const r = sugerenciasPorVencimiento([vencimiento({})])
-    expect(r[0].tipo).toBe('liquidar')
+    expect(r[0].tipo).toBe('vencimiento')
     expect(r[0].motivo).toBe('12 un. vencen en 10 dias')
   })
 
@@ -85,7 +85,7 @@ describe('armarSugerencias', () => {
       [velocidad({ stockActual: 9, isUnderStock: true })],
       [vencimiento({ dias_restantes: 2 })],
     )
-    expect(r[0].tipo).toBe('liquidar')
+    expect(r[0].tipo).toBe('vencimiento')
   })
 
   it('sin datos no inventa sugerencias', () => {
