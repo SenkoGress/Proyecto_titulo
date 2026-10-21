@@ -1,0 +1,256 @@
+erDiagram
+    %% ========================================================
+    %% 1. NUCLEO MULTI-TENANT & SAAS CLOUD
+    %% ========================================================
+    PLANES_FACTURACION ||--o{ TENANTS : "asigna_plan"
+    PLANES_FACTURACION ||--o{ HISTORIAL_PLANES : "registra_historial"
+    TENANTS ||--o{ USUARIOS : "agrupa"
+    TENANTS ||--o{ HISTORIAL_PLANES : "posee"
+    TENANTS ||--o{ CONFIGURACION_SISTEMA : "personaliza"
+    USUARIOS ||--o{ NOTIFICACIONES_TOKENS : "genera"
+
+    %% ========================================================
+    %% 2. MODULO DE PROVEEDORES & COMPRAS (CORREGIDO)
+    %% ========================================================
+    TENANTS ||--o{ PROVEEDORES : "gestiona"
+    PROVEEDORES ||--o{ CATALOGO_BORRADORES : "propone"
+    PROVEEDORES ||--o{ FACTURA_INGRESOS : "emite_a"
+    
+    FACTURA_INGRESOS ||--|{ DETALLE_FACTURA_INGRESOS : "desglosa_en"
+    PRODUCTOS ||--o{ DETALLE_FACTURA_INGRESOS : "comprado_en"
+
+    %% ========================================================
+    %% 3. MODULO DE INVENTARIO & KARDEX DE AUDITORIA
+    %% ========================================================
+    TENANTS ||--o{ PRODUCTOS : "posee_catalogo"
+    PROVEEDORES ||--o{ PRODUCTOS : "proveedor_principal"
+    PRODUCTOS ||--o{ LOTES : "controla_vencimiento"
+    
+    PRODUCTOS ||--o{ MOVIMIENTOS_INVENTARIO : "audita_stock"
+    MOVIMIENTOS_INVENTARIO_TIPOS ||--o{ MOVIMIENTOS_INVENTARIO : "clasifica_origen"
+
+    %% ========================================================
+    %% 4. MODULO DE VENTAS, CAJA & FACTURACION (DTE / SII)
+    %% ========================================================
+    USUARIOS ||--o{ SESIONES_CAJA : "opera_caja"
+    SESIONES_CAJA ||--o{ MOVIMIENTOS_CAJA : "entradas_salidas"
+    SESIONES_CAJA ||--o{ TRANSACCIONES_VENTA : "contiene_ventas"
+    
+    TRANSACCIONES_VENTA ||--|{ DETALLE_VENTA : "desglosa_en"
+    PRODUCTOS ||--o{ DETALLE_VENTA : "se_vende_en"
+    
+    METODOS_PAGO ||--o{ TRANSACCIONES_VENTA : "paga_con"
+    TRANSACCIONES_VENTA ||--o| DOCUMENTOS_TRIBUTARIOS : "genera_dte"
+
+    %% ========================================================
+    %% DEFINICION DE ENTIDADES Y ATRIBUTOS
+    %% ========================================================
+
+    PLANES_FACTURACION {
+        uuid id PK
+        string nombre
+        numeric precio_mensual
+        numeric precio_anual
+        integer descuento_anual
+        boolean activo
+    }
+
+    TENANTS {
+        uuid id PK
+        uuid plan_id FK
+        string rut_empresa
+        string razon_social
+        string estado
+        timestamp created_at
+    }
+
+    USUARIOS {
+        uuid id PK
+        uuid tenant_id FK
+        string nombre
+        string email
+        string password_hash
+        string rol
+        timestamp created_at
+    }
+
+    NOTIFICACIONES_TOKENS {
+        uuid id PK
+        uuid usuario_id FK
+        string tipo
+        string token
+        boolean activo
+        timestamp expiracion
+    }
+
+    HISTORIAL_PLANES {
+        uuid id PK
+        uuid tenant_id FK
+        uuid plan_id FK
+        timestamp fecha_cambio
+        string metodo_pago
+        numeric monto_pagado
+    }
+
+    CONFIGURACION_SISTEMA {
+        uuid id PK
+        uuid tenant_id FK
+        string clave
+        string valor
+        string descripcion
+    }
+
+    PROVEEDORES {
+        uuid id PK
+        uuid tenant_id FK
+        string rut_proveedor
+        string nombre_proveedor
+        string dias_visita
+        string email
+        string telefono
+    }
+
+    CATALOGO_BORRADORES {
+        uuid id PK
+        uuid tenant_id FK
+        uuid proveedor_id FK
+        string estado_revision
+        timestamp fecha_ingreso
+        string notas
+    }
+
+    FACTURA_INGRESOS {
+        uuid id PK
+        uuid tenant_id FK
+        uuid proveedor_id FK
+        string numero_factura
+        date fecha_ingreso
+        string estado
+        string metodo_ingreso
+        numeric total_neto
+        numeric total_iva
+        numeric total_factura
+    }
+
+    DETALLE_FACTURA_INGRESOS {
+        uuid id PK
+        uuid factura_id FK
+        uuid producto_id FK
+        numeric cantidad
+        numeric costo_unitario_neto
+        numeric subtotal
+        string lote
+        date fecha_vencimiento
+        numeric impuesto_ila
+    }
+
+    PRODUCTOS {
+        uuid id PK
+        uuid tenant_id FK
+        uuid proveedor_id FK
+        string codigo_barra
+        string sku
+        string nombre
+        numeric stock_actual
+        numeric stock_minimo
+        numeric precio_compra
+        numeric precio_venta
+        string categoria
+        boolean activo
+    }
+
+    LOTES {
+        uuid id PK
+        uuid producto_id FK
+        string numero_lote
+        numeric cantidad_lote
+        date fecha_vencimiento
+        string estado_sanitario
+    }
+
+    MOVIMIENTOS_INVENTARIO_TIPOS {
+        uuid id PK
+        string codigo
+        string nombre
+        string descripcion
+    }
+
+    MOVIMIENTOS_INVENTARIO {
+        uuid id PK
+        uuid tenant_id FK
+        uuid producto_id FK
+        uuid tipo_movimiento_id FK
+        numeric cantidad
+        numeric saldo_anterior
+        numeric nuevo_saldo
+        uuid id_origen
+        string tipo_origen
+        timestamp fecha_movimiento
+        string usuario_registro
+    }
+
+    SESIONES_CAJA {
+        uuid id PK
+        uuid tenant_id FK
+        uuid usuario_id FK
+        numeric fondo_inicial
+        numeric efectivo_esperado
+        numeric efectivo_real
+        numeric diferencia_cuadratura
+        timestamp fecha_apertura
+        timestamp fecha_cierre
+        string estado
+    }
+
+    MOVIMIENTOS_CAJA {
+        uuid id PK
+        uuid sesion_id FK
+        string tipo_movimiento
+        numeric monto
+        string motivo
+        timestamp fecha
+    }
+
+    TRANSACCIONES_VENTA {
+        uuid id PK
+        uuid tenant_id FK
+        uuid sesion_id FK
+        uuid usuario_id FK
+        uuid metodo_pago_id FK
+        string folio_interno
+        timestamp fecha
+        numeric monto_neto
+        numeric monto_iva
+        integer ley_redondeo
+        numeric total
+        string rut_cliente
+        string estado
+        integer is_dirty
+        string sync_status
+    }
+
+    DETALLE_VENTA {
+        uuid id PK
+        uuid venta_id FK
+        uuid producto_id FK
+        numeric cantidad
+        numeric precio_unitario
+        numeric subtotal
+    }
+
+    METODOS_PAGO {
+        uuid id PK
+        string nombre
+        string pasarela
+        boolean activo
+    }
+
+    DOCUMENTOS_TRIBUTARIOS {
+        uuid id PK
+        uuid venta_id FK
+        integer tipo_dte
+        integer folio_sii
+        timestamp fecha_emision
+        string ted_xml_timbre
+        string estado_sii
+    }

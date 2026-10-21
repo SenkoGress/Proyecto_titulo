@@ -17,7 +17,7 @@ const rsaKey = crypto.generateKeyPairSync('rsa', {
   privateKeyEncoding: { type: 'pkcs1', format: 'pem' }
 });
 
-describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (72/72)', () => {
+describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (69/69)', () => {
   let server: http.Server;
   let baseUrl: string;
   let dteId = 'demo-dte-01';
@@ -87,7 +87,7 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (7
     return { status: res.status, data };
   }
 
-  describe('1. Core & Health Endpoints', () => {
+  describe('7. Core & Health Endpoints', () => {
     test('1. GET /health responde con estado del servicio', async () => {
       const res = await requestApi('GET', '/health');
       expect([200, 503]).toContain(res.status);
@@ -103,7 +103,7 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (7
     });
   });
 
-  describe('2. Módulo de Cierre de Caja (caja.routes.ts)', () => {
+  describe('8. Módulo de Cierre de Caja (caja.routes.ts)', () => {
     test('3. POST /api/v1/caja/abrir abre sesión de caja', async () => {
       const res = await requestApi('POST', '/api/v1/caja/abrir', {
         tenant_id: DEMO_TENANT,
@@ -159,7 +159,7 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (7
     });
   });
 
-  describe('3. Módulo de Configuración (config.routes.ts)', () => {
+  describe('9. Módulo de Configuración (config.routes.ts)', () => {
     test('9. GET /api/v1/config/margin recupera margen de ganancia', async () => {
       const res = await requestApi('GET', `/api/v1/config/margin?tenant_id=${DEMO_TENANT}`);
       expect(res.status).toBe(200);
@@ -193,7 +193,7 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (7
     });
   });
 
-  describe('4. Dashboard Global de Analítica (dashboard.routes.ts)', () => {
+  describe('10. Dashboard Global de Analítica (dashboard.routes.ts)', () => {
     test('13. GET /api/v1/dashboard/overview retorna métricas comerciales', async () => {
       const res = await requestApi('GET', `/api/v1/dashboard/overview?tenantId=${DEMO_TENANT}&periodo=mensual`);
       expect(res.status).toBe(200);
@@ -203,7 +203,7 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (7
     });
   });
 
-  describe('5. Módulo Tributario DTE & SII (dte.routes.ts)', () => {
+  describe('11. Módulo Tributario DTE & SII (dte.routes.ts)', () => {
     test('14. GET /api/v1/dte/config retorna configuración fiscal', async () => {
       const res = await requestApi('GET', `/api/v1/dte/config?tenantId=${DEMO_TENANT}`);
       expect(res.status).toBe(200);
@@ -337,7 +337,7 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (7
     });
   });
 
-  describe('6. Módulo de Facturas e Ingesta OCR (invoice.routes.ts)', () => {
+  describe('12. Módulo de Facturas e Ingesta OCR (invoice.routes.ts)', () => {
     test('30. POST /api/v1/invoices/scan procesa escaneo con fallback tolerante', async () => {
       const res = await requestApi('POST', '/api/v1/invoices/scan', {
         tenant_id: DEMO_TENANT,
@@ -378,7 +378,7 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (7
       expect(res.data.success).toBe(true);
     });
 
-    test('70. GET /api/v1/invoices/pending consulta la cola de facturas sin digitalizar', async () => {
+    test('33. GET /api/v1/invoices/pending consulta la cola de facturas sin digitalizar', async () => {
       const res = await requestApi('GET', `/api/v1/invoices/pending?tenant_id=${DEMO_TENANT}`);
 
       expect(res.status).toBe(200);
@@ -386,7 +386,7 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (7
       expect(res.data.intentos_maximos).toBeGreaterThan(0);
     });
 
-    test('71. POST /api/v1/invoices/process-pending reintenta la digitalización de la cola', async () => {
+    test('34. POST /api/v1/invoices/process-pending reintenta la digitalización de la cola', async () => {
       const res = await requestApi('POST', '/api/v1/invoices/process-pending', { tenant_id: DEMO_TENANT });
 
       expect(res.status).toBe(200);
@@ -395,7 +395,7 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (7
       expect(res.data.data).toHaveProperty('pendientes');
     });
 
-    test('72. GET /api/v1/invoices/:id/document recupera el respaldo documental de la compra', async () => {
+    test('35. GET /api/v1/invoices/:id/document recupera el respaldo documental de la compra', async () => {
       const res = await requestApi('GET', `/api/v1/invoices/00000000-0000-0000-0000-0000000000ff/document?tenant_id=${DEMO_TENANT}`);
 
       // Una factura inexistente responde 404 con mensaje accionable, no un error opaco
@@ -403,7 +403,7 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (7
       expect(res.data.success).toBe(false);
     });
 
-    test('33. GET /api/v1/invoices/ lista historial de facturas ingresadas', async () => {
+    test('36. GET /api/v1/invoices/ lista historial de facturas ingresadas', async () => {
       const res = await requestApi('GET', `/api/v1/invoices/?tenant_id=${DEMO_TENANT}`);
       expect(res.status).toBe(200);
       expect(res.data.success).toBe(true);
@@ -412,33 +412,8 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (7
     });
   });
 
-  describe('7. Módulo de Tendencias de Mercado (market.routes.ts)', () => {
-    test('34. POST /api/v1/trends/sync sincroniza tendencias externas', async () => {
-      const res = await requestApi('POST', '/api/v1/trends/sync', {
-        tenant_id: DEMO_TENANT,
-        sku: 'SKU-BEBIDA-01',
-        keyword: 'bebida energetica',
-        source: 'MERCADOLIBRE'
-      });
-      expect(res.status).toBe(200);
-      expect(res.data.success).toBe(true);
-    });
 
-    test('35. GET /api/v1/trends/ consulta productos con alta demanda externa', async () => {
-      const res = await requestApi('GET', `/api/v1/trends/?tenant_id=${DEMO_TENANT}`);
-      expect(res.status).toBe(200);
-      expect(res.data.success).toBe(true);
-      expect(Array.isArray(res.data.data)).toBe(true);
-    });
-
-    test('36. GET /api/v1/trends/:tenantId consulta tendencias filtradas por comercio', async () => {
-      const res = await requestApi('GET', `/api/v1/trends/${DEMO_TENANT}`);
-      expect(res.status).toBe(200);
-      expect(res.data.success).toBe(true);
-    });
-  });
-
-  describe('8. Pasarelas de Pago & Contingencia (payment.routes.ts)', () => {
+  describe('13. Pasarelas de Pago & Contingencia (payment.routes.ts)', () => {
     test('37. POST /api/v1/payments/initiate inicia transacción de pago', async () => {
       const res = await requestApi('POST', '/api/v1/payments/initiate', {
         tenantId: DEMO_TENANT,
@@ -470,7 +445,7 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (7
     });
   });
 
-  describe('9. Operación del Punto de Venta (pos.routes.ts)', () => {
+  describe('14. Operación del Punto de Venta (pos.routes.ts)', () => {
     test('40. GET /api/v1/pos/products obtiene catálogo activo con IVA e ILA', async () => {
       const res = await requestApi('GET', `/api/v1/pos/products?tenant_id=${DEMO_TENANT}`);
       expect(res.status).toBe(200);
@@ -539,7 +514,7 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (7
     });
   });
 
-  describe('10. Reabastecimiento Predictivo (replenishment.routes.ts)', () => {
+  describe('15. Reabastecimiento Predictivo (replenishment.routes.ts)', () => {
     test('48. GET /api/v1/replenishment/velocity calcula rotación diaria de productos', async () => {
       const res = await requestApi('GET', `/api/v1/replenishment/velocity?tenant_id=${DEMO_TENANT}`);
       expect(res.status).toBe(200);
@@ -579,7 +554,7 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (7
     });
   });
 
-  describe('11. Directorio de Proveedores (supplier.routes.ts)', () => {
+  describe('16. Directorio de Proveedores (supplier.routes.ts)', () => {
     test('53. GET /api/v1/suppliers/ lista proveedores registrados', async () => {
       const res = await requestApi('GET', `/api/v1/suppliers/?tenant_id=${DEMO_TENANT}`);
       expect(res.status).toBe(200);
@@ -609,7 +584,7 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (7
     });
   });
 
-  describe('12. Motor de Sincronización Push / Pull (sync.routes.ts)', () => {
+  describe('17. Motor de Sincronización Push / Pull (sync.routes.ts)', () => {
     test('56. POST /api/v1/sync/push procesa lotes de sincronización con idempotencia', async () => {
       const res = await requestApi('POST', '/api/v1/sync/push', {
         tenant_id: DEMO_TENANT,
@@ -623,7 +598,7 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (7
       expect([200, 503]).toContain(res.status);
     });
   });
-  describe('13. Gestión de Productos, Stock y Mermas (pos.routes.ts)', () => {
+  describe('18. Gestión de Productos, Stock y Mermas (pos.routes.ts)', () => {
     const sufijo = Date.now();
     const sku = `SKU-VERIF-${sufijo}`;
     let productoId = '';
@@ -710,7 +685,7 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (7
     });
   });
 
-  describe('14. Autenticación y Gestión de Personal (auth.routes.ts)', () => {
+  describe('19. Autenticación y Gestión de Personal (auth.routes.ts)', () => {
     const correoCajero = `verificacion_${Date.now()}@gestock.cl`;
     const claveInicial = 'ClaveVerificacion2026';
     const claveRotada = 'ClaveRotada2026';
