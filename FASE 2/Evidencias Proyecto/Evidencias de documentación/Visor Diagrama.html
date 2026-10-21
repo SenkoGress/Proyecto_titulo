@@ -1,256 +1,72 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GesTock - Visor del Diagrama de Base de Datos</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.0/mermaid.min.js"></script>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
-    body { background: #0f172a; color: #f8fafc; padding: 20px; }
-    header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px; }
-    h1 { font-size: 20px; color: #38bdf8; }
-    .subtitle { font-size: 13px; color: #94a3b8; margin-top: 2px; }
-    
-    /* Tabs Navigation */
-
-    /* Contenedor */
-    .container { background: #1e293b; border-radius: 12px; border: 1px solid #334155; padding: 20px; overflow: auto; min-height: 600px; }
-    .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
-    button.tool-btn { background: #0f172a; color: #38bdf8; border: 1px solid #334155; padding: 8px 14px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; }
-    button.tool-btn:hover { background: #0284c7; color: white; border-color: #0284c7; }
-    
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GesTock - Modelo de datos</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    margin: 0;
+    padding: 24px;
+    font-family: "Segoe UI", system-ui, sans-serif;
+    background: #ffffff;
+    color: #1f3a5f;
+  }
+  header { border-bottom: 1px solid #d6dde6; padding-bottom: 12px; margin-bottom: 20px; }
+  h1 { font-size: 19px; margin: 0 0 4px; }
+  p.meta { margin: 0; font-size: 13px; color: #556; }
+  .diagrama { overflow: auto; }
+</style>
 </head>
 <body>
-  <header>
-    <div>
-      <h1>GesTock - Modelo Entidad-Relación</h1>
-      <div class="subtitle">Persistencia dual PostgreSQL Cloud y SQLite local</div>
-    </div>
-  </header>
-
-  <div id="erd">
-    <div class="toolbar">
-      <button class="tool-btn" onclick="descargarSVG()">🖼️ Descargar SVG</button>
-      <button class="tool-btn" onclick="window.location.href='diagrama_base_de_datos.svg'">🔍 Abrir SVG Directo</button>
-      <button class="tool-btn" onclick="window.print()">🖨️ Imprimir</button>
-    </div>
-    <div class="container" style="display: flex; justify-content: center;">
-      <div class="mermaid" id="erdTarget">
+<header>
+  <h1>GesTock · Modelo de datos</h1>
+  <p class="meta">29 entidades y 45 relaciones por clave foránea. Generado desde el esquema de la base de datos.</p>
+</header>
+<div class="diagrama">
+<pre class="mermaid">
 erDiagram
-    PLANES_FACTURACION ||--o{ TENANTS : "asigna_plan"
-    PLANES_FACTURACION ||--o{ HISTORIAL_PLANES : "registra_historial"
-    TENANTS ||--o{ USUARIOS : "agrupa"
-    TENANTS ||--o{ HISTORIAL_PLANES : "posee"
-    TENANTS ||--o{ CONFIGURACION_SISTEMA : "personaliza"
-    USUARIOS ||--o{ NOTIFICACIONES_TOKENS : "genera"
+    %% Diagrama entidad-relacion de GesTock
+    %% Generado desde el esquema real de la base de datos en la nube.
+    %% 29 entidades y 45 relaciones por clave foranea.
 
-    TENANTS ||--o{ PROVEEDORES : "gestiona"
-    PROVEEDORES ||--o{ CATALOGO_BORRADORES : "propone"
-    PROVEEDORES ||--o{ FACTURA_INGRESOS : "emite_a"
-    
-    FACTURA_INGRESOS ||--|{ DETALLE_FACTURA_INGRESOS : "desglosa_en"
-    PRODUCTOS ||--o{ DETALLE_FACTURA_INGRESOS : "comprado_en"
-
-    TENANTS ||--o{ PRODUCTOS : "posee_catalogo"
-    PROVEEDORES ||--o{ PRODUCTOS : "proveedor_principal"
-    PRODUCTOS ||--o{ LOTES : "controla_vencimiento"
-    
-    PRODUCTOS ||--o{ MOVIMIENTOS_INVENTARIO : "audita_stock"
-    MOVIMIENTOS_INVENTARIO_TIPOS ||--o{ MOVIMIENTOS_INVENTARIO : "clasifica_origen"
-
-    USUARIOS ||--o{ SESIONES_CAJA : "opera_caja"
-    SESIONES_CAJA ||--o{ MOVIMIENTOS_CAJA : "entradas_salidas"
-    SESIONES_CAJA ||--o{ TRANSACCIONES_VENTA : "contiene_ventas"
-    
-    TRANSACCIONES_VENTA ||--|{ DETALLE_VENTA : "desglosa_en"
-    PRODUCTOS ||--o{ DETALLE_VENTA : "se_vende_en"
-    
-    METODOS_PAGO ||--o{ TRANSACCIONES_VENTA : "paga_con"
-    TRANSACCIONES_VENTA ||--o| DOCUMENTOS_TRIBUTARIOS : "genera_dte"
-
-    PLANES_FACTURACION {
-        uuid id PK
-        string nombre
-        numeric precio_mensual
-        numeric precio_anual
-        integer descuento_anual
-        boolean activo
+    _MIGRATIONS {
+        int id PK
     }
 
-    TENANTS {
-        uuid id PK
-        uuid plan_id FK
-        string rut_empresa
-        string razon_social
-        string estado
-        timestamp created_at
-    }
-
-    USUARIOS {
+    CAJA_MOVIMIENTOS {
         uuid id PK
         uuid tenant_id FK
-        string nombre
-        string email
-        string password_hash
-        string rol
-        timestamp created_at
-    }
-
-    NOTIFICACIONES_TOKENS {
-        uuid id PK
-        uuid usuario_id FK
-        string tipo
-        string token
-        boolean activo
-        timestamp expiracion
-    }
-
-    HISTORIAL_PLANES {
-        uuid id PK
-        uuid tenant_id FK
-        uuid plan_id FK
-        timestamp fecha_cambio
-        string metodo_pago
-        numeric monto_pagado
-    }
-
-    CONFIGURACION_SISTEMA {
-        uuid id PK
-        uuid tenant_id FK
-        string clave
-        string valor
-        string descripcion
-    }
-
-    PROVEEDORES {
-        uuid id PK
-        uuid tenant_id FK
-        string rut_proveedor
-        string nombre_proveedor
-        string dias_visita
-        string email
-        string telefono
+        uuid sesion_caja_id FK
+        varchar tipo
+        numeric monto
+        varchar motivo
     }
 
     CATALOGO_BORRADORES {
         uuid id PK
         uuid tenant_id FK
         uuid proveedor_id FK
-        string estado_revision
+        varchar estado_revision_catalogo
         timestamp fecha_ingreso
-        string notas
     }
 
-    FACTURA_INGRESOS {
-        uuid id PK
-        uuid tenant_id FK
-        uuid proveedor_id FK
-        string numero_factura
-        date fecha_ingreso
-        string estado
-        string metodo_ingreso
-        numeric total_neto
-        numeric total_iva
-        numeric total_factura
-    }
-
-    DETALLE_FACTURA_INGRESOS {
-        uuid id PK
-        uuid factura_id FK
-        uuid producto_id FK
-        numeric cantidad
-        numeric costo_unitario_neto
-        numeric subtotal
-        string lote
-        date fecha_vencimiento
-        numeric impuesto_ila
-    }
-
-    PRODUCTOS {
-        uuid id PK
-        uuid tenant_id FK
-        uuid proveedor_id FK
-        string codigo_barra
-        string sku
-        string nombre
-        numeric stock_actual
-        numeric stock_minimo
-        numeric precio_compra
-        numeric precio_venta
-        string categoria
-        boolean activo
-    }
-
-    LOTES {
-        uuid id PK
-        uuid producto_id FK
-        string numero_lote
-        numeric cantidad_lote
-        date fecha_vencimiento
-        string estado_sanitario
-    }
-
-    MOVIMIENTOS_INVENTARIO_TIPOS {
-        uuid id PK
-        string codigo
-        string nombre
-        string descripcion
-    }
-
-    MOVIMIENTOS_INVENTARIO {
-        uuid id PK
-        uuid tenant_id FK
-        uuid producto_id FK
-        uuid tipo_movimiento_id FK
-        numeric cantidad
-        numeric saldo_anterior
-        numeric nuevo_saldo
-        uuid id_origen
-        string tipo_origen
-        timestamp fecha_movimiento
-        string usuario_registro
-    }
-
-    SESIONES_CAJA {
+    CIERRES_CAJA {
         uuid id PK
         uuid tenant_id FK
         uuid usuario_id FK
-        numeric fondo_inicial
-        numeric efectivo_esperado
-        numeric efectivo_real
-        numeric diferencia_cuadratura
         timestamp fecha_apertura
         timestamp fecha_cierre
-        string estado
+        numeric monto_apertura
+        numeric total_ventas
     }
 
-    MOVIMIENTOS_CAJA {
-        uuid id PK
-        uuid sesion_id FK
-        string tipo_movimiento
-        numeric monto
-        string motivo
-        timestamp fecha
-    }
-
-    TRANSACCIONES_VENTA {
+    CONFIGURACION_SISTEMA {
         uuid id PK
         uuid tenant_id FK
-        uuid sesion_id FK
-        uuid usuario_id FK
-        uuid metodo_pago_id FK
-        string folio_interno
-        timestamp fecha
-        numeric monto_neto
-        numeric monto_iva
-        integer ley_redondeo
-        numeric total
-        string rut_cliente
-        string estado
-        integer is_dirty
-        string sync_status
+        varchar clave
+        text valor
     }
 
     DETALLE_VENTA {
@@ -262,48 +78,257 @@ erDiagram
         numeric subtotal
     }
 
+    FACTURA_INGRESOS {
+        uuid id PK
+        uuid tenant_id FK
+        uuid proveedor_id FK
+        date fecha_ingreso
+        varchar estado
+        numeric cantidad
+        varchar rut_proveedor
+    }
+
+    GUIAS_DESPACHO {
+        uuid id PK
+        uuid tenant_id FK
+        int folio
+        date fecha_emision
+        int tipo_traslado
+        varchar receptor_rut
+    }
+
+    HISTORIAL_PLANES {
+        uuid id PK
+        uuid tenant_id FK
+        uuid plan_id FK
+        uuid usuario_id FK
+        timestamp fecha_cambio
+        numeric monto_pagado
+    }
+
+    HISTORIAL_STOCK {
+        uuid id PK
+        uuid tenant_id FK
+        uuid producto_id FK
+        numeric nuevo_stock
+        varchar tipo_movimiento
+        varchar motivo
+        timestamp fecha_movimiento
+    }
+
+    LOTES {
+        uuid id PK
+        uuid tenant_id FK
+        uuid producto_id FK
+        varchar codigo_lote
+        numeric cantidad
+        date fecha_vencimiento
+        varchar factura_origen_folio
+    }
+
+    MERMAS {
+        uuid id PK
+        uuid tenant_id FK
+        uuid producto_id FK
+        numeric cantidad
+        varchar motivo
+        timestamp fecha
+    }
+
     METODOS_PAGO {
         uuid id PK
-        string nombre
-        string pasarela
-        boolean activo
+        varchar nombre
     }
 
-    DOCUMENTOS_TRIBUTARIOS {
+    MOVIMIENTOS_INVENTARIO {
         uuid id PK
+        uuid tenant_id FK
+        uuid producto_id FK
+        uuid tipo_movimiento_id FK
+        numeric cantidad
+        uuid id_origen
+        varchar tipo_origen
+        timestamp fecha_movimiento
+    }
+
+    MOVIMIENTOS_INVENTARIO_TIPOS {
+        uuid id PK
+        varchar nombre
+        varchar codigo
+    }
+
+    NOTIFICACIONES_TOKENS {
+        uuid id PK
+        uuid usuario_id FK
+        varchar tipo
+    }
+
+    PAYMENT_TRANSACTIONS {
+        uuid id PK
+        uuid sale_id FK
+        numeric monto
+        varchar estado_transaccion
+    }
+
+    PLANES_FACTURACION {
+        uuid id PK
+        varchar nombre
+        numeric precio_mensual
+        numeric precio_anual
+    }
+
+    PRODUCTO_PROVEEDORES {
+        uuid id PK
+        uuid tenant_id FK
+        uuid producto_id FK
+        uuid proveedor_id FK
+        numeric ultimo_precio_compra
+        timestamp fecha_ultima_compra
+        varchar folio_ultima_factura
+    }
+
+    PRODUCTOS {
+        uuid id PK
+        uuid tenant_id FK
+        uuid proveedor_id FK
+        varchar codigo_barra
+        varchar sku
+        varchar nombre
+        numeric stock_actual
+    }
+
+    PROVEEDORES {
+        uuid id PK
+        uuid tenant_id FK
+        varchar rut_proveedor
+        varchar nombre_proveedores
+        varchar email
+        varchar origen_creacion
+    }
+
+    PURCHASE_ORDER_DETAILS {
+        uuid id PK
+        uuid purchase_order_id FK
+        uuid product_id FK
+        numeric cantidad_sugerida
+        numeric precio_unitario
+        numeric subtotal
+    }
+
+    PURCHASE_ORDERS {
+        uuid id PK
+        uuid tenant_id FK
+        uuid supplier_id FK
+        varchar estado
+        timestamp fecha_creacion
+        numeric total_estimado
+    }
+
+    SII_CAF {
+        uuid id PK
+        uuid tenant_id FK
+        int tipo_dte
+        int folio_desde
+        int folio_hasta
+        int ultimo_folio_usado
+    }
+
+    SII_DTE_EMITIDOS {
+        uuid id PK
+        uuid tenant_id FK
         uuid venta_id FK
-        integer tipo_dte
-        integer folio_sii
+        int tipo_dte
+        int folio
         timestamp fecha_emision
-        string ted_xml_timbre
-        string estado_sii
+        varchar rut_emisor
     }
-      </div>
-    </div>
-  </div>
 
-  <script>
-    document.addEventListener("DOMContentLoaded", function () {
-      if (window.mermaid) {
-        mermaid.initialize({
-          startOnLoad: true,
-          theme: 'dark',
-          securityLevel: 'loose'
-        });
-      }
-    });
-
-    function descargarSVG() {
-      const svg = document.querySelector('#erdTarget svg');
-      if (!svg) { alert('El diagrama aún se está dibujando...'); return; }
-      const serializer = new XMLSerializer();
-      const source = serializer.serializeToString(svg);
-      const blob = new Blob([source], { type: 'image/svg+xml;charset=utf-8' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = 'diagrama_base_de_datos_gestock.svg';
-      a.click();
+    SII_RCOF_REGISTROS {
+        uuid id PK
+        uuid tenant_id FK
+        date fecha_reporte
+        int cantidad_boletas
+        numeric total_neto
+        numeric total_iva
     }
-  </script>
+
+    TENANTS {
+        uuid id PK
+        varchar nombre
+        uuid plan_id FK
+        varchar estado
+    }
+
+    TRANSACCIONES_VENTA {
+        uuid id PK
+        uuid tenant_id FK
+        uuid usuario_id FK
+        varchar folio_local_sqlite
+        timestamp fecha
+        numeric total
+        varchar estado
+        uuid metodo_pago_id FK
+    }
+
+    USUARIOS {
+        uuid id PK
+        uuid tenant_id FK
+        varchar nombre
+        varchar email
+        varchar rol
+    }
+
+    %% Relaciones
+    CIERRES_CAJA ||--|{ CAJA_MOVIMIENTOS : "sesion_caja_id"
+    METODOS_PAGO ||--o{ TRANSACCIONES_VENTA : "metodo_pago_id"
+    MOVIMIENTOS_INVENTARIO_TIPOS ||--|{ MOVIMIENTOS_INVENTARIO : "tipo_movimiento_id"
+    PLANES_FACTURACION ||--|{ HISTORIAL_PLANES : "plan_id"
+    PLANES_FACTURACION ||--o{ TENANTS : "plan_id"
+    PRODUCTOS ||--|{ DETALLE_VENTA : "producto_id"
+    PRODUCTOS ||--|{ HISTORIAL_STOCK : "producto_id"
+    PRODUCTOS ||--|{ LOTES : "producto_id"
+    PRODUCTOS ||--|{ MERMAS : "producto_id"
+    PRODUCTOS ||--|{ MOVIMIENTOS_INVENTARIO : "producto_id"
+    PRODUCTOS ||--|{ PRODUCTO_PROVEEDORES : "producto_id"
+    PRODUCTOS ||--|{ PURCHASE_ORDER_DETAILS : "product_id"
+    PROVEEDORES ||--o{ CATALOGO_BORRADORES : "proveedor_id"
+    PROVEEDORES ||--o{ FACTURA_INGRESOS : "proveedor_id"
+    PROVEEDORES ||--|{ PRODUCTO_PROVEEDORES : "proveedor_id"
+    PROVEEDORES ||--o{ PRODUCTOS : "proveedor_id"
+    PROVEEDORES ||--|{ PURCHASE_ORDERS : "supplier_id"
+    PURCHASE_ORDERS ||--|{ PURCHASE_ORDER_DETAILS : "purchase_order_id"
+    TENANTS ||--|{ CAJA_MOVIMIENTOS : "tenant_id"
+    TENANTS ||--|{ CATALOGO_BORRADORES : "tenant_id"
+    TENANTS ||--|{ CIERRES_CAJA : "tenant_id"
+    TENANTS ||--o{ CONFIGURACION_SISTEMA : "tenant_id"
+    TENANTS ||--|{ FACTURA_INGRESOS : "tenant_id"
+    TENANTS ||--|{ GUIAS_DESPACHO : "tenant_id"
+    TENANTS ||--|{ HISTORIAL_PLANES : "tenant_id"
+    TENANTS ||--|{ HISTORIAL_STOCK : "tenant_id"
+    TENANTS ||--|{ LOTES : "tenant_id"
+    TENANTS ||--|{ MERMAS : "tenant_id"
+    TENANTS ||--|{ MOVIMIENTOS_INVENTARIO : "tenant_id"
+    TENANTS ||--|{ PRODUCTO_PROVEEDORES : "tenant_id"
+    TENANTS ||--|{ PRODUCTOS : "tenant_id"
+    TENANTS ||--|{ PROVEEDORES : "tenant_id"
+    TENANTS ||--|{ PURCHASE_ORDERS : "tenant_id"
+    TENANTS ||--|{ SII_CAF : "tenant_id"
+    TENANTS ||--|{ SII_DTE_EMITIDOS : "tenant_id"
+    TENANTS ||--|{ SII_RCOF_REGISTROS : "tenant_id"
+    TENANTS ||--|{ TRANSACCIONES_VENTA : "tenant_id"
+    TENANTS ||--|{ USUARIOS : "tenant_id"
+    TRANSACCIONES_VENTA ||--|{ DETALLE_VENTA : "venta_id"
+    TRANSACCIONES_VENTA ||--|{ PAYMENT_TRANSACTIONS : "sale_id"
+    TRANSACCIONES_VENTA ||--o{ SII_DTE_EMITIDOS : "venta_id"
+    USUARIOS ||--|{ CIERRES_CAJA : "usuario_id"
+    USUARIOS ||--o{ HISTORIAL_PLANES : "usuario_id"
+    USUARIOS ||--|{ NOTIFICACIONES_TOKENS : "usuario_id"
+    USUARIOS ||--|{ TRANSACCIONES_VENTA : "usuario_id"
+</pre>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.0/mermaid.min.js"></script>
+<script>
+  mermaid.initialize({ startOnLoad: true, theme: 'neutral', er: { useMaxWidth: false } });
+</script>
 </body>
 </html>
