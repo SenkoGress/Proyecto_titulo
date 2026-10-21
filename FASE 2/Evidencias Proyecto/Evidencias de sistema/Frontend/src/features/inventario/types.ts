@@ -48,6 +48,8 @@ export type ProductoVencimiento = {
   dias_restantes: number
   estado: EstadoVencimiento
   nivel_riesgo: NivelRiesgo
+  // numero = unidades que vencen, 0 = sin stock, null = fecha conocida sin detalle de lote
+  unidades_por_vencer: number | null
 }
 
 export type ResumenVencimientos = {
@@ -57,6 +59,8 @@ export type ResumenVencimientos = {
   vence_30_dias: number
   total_con_vencimiento: number
   total_en_riesgo: number
+  unidades_en_riesgo_30d: number
+  productos_sin_detalle_de_lote: number
 }
 
 export type RespuestaVencimientos = {

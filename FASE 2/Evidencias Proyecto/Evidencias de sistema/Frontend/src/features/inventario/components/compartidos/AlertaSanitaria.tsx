@@ -46,6 +46,9 @@ export function AlertaSanitaria({ resumen, filtroActivo, onVerEnRiesgo }: Props)
           <Conteo valor={resumen.vencidos} texto="vencidos" color="error.main" />
           <Conteo valor={resumen.riesgo_critico_7d} texto="vencen en 7 dias o menos" color="warning.main" />
           <Conteo valor={resumen.riesgo_medio_15d} texto="vencen en 15 dias" color="warning.main" />
+          {resumen.unidades_en_riesgo_30d > 0 && (
+            <Conteo valor={resumen.unidades_en_riesgo_30d} texto="unidades en riesgo" color="text.primary" />
+          )}
         </Typography>
       ) : (
         <Typography variant="body2">
@@ -56,6 +59,8 @@ export function AlertaSanitaria({ resumen, filtroActivo, onVerEnRiesgo }: Props)
       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
         {resumen.total_con_vencimiento} de los productos tienen fecha de vencimiento cargada. El sistema ordena por
         FEFO para apoyar el control, pero no retira el producto de la venta por su cuenta.
+        {resumen.productos_sin_detalle_de_lote > 0 &&
+          ` En ${resumen.productos_sin_detalle_de_lote} de ellos se conoce la fecha pero no cuantas unidades vencen en ella, porque la compra es anterior al registro por lote.`}
       </Typography>
     </Alert>
   )

@@ -5,7 +5,9 @@ import type { ItemFactura } from '@/features/invoices/types'
 // recalcula el subtotal y el stock proyectado de una fila cuando cambia cantidad o precio
 export function recalcularFila(
   fila: ItemFactura,
-  cambios: Partial<Pick<ItemFactura, 'cantidad' | 'precio_unitario' | 'descripcion' | 'sku'>>,
+  cambios: Partial<
+    Pick<ItemFactura, 'cantidad' | 'precio_unitario' | 'descripcion' | 'sku' | 'fecha_vencimiento'>
+  >,
 ): ItemFactura {
   const actualizada = { ...fila, ...cambios }
   actualizada.subtotal = actualizada.cantidad * actualizada.precio_unitario

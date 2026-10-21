@@ -30,6 +30,7 @@ function filaVacia(): ItemFactura {
     es_nuevo: true,
     stock_actual: 0,
     stock_proyectado: 1,
+    fecha_vencimiento: null,
   }
 }
 
@@ -99,6 +100,7 @@ export function IngresoFacturasPage() {
           precio_unitario: item.precio_unitario,
           subtotal: item.subtotal,
           unidad: item.unidad,
+          fecha_vencimiento: item.fecha_vencimiento || null,
         })),
       },
       documento: preview.documento,

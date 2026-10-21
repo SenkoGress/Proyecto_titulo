@@ -78,6 +78,18 @@ export function FilaItemFactura({ item, onCambiar, onEliminar }: Props) {
         {formatoClp(item.subtotal)}
       </TableCell>
 
+      {/* vencimiento: opcional, la factura casi nunca lo trae */}
+      <TableCell align="center">
+        <TextField
+          type="date"
+          value={item.fecha_vencimiento ?? ''}
+          size="small"
+          variant="standard"
+          onChange={(evento) => onCambiar({ fecha_vencimiento: evento.target.value || null })}
+          slotProps={{ htmlInput: { style: { fontSize: 13, width: 124 } } }}
+        />
+      </TableCell>
+
       {/* nuevo en el catalogo o ya existia */}
       <TableCell align="center">
         <Chip

@@ -8,6 +8,7 @@ export type NivelFilaFefo = NivelRiesgo | 'SIN_REGISTRO'
 export type FilaFefo = ProductoInventario & {
   dias_restantes: number | null
   nivel: NivelFilaFefo
+  unidades_por_vencer: number | null
 }
 
 // todo el inventario + su estado fefo (sin fecha queda "sin registro")
@@ -27,6 +28,7 @@ export function armarMatrizFefo(
       fecha_vencimiento: vencimiento?.fecha_vencimiento ?? producto.fecha_vencimiento,
       dias_restantes: vencimiento?.dias_restantes ?? null,
       nivel: vencimiento?.nivel_riesgo ?? 'SIN_REGISTRO',
+      unidades_por_vencer: vencimiento?.unidades_por_vencer ?? null,
     }
   })
 

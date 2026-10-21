@@ -92,6 +92,18 @@ export function FilaConciliacionTecnica({ item, onCambiar, onEliminar }: Props) 
         {formatoClp(item.subtotal)}
       </TableCell>
 
+      {/* vencimiento: opcional, la factura casi nunca lo trae */}
+      <TableCell align="center">
+        <TextField
+          type="date"
+          value={item.fecha_vencimiento ?? ''}
+          size="small"
+          variant="standard"
+          onChange={(evento) => onCambiar({ fecha_vencimiento: evento.target.value || null })}
+          slotProps={{ htmlInput: { style: { ...mono, width: 124 } } }}
+        />
+      </TableCell>
+
       <TableCell align="right" sx={mono}>
         {item.stock_actual} → {item.stock_proyectado}
       </TableCell>

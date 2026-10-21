@@ -57,6 +57,13 @@ export function PanelAlertasFefo({ resumen, totalProductos }: Props) {
       <Fila color="warning" valor={resumen.riesgo_medio_15d} etiqueta="Alerta (8-15d)" />
       <Fila color="success" valor={resumen.vence_30_dias + vigentesSinApuro} etiqueta="Vence en 30d o mas" />
       <Fila color="text.secondary" valor={sinRegistro} etiqueta="Sin fecha registrada" />
+      {resumen.productos_sin_detalle_de_lote > 0 && (
+        <Fila
+          color="text.secondary"
+          valor={resumen.productos_sin_detalle_de_lote}
+          etiqueta="Con fecha, sin detalle de lote"
+        />
+      )}
     </Paper>
   )
 }

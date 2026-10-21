@@ -14,6 +14,8 @@ export type ItemFactura = {
   es_nuevo: boolean
   stock_actual: number
   stock_proyectado: number
+  // la escribe el usuario: las facturas chilenas casi nunca la traen
+  fecha_vencimiento?: string | null
 }
 
 // lo que espera POST /invoices/confirm (ExtractedInvoiceData del backend)
@@ -24,6 +26,7 @@ export type ItemExtraido = {
   precio_unitario: number
   subtotal: number
   unidad?: string
+  fecha_vencimiento?: string | null
 }
 
 export type DatosExtraidosFactura = {

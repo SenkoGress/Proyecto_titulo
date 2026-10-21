@@ -33,6 +33,7 @@ export function TablaItemsFactura({ items, onCambiarFila, onEliminarFila, onAgre
               <TableCell align="right">Costo neto</TableCell>
               <TableCell align="right">P. venta sug.</TableCell>
               <TableCell align="right">Subtotal</TableCell>
+              <TableCell align="center">Vence</TableCell>
               <TableCell align="center">Estado</TableCell>
               <TableCell />
             </TableRow>

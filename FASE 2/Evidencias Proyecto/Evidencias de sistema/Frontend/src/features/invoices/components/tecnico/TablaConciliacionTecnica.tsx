@@ -61,6 +61,7 @@ export function TablaConciliacionTecnica({ items, totalDeclarado, onCambiarFila,
               <TableCell align="right">Costo anterior</TableCell>
               <TableCell align="right">P. venta</TableCell>
               <TableCell align="right">Subtotal</TableCell>
+              <TableCell align="center">Vence</TableCell>
               <TableCell align="right">Stock</TableCell>
               <TableCell />
             </TableRow>

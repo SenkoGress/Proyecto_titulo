@@ -5,6 +5,7 @@ import Typography from '@mui/material/Typography'
 import Chip from '@mui/material/Chip'
 import { DataGrid, type GridColDef, type GridRowSelectionModel } from '@mui/x-data-grid'
 import { formatoClp } from '@/shared/utils/formatoClp'
+import { textoUnidadesPorVencer } from '@/features/inventario/utils/unidadesPorVencer'
 import { formatFechaSola } from '@/shared/utils/formatFecha'
 import { BarraStock } from '@/features/inventario/components/visual/BarraStock'
 import Tooltip from '@mui/material/Tooltip'
@@ -76,14 +77,17 @@ function armarColumnas(acciones: Acciones, ultimoZ: Date | null): GridColDef<Fil
   {
     field: 'lote',
     headerName: 'Lote / Vence',
-    width: 130,
+    width: 165,
     renderCell: (parametros) => (
       <Box sx={{ py: 1 }}>
         <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
           {parametros.row.lote ?? '-'}
         </Typography>
+        {/* sin las unidades la fecha sola no dice cuanto hay que liquidar */}
         <Typography variant="caption" color="text.secondary">
           {parametros.row.fecha_vencimiento ? formatFechaSola(parametros.row.fecha_vencimiento) : '-'}
+          {textoUnidadesPorVencer(parametros.row.unidades_por_vencer) &&
+            ` · ${textoUnidadesPorVencer(parametros.row.unidades_por_vencer)}`}
         </Typography>
       </Box>
     ),
