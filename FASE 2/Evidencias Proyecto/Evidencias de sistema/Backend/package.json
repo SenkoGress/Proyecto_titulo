@@ -14,7 +14,8 @@
     "test:e2e:frontend": "node tests_e2e_frontend/ejecutar.mjs",
     "test:coverage": "jest --runInBand --coverage",
     "migrate:pg": "ts-node backend/src/database/postgres/run-migration.ts",
-    "migrate:sqlite": "ts-node backend/src/database/sqlite/run-migration.ts"
+    "migrate:sqlite": "ts-node backend/src/database/sqlite/run-migration.ts",
+    "test:coverage:total": "jest --config jest.coverage.config.js --runInBand"
   },
   "keywords": [
     "inventory",
