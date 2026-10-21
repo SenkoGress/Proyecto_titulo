@@ -1037,10 +1037,16 @@ router.get('/vencimientos', (req: Request, res: Response): void => {
         dias_restantes: dias,
         estado,
         nivel_riesgo: nivelRiesgo,
-        // Unidades que vencen en esa fecha segun los lotes. Null cuando ningun lote respalda
-        // al producto, que es el caso de la existencia anterior a la gestion por lote: ahi el
-        // sistema conoce la fecha pero no la cantidad, y decirlo es mejor que suponer el total.
-        unidades_por_vencer: unidadesPorLote.has(r.id) ? Number(unidadesPorLote.get(r.id)) : null
+        // Unidades que vencen en esa fecha. Tres situaciones distintas, y conviene no
+        // confundirlas: con lotes se informa la suma; sin lotes pero con el producto en cero
+        // se informa cero, porque la cantidad SI se conoce; y solo queda en null el producto
+        // con existencia que ningun lote respalda, donde se conoce la fecha pero no cuanto de
+        // ese stock vence en ella. Eso ultimo es la existencia anterior a la gestion por lote.
+        unidades_por_vencer: unidadesPorLote.has(r.id)
+          ? Number(unidadesPorLote.get(r.id))
+          : Number(r.stock_actual) === 0
+            ? 0
+            : null
       };
     });
 

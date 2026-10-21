@@ -9,6 +9,7 @@ import {
   sampleTenant,
   sampleUsuario
 } from '../helpers/fixtures';
+import { medirLatencia } from '../helpers/latencia';
 
 describe('Predictive Replenishment & Suggested Purchase Orders Engine', () => {
   let pgClient: PostgresClient;
@@ -162,7 +163,7 @@ describe('Predictive Replenishment & Suggested Purchase Orders Engine', () => {
     const duration = Date.now() - startTime;
 
     // Validación de latencia < 200ms
-    expect(duration).toBeLessThan(200);
+    medirLatencia('Calculo del punto de reorden por proveedor', duration, 200);
 
     const orders = result.orders;
     expect(orders.length).toBe(1);

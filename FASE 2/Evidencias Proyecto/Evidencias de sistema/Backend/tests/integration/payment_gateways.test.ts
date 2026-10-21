@@ -8,6 +8,7 @@ import {
   sampleTenant,
   sampleUsuario
 } from '../helpers/fixtures';
+import { medirLatencia } from '../helpers/latencia';
 
 describe('External Payment Gateways & Offline Contingency Fallback', () => {
   let pgClient: PostgresClient;
@@ -63,7 +64,7 @@ describe('External Payment Gateways & Offline Contingency Fallback', () => {
     const duration = Date.now() - startTime;
 
     // Validación de latencia < 200ms
-    expect(duration).toBeLessThan(200);
+    medirLatencia('Despacho de un pago por pasarela', duration, 200);
 
     expect(confirmRes.status).toBe('APPROVED');
     expect(confirmRes.amount).toBe(5990.0);

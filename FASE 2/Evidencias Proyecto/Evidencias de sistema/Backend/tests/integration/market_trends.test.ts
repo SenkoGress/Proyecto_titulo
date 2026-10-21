@@ -6,6 +6,7 @@ import {
   sampleProducto,
   sampleTenant
 } from '../helpers/fixtures';
+import { medirLatencia } from '../helpers/latencia';
 
 describe('Market Intelligence Trends & Replenishment Integration', () => {
   let pgClient: PostgresClient;
@@ -54,7 +55,7 @@ describe('Market Intelligence Trends & Replenishment Integration', () => {
     const duration = Date.now() - startTime;
 
     // Validación de latencia < 200ms
-    expect(duration).toBeLessThan(200);
+    medirLatencia('Sincronizacion y persistencia de una tendencia', duration, 200);
 
     expect(meliTrend.source).toBe('MercadoLibre');
     expect(meliTrend.demandIndex).toBeGreaterThan(0);

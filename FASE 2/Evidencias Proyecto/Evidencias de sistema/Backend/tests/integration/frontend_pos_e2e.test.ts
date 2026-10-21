@@ -6,6 +6,7 @@ import { defaultSqliteClient } from '../../src/database/sqlite/client';
 import { SqliteMigrator } from '../../src/database/sqlite/migrator';
 import { defaultPosSyncEngine } from '../../src/sync/pos-sync-engine.service';
 import { createTestPostgresClient } from '../helpers/db-test-helper';
+import { medirLatencia } from '../helpers/latencia';
 
 describe('Frontend POS E2E Lifecycle & Offline-First Checkout', () => {
   const tenantId = uuidv4();
@@ -86,7 +87,7 @@ describe('Frontend POS E2E Lifecycle & Offline-First Checkout', () => {
     expect(prod).toBeDefined();
     expect(Number(prod.stock_actual)).toBe(50);
     expect(Number(prod.precio_venta)).toBe(2500);
-    expect(duration).toBeLessThan(50);
+    medirLatencia('Consulta del catalogo de productos para la caja', duration, 50);
   });
 
   test('2. Checkout Rápido Atómico: Descuenta stock, genera bandera is_dirty y audita movimiento en <200ms', async () => {
@@ -147,7 +148,7 @@ describe('Frontend POS E2E Lifecycle & Offline-First Checkout', () => {
     expect(sale?.sync_status).toBe('PENDING');
     expect(Number(sale?.total)).toBe(7500);
 
-    expect(duration).toBeLessThan(200);
+    medirLatencia('Ciclo completo de venta con descuento de stock', duration, 200);
   });
 
   test('3. Sincronización Push a la Nube: Sube venta pendiente y limpia bandera is_dirty a 0', async () => {

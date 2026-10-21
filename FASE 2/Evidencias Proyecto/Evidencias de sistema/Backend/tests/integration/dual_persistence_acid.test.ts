@@ -8,6 +8,7 @@ import {
   sampleProducto,
   sampleMetodoPago
 } from '../helpers/fixtures';
+import { medirLatencia } from '../helpers/latencia';
 
 describe('Dual Persistence ACID Transactions & Latency Performance (<200ms)', () => {
   let pgClient: PostgresClient;
@@ -86,7 +87,7 @@ describe('Dual Persistence ACID Transactions & Latency Performance (<200ms)', ()
       const elapsedTime = Date.now() - startTime;
 
       // Validación de latencia < 200ms
-      expect(elapsedTime).toBeLessThan(200);
+      medirLatencia('Escritura dual con confirmacion en ambos motores', elapsedTime, 200);
 
       // Verificación de integridad persistida
       const saleRow = await pgClient.query('SELECT total FROM transacciones_venta WHERE id = $1', [ids.ventaId]);
@@ -189,7 +190,7 @@ describe('Dual Persistence ACID Transactions & Latency Performance (<200ms)', ()
       const elapsedTime = Date.now() - startTime;
 
       // Latencia en SQLite local debe ser menor a 200ms (típicamente < 10ms)
-      expect(elapsedTime).toBeLessThan(200);
+      medirLatencia('Conmutacion a modo local ante caida de la nube', elapsedTime, 200);
 
       // Verificación de persistencia
       const sale = sqliteClient.queryOne<{ total: number }>('SELECT total FROM transacciones_venta WHERE id = ?', [ids.ventaId]);

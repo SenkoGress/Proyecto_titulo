@@ -10,6 +10,7 @@ import {
   sampleProveedor,
   sampleTenant
 } from '../helpers/fixtures';
+import { medirLatencia } from '../helpers/latencia';
 
 describe('Smart Invoice Ingestion & Resilient OCR Fallback', () => {
   let pgClient: PostgresClient;
@@ -94,7 +95,7 @@ describe('Smart Invoice Ingestion & Resilient OCR Fallback', () => {
     const duration = Date.now() - startTime;
 
     // Validacion de latencia < 500ms
-    expect(duration).toBeLessThan(500);
+    medirLatencia('Ingesta transaccional de una factura de compra', duration, 500);
 
     // Verificaciones de la ingesta
     // El folio se unifica entre motores: se quita el prefijo cuando el resto es numerico, para
