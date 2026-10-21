@@ -291,17 +291,6 @@ function seedSqliteDemoData(): void {
       );
     }
 
-    // 6. Tendencias de Mercado iniciales
-    defaultSqliteClient.execute(
-      `INSERT OR IGNORE INTO market_trends 
-       (id, tenant_id, fuente_api, sku_referencia, palabra_clave, indice_demanda, precio_promedio_mercado)
-       VALUES 
-       ('44444444-0000-0000-0000-000000000001', ?, 'MercadoLibre', 'BEB-MONS-473', 'Monster Energy 473ml', 89.50, 2600.00),
-       ('44444444-0000-0000-0000-000000000002', ?, 'MercadoLibre', 'BEB-CC-350', 'Coca Cola 350ml', 82.00, 1050.00),
-       ('44444444-0000-0000-0000-000000000003', ?, 'AliExpress', 'ABA-ACE-900', 'Aceite Vegetal Belmont', 76.00, 2250.00)`,
-      [DEMO_TENANT_ID, DEMO_TENANT_ID, DEMO_TENANT_ID]
-    );
-
     // 7. Sembrar historial de ventas de los últimos 7 días para cálculo predictivo
     const seedSeller = defaultSqliteClient.queryOne<{ id: string }>(
       "SELECT id FROM usuarios WHERE tenant_id = ? ORDER BY CASE rol WHEN 'admin' THEN 0 ELSE 1 END LIMIT 1",
@@ -446,18 +435,6 @@ async function seedPostgresDemoData(): Promise<void> {
        ('33333333-0000-0000-0000-000000000004', $1, 'ABA-ACE-900', '7801234567893', 'Aceite Vegetal Belmont 900ml', 4.00, 12.00, 1100.00, 2190.00, 'Abarrotes', true),
        ('33333333-0000-0000-0000-000000000005', $1, 'LAC-LECH-1L', '7801234567894', 'Leche Entera Colun 1L', 35.00, 10.00, 720.00, 1290.00, 'Lácteos', true),
        ('33333333-0000-0000-0000-000000000006', $1, 'SNK-LAY-200', '7801234567895', 'Papas Fritas Lays Clásicas 200g', 18.00, 8.00, 1050.00, 1890.00, 'Snacks', true)
-       ON CONFLICT DO NOTHING`,
-      [DEMO_TENANT_ID]
-    );
-
-    // 5. Tendencias
-    await client.query(
-      `INSERT INTO market_trends 
-       (id, tenant_id, fuente_api, sku_referencia, palabra_clave, indice_demanda, precio_promedio_mercado)
-       VALUES 
-       ('44444444-0000-0000-0000-000000000001', $1, 'MercadoLibre', 'BEB-MONS-473', 'Monster Energy 473ml', 89.50, 2600.00),
-       ('44444444-0000-0000-0000-000000000002', $1, 'MercadoLibre', 'BEB-CC-350', 'Coca Cola 350ml', 82.00, 1050.00),
-       ('44444444-0000-0000-0000-000000000003', $1, 'AliExpress', 'ABA-ACE-900', 'Aceite Vegetal Belmont', 76.00, 2250.00)
        ON CONFLICT DO NOTHING`,
       [DEMO_TENANT_ID]
     );

@@ -1,0 +1,51 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: gestock_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${PGUSER:-gestock_admin}
+      POSTGRES_PASSWORD: ${PGPASSWORD:-gestock_secret_2026}
+      POSTGRES_DB: ${PGDATABASE:-gestock_cloud_db}
+    ports:
+      - "${PGPORT:-5432}:5432"
+    volumes:
+      - gestock_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PGUSER:-gestock_admin} -d ${PGDATABASE:-gestock_cloud_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gestock_app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PORT: 3000
+      PGHOST: postgres
+      PGPORT: 5432
+      PGUSER: ${PGUSER:-gestock_admin}
+      PGPASSWORD: ${PGPASSWORD:-gestock_secret_2026}
+      PGDATABASE: ${PGDATABASE:-gestock_cloud_db}
+      SQLITE_DB_PATH: /app/data/gestock_local.sqlite
+      NODE_ENV: production
+      JWT_SECRET: ${JWT_SECRET:?Defina JWT_SECRET (minimo 32 caracteres) en el archivo .env}
+      INITIAL_ADMIN_EMAIL: ${INITIAL_ADMIN_EMAIL:-}
+      INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD:-}
+      SEED_DEMO_USERS: ${SEED_DEMO_USERS:-false}
+    ports:
+      - "3000:3000"
+    volumes:
+      - gestock_sqlite_data:/app/data
+
+volumes:
+  gestock_pgdata:
+    driver: local
+  gestock_sqlite_data:
+    driver: local
