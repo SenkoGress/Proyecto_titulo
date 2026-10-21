@@ -18,7 +18,6 @@ export const endpoints = {
   },
   dashboard: {
     resumen: `${API_V1}/dashboard/overview`,
-    tendencias: `${API_V1}/trends`,
   },
   pos: {
     productos: `${API_V1}/pos/products`,
@@ -36,6 +35,7 @@ export const endpoints = {
   },
   replenishment: {
     sugerir: `${API_V1}/replenishment/suggest`,
+    velocidad: `${API_V1}/replenishment/velocity`,
     ordenesCompra: `${API_V1}/replenishment/purchase-orders`,
     enviarCorreo: `${API_V1}/replenishment/send-email`,
   },

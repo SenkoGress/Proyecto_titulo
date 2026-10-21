@@ -4,6 +4,7 @@ import {
   enviarOrdenesPorCorreo,
   obtenerOrdenesCompra,
   obtenerSugerenciaPedido,
+  obtenerVelocidades,
 } from '@/features/replenishment/api/replenishment.api'
 import { CONFIG_ROP_POR_DEFECTO } from '@/features/replenishment/types'
 import { VIGENCIA_LARGA_MS } from '@/lib/query/queryClient'
@@ -33,5 +34,18 @@ export function useOrdenesCompra() {
 export function useEnviarOrdenesPorCorreo() {
   return useMutation({
     mutationFn: enviarOrdenesPorCorreo,
+  })
+}
+
+// cuantos dias de venta se miran para calcular la rotacion
+const DIAS_ANALISIS = 30
+
+// rotacion de todo el catalogo. la usa el panel de sugerencias
+export function useVelocidades() {
+  return useQuery({
+    queryKey: ['replenishment', 'velocidad', DIAS_ANALISIS],
+    queryFn: () => obtenerVelocidades(DIAS_ANALISIS),
+    staleTime: VIGENCIA_LARGA_MS,
+    enabled: usePuedeAdministrar(),
   })
 }

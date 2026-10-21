@@ -2,7 +2,12 @@
 import { httpClient } from '@/lib/api/httpClient'
 import { endpoints } from '@/lib/api/endpoints'
 import { CONFIG_ROP_POR_DEFECTO } from '@/features/replenishment/types'
-import type { ConfigRop, RespuestaOrdenesCompra, RespuestaSugerencia } from '@/features/replenishment/types'
+import type {
+  ConfigRop,
+  RespuestaOrdenesCompra,
+  RespuestaSugerencia,
+  RespuestaVelocidades,
+} from '@/features/replenishment/types'
 
 // sugerencia de reposicion. los 3 parametros van siempre, si no el backend devuelve 0
 export async function obtenerSugerenciaPedido(config: ConfigRop = CONFIG_ROP_POR_DEFECTO) {
@@ -29,4 +34,12 @@ export async function enviarOrdenesPorCorreo(correoDestino: string) {
     { recipient_email: correoDestino },
   )
   return data
+}
+
+// velocidad de venta de todo el catalogo, para las sugerencias del panel general
+export async function obtenerVelocidades(dias: number) {
+  const { data } = await httpClient.get<RespuestaVelocidades>(endpoints.replenishment.velocidad, {
+    params: { days: dias },
+  })
+  return data.velocities
 }

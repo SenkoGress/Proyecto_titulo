@@ -3,9 +3,10 @@ import { useMemo, useState } from 'react'
 import Box from '@mui/material/Box'
 import Skeleton from '@mui/material/Skeleton'
 import { ErrorBox } from '@/shared/components/ui/ErrorBox'
-import { useInventario } from '@/features/inventario/hooks/useInventario'
+import { useVencimientos } from '@/features/inventario/hooks/useInventario'
 import { useProveedores } from '@/features/proveedores/hooks/useProveedores'
-import { useResumenDashboard, useTendencias } from '@/features/dashboard/hooks/useDashboard'
+import { useVelocidades } from '@/features/replenishment/hooks/useReplenishment'
+import { useResumenDashboard } from '@/features/dashboard/hooks/useDashboard'
 import { useTransacciones } from '@/features/ventas/hooks/useVentas'
 import { EncabezadoDashboard } from '@/features/dashboard/components/compartidos/EncabezadoDashboard'
 import { TarjetasKpiDashboard } from '@/features/dashboard/components/compartidos/TarjetasKpiDashboard'
@@ -16,10 +17,9 @@ import { GraficoComprasProveedor } from '@/features/dashboard/components/compart
 import { TablaArticulosLideres } from '@/features/dashboard/components/compartidos/TablaArticulosLideres'
 import { TablaProveedoresVisitas } from '@/features/dashboard/components/compartidos/TablaProveedoresVisitas'
 import { UltimasTransacciones } from '@/features/dashboard/components/visual/UltimasTransacciones'
-import { TendenciasMercado } from '@/features/dashboard/components/visual/TendenciasMercado'
+import { PanelSugerencias } from '@/features/dashboard/components/visual/PanelSugerencias'
 import { proximasVisitas } from '@/features/dashboard/utils/visitasProveedor'
 import { etiquetaPeriodo } from '@/features/dashboard/utils/periodos'
-import { compararConMercado } from '@/features/dashboard/utils/comparacionMercado'
 import type { PeriodoDashboard } from '@/features/dashboard/types'
 
 // panel general del minimarket: como va el negocio (las alertas viven en Notificaciones)
@@ -28,16 +28,11 @@ export function PanelGeneral() {
 
   const resumen = useResumenDashboard(periodo)
   const transacciones = useTransacciones()
-  const tendencias = useTendencias()
-  const inventario = useInventario()
+  const velocidades = useVelocidades()
+  const vencimientos = useVencimientos()
   const proveedores = useProveedores()
 
   const visitas = useMemo(() => proximasVisitas(proveedores.data ?? []), [proveedores.data])
-
-  const tendenciasComparadas = useMemo(
-    () => compararConMercado(tendencias.data ?? [], inventario.data ?? []),
-    [tendencias.data, inventario.data],
-  )
 
   if (resumen.isError) return <ErrorBox error={resumen.error} />
 
@@ -86,7 +81,11 @@ export function PanelGeneral() {
       <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', lg: 'repeat(2, 1fr)' } }}>
         <UltimasTransacciones transacciones={transacciones.data ?? []} cargando={transacciones.isPending} />
 
-        <TendenciasMercado tendencias={tendenciasComparadas} cargando={tendencias.isPending} />
+        <PanelSugerencias
+          velocidades={velocidades.data ?? []}
+          vencimientos={vencimientos.data?.data ?? []}
+          cargando={velocidades.isPending || vencimientos.isPending}
+        />
       </Box>
     </Box>
   )

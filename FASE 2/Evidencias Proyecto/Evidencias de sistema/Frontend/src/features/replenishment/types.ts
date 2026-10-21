@@ -105,3 +105,23 @@ export type RespuestaOrdenesCompra = {
   success: boolean
   orders: OrdenCompra[]
 }
+
+// velocidad de venta por producto (GET /replenishment/velocity).
+// sale de detalle_venta contra transacciones_venta, son ventas reales del local
+export type VelocidadProducto = {
+  productId: string
+  sku: string
+  nombre: string
+  stockActual: number
+  stockMinimo: number
+  velocityDaily: number
+  daysOfInventory: number
+  reorderPoint: number
+  isUnderStock: boolean
+  isAgotado: boolean
+}
+
+export type RespuestaVelocidades = {
+  success: boolean
+  velocities: VelocidadProducto[]
+}

@@ -75,19 +75,3 @@ export type RespuestaDashboard = {
   data: ResumenDashboard
 }
 
-// tendencia de mercado (GET /trends, backend/src/routes/market.routes.ts)
-export type TendenciaMercado = {
-  id: string
-  tenantId: string
-  sku: string
-  keyword: string
-  source: string
-  demandIndex: number
-  averageMarketPrice: number
-  lastUpdated: string
-}
-
-export type RespuestaTendencias = {
-  success: boolean
-  data: TendenciaMercado[]
-}
