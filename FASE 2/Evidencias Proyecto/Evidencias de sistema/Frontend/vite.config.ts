@@ -16,6 +16,13 @@ export default defineConfig(({ mode }) => {
       tsconfigPaths: true,
     },
 
+    // las pruebas de componente necesitan un dom; las de utilidades no lo usan
+    test: {
+      environment: 'jsdom',
+      setupFiles: ['./src/test/setup.ts'],
+      globals: true,
+    },
+
     server: {
       port: 5173,
       // el proxy manda las peticiones al backend, asi no tenemos problemas de CORS
