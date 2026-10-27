@@ -1,0 +1,163 @@
+================================================================================
+GesTock - Revision del repo de titulo antes de tu reunion
+De:    David (frontend)
+Para:  Marcelo (backend)
+Fecha: 20-10-2026
+Sobre: 124 commits, 464 archivos de codigo, 21 scripts de prueba, 14 documentos
+================================================================================
+
+Marcelo, revise todo el repositorio de titulo como pediste. Te separo en lo que
+busque y no aparece, lo que encontre, y dos cifras del informe que conviene
+arreglar hoy.
+
+Lo hice sobre https://github.com/SenkoGress/Proyecto_titulo en su estado de hoy.
+
+
+================================================================================
+1. LO QUE BUSQUE Y NO ESTA
+================================================================================
+
+    menciones de herramienta en los 124 commits          0
+    lineas Co-Authored-By o Generated with               0
+    emojis en mensajes de commit                         0
+    emojis dentro de comentarios de codigo               0
+    comentarios en ingles dentro del frontend            0
+    encabezados tipo "Helper function to..."             0
+    foo, bar, dummy, placeholder de relleno, lorem       0
+    frases de relleno en los 14 documentos               0
+    nombres de casos de prueba en ingles                 0
+
+Sobre las pruebas: los nombres describen comportamiento y estan en espanol. Por
+ejemplo "no se cae con un codigo desconocido", "avisa por calor y nombra los
+helados", "detecta la respuesta vacia que deja una foto ilegible".
+
+Busque bloques repetidos palabra por palabra entre archivos de prueba. Lo que se
+repite es expect(res.status).toBe(200) y similares, que es lo normal en una
+bateria de endpoints. No hay secciones clonadas.
+
+Los comentarios de lo que entro esta semana los revise uno por uno. Explican por
+que, no que. El encabezado de lotes.service.ts y el de la migracion 016 son
+buenos ejemplos: dicen la regla de diseno y declaran la aproximacion del
+traspaso. Nada que corregir ahi.
+
+
+================================================================================
+2. TRES COSAS QUE SI ENCONTRE
+================================================================================
+
+a) CUARENTA Y CINCO EMOJIS EN Backend/public/js/app.js
+
+   '🔴 AGOTADO'   '🛍️ Bolsa reutilizable'   '🔞 Control Ley de Alcoholes'
+   '📅 ${proxima.displayText}'   isLight ? '☀️' : '🌙'
+
+   Es tu prototipo viejo en JavaScript puro. Son textos de interfaz, no
+   comentarios.
+
+   Mi lectura honesta: un emoji en una interfaz no delata una herramienta, la
+   gente los pone. Pero son 45 en un archivo que ya no se usa, al lado de un
+   frontend React que no tiene ninguno. Si vas a limpiar algo, ese archivo es el
+   unico foco. Tambien se puede dejar: es el prototipo y se nota que lo es.
+
+b) SEIS ✅ EN Arquitectura Sistema.docx
+
+   Estan en la tabla de resultados de desempeno: "Cumple (< 10 ms) ✅",
+   "Cumple (< 300 ms) ✅". Es el unico de los 14 documentos con emojis.
+
+   Y ahi hay algo mas grueso que el emoji, que te lo digo porque es el tipo de
+   cosa que se pregunta: esa tabla AFIRMA cumplimiento de latencias en
+   milisegundos. Es justo lo que acabamos de sacar de las pruebas por depender
+   de la maquina, y el informe ahora dice que una asercion de milisegundos no
+   verifica el codigo.
+
+   Si ella lee los dos documentos, hay una contradiccion. Se arregla igual que
+   en el codigo: declarar la medicion como referencia observada en un equipo de
+   desarrollo, no como un cumplimiento verificado.
+
+c) FALTA UNA PRUEBA MIA EN LA CARPETA DE EVIDENCIA
+
+   unidadesPorVencer.test.ts, 4 pruebas, las de hoy sobre las tres situaciones
+   del vencimiento. Son posteriores a tu sincronizacion. Cuando corras el script
+   de nuevo entran solas.
+
+
+================================================================================
+3. DOS CIFRAS DEL INFORME QUE NO SE SOSTIENEN  <-- ESTO ES LO URGENTE
+================================================================================
+
+A) EL DOCUMENTO SE CONTRADICE A SI MISMO
+
+   En el plan de trabajo:   "Se incorporaron 18 pruebas unitarias de la interfaz"
+   En la Evidencia 4:       "Sobre la interfaz, 26 pruebas unitarias"
+
+   Mismo documento, mismo dato, dos numeros. Corregiste uno y quedo el otro.
+
+   Y hoy no son ni 18 ni 26: son 30, porque sume 4 con lo de vencimientos.
+
+B) LAS LINEAS APORTADAS NO SE PUEDEN VERIFICAR EN EL REPO QUE ELLA VA A ABRIR
+
+   El informe dice 44.187 tuyas y 58.260 mias. Esas salen del repo de trabajo.
+
+   En el repo de titulo, git dice:
+
+       Kreiros                      57.383 lineas agregadas
+       David Andres Miranda Tobar    1.672 lineas agregadas
+
+   Porque quien sube el codigo se lleva las lineas, y el codigo lo subiste tu.
+
+   El parrafo si menciona los dos repositorios, asi que no es una mentira. Pero
+   si ella abre la pestana de contribuciones en GitHub, ve la proporcion al
+   reves de lo que afirma el informe, y es justo el indicador de aporte por
+   integrante.
+
+   Dos salidas, la que prefieras:
+
+       - sacar las lineas y dejar la division por componentes, que es
+         verificable abriendo las carpetas
+       - dejarlas diciendo explicitamente de donde salen, igual que hiciste con
+         el "medido sobre la base de datos de la nube"
+
+   Yo prefiero la primera. Las lineas de codigo nunca midieron bien el aporte y
+   aca ademas se prestan a confusion.
+
+C) LOS COMMITS SON 124, NO 120
+
+   65 Kreiros + 58 David + 1 Vraneth. Vraneth eres tu con tu Gmail personal
+   (marcelopinov.23@gmail.com), en un commit de Documentacion Fase 1.
+
+   Si ella cuenta, ve 124 y tres nombres. Lo mas limpio es que agregues ese
+   correo a tu cuenta de GitHub: el commit queda atribuido a ti y la lista
+   muestra dos personas. Si no, el informe tiene que decir 124 y 66/58.
+
+
+================================================================================
+4. LO QUE VERIFIQUE COMO CIERTO
+================================================================================
+
+    30 tablas                                 OK
+    16 migraciones en los dos motores         OK
+    72 rutas                                  OK, las conte una por una
+    87 pruebas de integracion                 OK
+    109 comprobaciones de extremo a extremo   OK, corridas hoy sin fallas
+
+    210 pruebas unitarias de servidor         hoy son 221
+
+La ultima esta a la baja, que es el lado correcto para equivocarse.
+
+Tu correccion de las lineas aportadas la revise tambien: 44.187 y 58.260 calzan
+con lo que mide git en el repo de trabajo. El problema no es el numero, es el
+repositorio donde se puede comprobar.
+
+
+================================================================================
+5. RESUMEN PARA MANANA
+================================================================================
+
+No hay rastros de herramienta en ninguna parte del repositorio.
+
+Hay un archivo viejo con emojis y un documento con seis.
+
+Y hay dos cifras del informe que conviene arreglar hoy, porque son las unicas
+que ella podria cuestionar con el repositorio abierto delante.
+
+De lo tuyo del punto 7: no tengo la clave de produccion del servicio de
+reconocimiento, asi que ese pendiente sigue abierto y no depende de mi.

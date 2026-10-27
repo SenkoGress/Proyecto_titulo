@@ -1,0 +1,136 @@
+================================================================================
+GesTock - La sincronizacion falla contra una nube real: el lote no lleva productos
+De:    David (frontend)
+Para:  Marcelo (backend)
+Fecha: 21-10-2026
+Sobre: POST /api/v1/pos/sync contra PostgreSQL levantado con el docker-compose
+================================================================================
+
+Marcelo, levante la nube con Docker para probar el boton de sincronizar y no
+sube ninguna venta. Te paso la reproduccion completa.
+
+Primero: tus cinco commits de ayer los revise y estan bien. Borraste el modulo
+de tendencias entero del servidor, 1.287 lineas menos, y el diagrama entidad
+relacion generado desde el esquema real era justo lo que la docente marco como
+faltante. Los diagramas ya los subi al repo de titulo, en una carpeta Diagramas
+dentro de las evidencias de documentacion, en PNG, SVG y con la fuente mermaid.
+
+
+================================================================================
+1. COMO REPRODUCIRLO
+================================================================================
+
+    docker compose up -d postgres
+    npm run dev
+
+El arranque aplica solo sus 17 migraciones y deja las 29 tablas en la nube. El
+terminal la detecta y pasa a SYNC_PENDING con 16 ventas por subir.
+
+Apretar Sincronizar, o directo:
+
+    POST /api/v1/pos/sync   { "tenant_id": "00000000-...-000000000001" }
+
+Respuesta:
+
+    success: false
+    Fallo en sincronizacion: insert or update on table "detalle_venta"
+    violates foreign key constraint "detalle_venta_producto_id_fkey"
+
+    synced_ids: []     16 ventas quedaron sin subir
+
+
+================================================================================
+2. LA CAUSA: EL LOTE LLEVA VENTAS, PERO NO LOS PRODUCTOS QUE ESAS VENTAS USAN
+================================================================================
+
+En pos-sync-engine.service.ts, syncPush arma el payload asi:
+
+    const payload: SyncPushPayload = {
+      tenant_id: tenantId,
+      device_id: this.deviceId,
+      sales: pending
+    };
+
+Solo ventas. Y del otro lado, cloud-sync-receiver.service.ts inserta en
+detalle_venta un producto_id que la nube no conoce.
+
+Los numeros de mi equipo:
+
+    productos en el terminal        18
+    productos en la nube             6
+    faltan en la nube               12
+
+Los 12 que faltan se crearon EN EL TERMINAL: diez los creo la ingesta de la
+factura Froneri y dos son de pruebas. O sea que el hueco lo abre justamente el
+modulo que mas probamos.
+
+Revise las otras claves foraneas del mismo insert y esas si calzan:
+
+    metodos_pago   usados por ventas 2, faltan en la nube 0
+    usuarios       usados por ventas 1, faltan en la nube 0
+
+Asi que es solo productos.
+
+
+================================================================================
+3. UN AGRAVANTE, QUE NO ES UN DEFECTO
+================================================================================
+
+Solo 4 de las 22 ventas tocan esos productos. Pero las 16 pendientes fallan
+igual, porque el lote entero va en una sola transaccion.
+
+Vi que es a proposito, lo dice tu propio comentario:
+
+    throw saleErr; // Desencadena ROLLBACK de la transaccion completa del lote
+                   // para garantizar atomicidad
+
+No te lo reporto como error, es una decision tuya y se defiende. Te lo digo
+porque multiplica el efecto: una linea mala deja 16 ventas abajo, y el usuario
+ve que el boton no hace nada sin saber por que.
+
+
+================================================================================
+4. POR QUE NO HABIA APARECIDO
+================================================================================
+
+Sin PostgreSQL corriendo, el endpoint corta antes con un 503:
+
+    "No se puede sincronizar: el servidor en la nube no esta disponible
+    (Modo Offline activo)"
+
+Y nunca llega a intentar el insert. Como ninguno de los dos tenia la nube
+levantada, el camino de subida real no se habia ejecutado nunca.
+
+Esto importa mas alla del boton: el informe declara el offline-first como
+objetivo cumplido, y hoy un terminal que creo productos por factura no puede
+sincronizar nunca. Es el escenario normal, no un borde.
+
+
+================================================================================
+5. OPCIONES, Y LA DECISION ES TUYA
+================================================================================
+
+    a) que el payload lleve tambien los productos referenciados por las ventas
+       que no existan en la nube, y el receptor los inserte antes del detalle
+
+    b) subir el catalogo en su propio paso antes de las ventas
+
+    c) que el receptor haga upsert del producto a partir de lo que venga en el
+       detalle, si el detalle trae lo suficiente
+
+La (a) me parece la mas directa y no cambia el contrato que yo consumo. Si
+tocas la forma del payload avisame, porque el boton muestra el mensaje y el
+contador que vienen en la respuesta.
+
+
+================================================================================
+6. LO QUE DEJE ANDANDO
+================================================================================
+
+El contenedor gestock_postgres queda levantado para que puedas probar sin
+rearmarlo. Si quieres partir de cero:
+
+    docker compose down -v && docker compose up -d postgres
+
+Avisame cuando este y lo vuelvo a probar desde la interfaz, que es donde se ve
+lo que le pasa al usuario.

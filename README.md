@@ -23,7 +23,7 @@ Está orientada al comercio minorista independiente chileno (minimarkets, almace
 | **Persistencia Dual** | PostgreSQL 16+ (Cloud SaaS) & SQLite 3 (Edge POS) | Modelo dual de 29 tablas persistentes con integridad referencial estricta y banderas `is_dirty` para sincronización. |
 | **Inteligencia Artificial** | Google Gemini AI Studio API (Flash / Vision) | Extracción OCR estructurada de facturas de compra y normalización de catálogos. |
 | **Pasarelas de Pago** | Sandbox Transbank Webpay Plus, Mercado Pago, SumUp | Simulación de cobros con tarjeta y prevención de doble tributación (Res. Exenta N° 176). |
-| **Testing Automatizado** | Jest 29, `ts-jest`, `pg-mem` | Batería integral de **158 pruebas automatizadas** (90 unitarias + 68 de integración) con 100% de éxito. |
+| **Testing Automatizado** | Jest 29, `ts-jest`, `pg-mem` | Batería de **297 pruebas automatizadas** en el servidor (213 unitarias y 84 de integración), más 52 de interfaz y 113 comprobaciones de extremo a extremo. |
 | **DevOps & Despliegue** | Docker, Docker Compose, Git / GitHub | Empaquetado en contenedores y control de versiones centralizado. |
 
 ---
@@ -105,13 +105,13 @@ npm run dev
 ```bash
 cd "FASE 2/Evidencias Proyecto/Evidencias de sistema/Backend"
 
-# Ejecutar las 76 pruebas de integración (15 suites)
+# Ejecutar las 84 pruebas de integración (15 suites)
 npm test
 
-# Ejecutar las 96 pruebas unitarias de algoritmos, RBAC y seguridad
+# Ejecutar las 213 pruebas unitarias de algoritmos, RBAC y seguridad (16 suites)
 npm run test:unit
 ```
-*Resultado certificado: **172 pruebas aprobadas (100% PASS)***.
+*Resultado de la ultima corrida: **297 pruebas del servidor aprobadas**, sin fallas.*
 
 ---
 
@@ -163,7 +163,7 @@ docker compose up --build
 El proyecto se desarrolla bajo el marco de **RUP (Rational Unified Process)**, con un enfoque iterativo e incremental orientado a la arquitectura y mitigación temprana de riesgos:
 
 - **Incepción y Elaboración (Fase 1 - 20%):** Definición de la visión, justificación económica (*Business Case*), especificación de requisitos y diseño de la arquitectura base. Se elaboraron los artefactos UML (Casos de Uso, Clases, Componentes, Despliegue, Secuencia) y el modelo entidad-relación inicial.
-- **Construcción (Fase 2 - 50%):** Implementación técnica modular del software. Desarrollo del Backend API con persistencia dual (29 tablas persistentes), autenticación criptográfica JWT/Bcrypt, interfaz React 19, integración de IA Gemini OCR para facturas, simulación de pasarelas de pago y acreditación de calidad mediante **158 pruebas automatizadas**.
+- **Construcción (Fase 2 - 50%):** Implementación técnica modular del software. Desarrollo del Backend API con persistencia dual (29 tablas persistentes), autenticación criptográfica JWT/Bcrypt, interfaz React 19, integración de IA Gemini OCR para facturas, simulación de pasarelas de pago y acreditación de calidad mediante **297 pruebas automatizadas** del servidor y 113 comprobaciones de extremo a extremo.
 - **Transición (Fase 3 - 30%):** Despliegue del MVP, pruebas de carga y estrés, documentación de usuario, manuales de instalación y preparación de la defensa de título ante la comisión evaluadora.
 
 ---

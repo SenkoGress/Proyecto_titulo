@@ -1,0 +1,153 @@
+﻿==============================================================================
+GesTock - Reporte de pruebas de endpoints
+Fecha:   08-10-2026, 10:14:46 p. m.
+Backend: http://localhost:3000
+Tenant:  00000000-0000-0000-0000-000000000001
+==============================================================================
+
+Sistema y estado del servidor
+------------------------------------------------------------------------------
+  OK     GET /api responde  (11 ms)
+  OK     el catalogo de servicios trae contenido
+  OK     GET /health responde 200 o 503  (llego 503)
+  OK     GET /pos/status responde  (5 ms)
+  OK     informa el identificador de la caja  (POS-LOCAL-DEVICE-01)
+  OK     informa cuantas ventas quedan por subir  (pendientes: 16)
+
+Inventario: catalogo y vencimientos
+------------------------------------------------------------------------------
+  OK     GET /pos/inventory responde  (9 ms)
+  OK     el catalogo trae productos  (16 productos)
+  OK     cada producto trae los campos que usa la pantalla
+  OK     informa el origen del producto (catalogo o factura)  (origen: CATALOGO)
+  OK     GET /pos/vencimientos responde  (4 ms)
+  OK     el semaforo sanitario trae su resumen
+  OK     cuenta vencidos y productos en riesgo  (2 vencidos, 3 en riesgo)
+  OK     todos los del semaforo tienen fecha de vencimiento
+  OK     cada uno trae sus dias restantes y su nivel de riesgo
+
+Productos: alta, edicion, ajuste de stock y merma
+------------------------------------------------------------------------------
+  OK     POST /pos/products crea el producto  (16 ms)
+  OK     le genera un codigo de barras  (7807379553204)
+  OK     guarda el stock inicial
+  OK     guarda el lote
+  OK     guarda la fecha de vencimiento
+  OK     PUT /pos/products/:id edita  (7 ms)
+  OK     cambia el precio de venta
+  OK     cambia el lote
+  OK     NO pierde el precio de compra que no se mando
+  OK     NO pierde el nombre que no se mando
+  OK     NO pierde la fecha de vencimiento
+  OK     PATCH /pos/products/:id/stock ajusta  (17 ms)
+  OK     deja el stock en lo contado
+  OK     calcula la diferencia
+  OK     POST /pos/mermas registra la baja  (15 ms)
+  OK     descuenta del stock
+  OK     deja constancia del stock anterior
+  OK     GET /pos/mermas lista el historial  (14 ms)
+  OK     la merma recien creada aparece en el historial
+  OK     GET /pos/products/:id/history responde  (17 ms)
+  OK     registra el alta del producto  (merma, ajuste_manual, alta_inicial)
+  OK     registra el ajuste manual
+  OK     registra la merma
+  OK     el rastro de stock es continuo, sin saltos  (0->10 10->7 7->5)
+  OK     parte de cero
+  OK     termina en el stock actual
+
+Caja: resumen del turno y arqueo
+------------------------------------------------------------------------------
+  OK     GET /caja/resumen responde  (17 ms)
+  OK     informa el estado del turno  (ABIERTA)
+  OK     informa el monto de apertura
+  OK     separa los medios de pago
+  OK     RutPay va aparte del efectivo  (efectivo 15320, rutpay 0)
+  OK     informa el impuesto adicional del turno
+  OK     el efectivo esperado cuadra con la formula del arqueo
+  OK     GET /caja/historial responde  (4 ms)
+  OK     GET /caja/movimientos responde  (12 ms)
+  OK     sin sesion_id responde 400 y no revienta
+
+Ventas: historial, devoluciones y documentos
+------------------------------------------------------------------------------
+  OK     GET /pos/transactions responde  (12 ms)
+  OK     trae ventas registradas  (22 ventas)
+  OK     cada venta trae los campos que usa la pantalla
+  OK     los items traen producto_id, no solo el sku  (sin esto la devolucion parcial no se puede armar)
+  OK     los items traen el codigo de barra
+  OK     la devolucion viene marcada con es_devolucion
+  OK     la devolucion apunta a la venta que anula
+  OK     la devolucion tiene total negativo  (total -1290)
+  OK     la venta anulada esta en la misma lista  (anula POS-1790310810726)
+  OK     GET /dte/list responde  (estado 200, 14 ms)
+  OK     cada documento trae su folio y su tipo
+
+Reabastecimiento: punto de reorden
+------------------------------------------------------------------------------
+  OK     GET /replenishment/suggest responde  (16 ms)
+  OK     entrega la sugerencia de pedido
+  SALTA  revisar los productos criticos  (no hay productos bajo el punto de reorden)
+  OK     consultar la sugerencia NO crea ordenes de compra
+  OK     GET /replenishment/purchase-orders responde  (8 ms)
+
+Facturas: lectura con OCR
+------------------------------------------------------------------------------
+  OK     POST /invoices/scan lee la factura  (3359 ms)
+  OK     informa que motor la leyo  (GoogleAiGemini)
+  OK     NO usa el simulador que inventa datos
+  OK     extrae el folio  (50001)
+  OK     extrae el proveedor  (DISTRIBUIDORA DE PRUEBA LIMITADA)
+  OK     calcula el neto y el iva
+  OK     informa el margen con que sugiere los precios  (35%)
+  OK     escanear NO modifica el inventario
+  OK     GET /invoices/ lista las facturas ingresadas  (estado 200)
+  SALTA  confirmar la ingesta  (crearia productos de verdad en el inventario, se prueba a mano desde la pantalla)
+
+SII: folios, F29 y respaldo tributario
+------------------------------------------------------------------------------
+  OK     GET /dte/caf/status responde  (16 ms)
+  OK     informa cuantos folios quedan  (tipo 33: 4998 de 5000)
+  OK     avisa si un tipo de documento se esta quedando sin folios
+  OK     GET /dte/f29 responde  (17 ms)
+  OK     calcula el debito fiscal
+  OK     calcula el credito fiscal
+  OK     GET /dte/rcof/list responde  (13 ms)
+  OK     GET /dte/guias responde  (12 ms)
+  OK     GET /dte/config responde  (15 ms)
+  OK     informa el RUT del emisor  (76.123.456-0)
+  OK     el RUT del emisor pasa el digito verificador
+  SALTA  ejecutar el set de certificacion  (emite documentos reales y consume folios)
+
+Autenticacion: login, usuarios y permisos
+------------------------------------------------------------------------------
+  OK     rechaza credenciales inventadas con 401
+  OK     rechaza la clave incorrecta con 401
+  OK     el mensaje es el mismo exista o no el correo  (si difieren, se puede averiguar que correos estan registrados)
+  FALLA  sin token no deja consultar el inventario  (llego 200)
+  OK     POST /auth/login entra con las credenciales correctas  (100 ms)
+  OK     devuelve el token
+  OK     devuelve el usuario con su rol  (admin)
+  OK     NUNCA devuelve la clave guardada  (exponer el hash es una filtracion)
+  OK     GET /auth/me reconoce el token  (16 ms)
+  OK     GET /auth/users lista la gente del local  (16 ms)
+  OK     la lista trae al menos al admin  (2 usuarios)
+  OK     ningun usuario de la lista expone su clave
+  OK     con token si deja consultar el inventario  (15 ms)
+
+Permisos: lo que puede y no puede el cajero
+------------------------------------------------------------------------------
+  OK     el cajero puede entrar  (cajero@gestock.cl)
+  OK     entra con rol de cajero
+  OK     entra a /pos/inventory  (llego 200)
+  OK     entra a /pos/vencimientos  (llego 200)
+  OK     entra a /caja/resumen  (llego 200)
+  OK     entra a /pos/status  (llego 200)
+  OK     no entra a /dashboard/overview  (llego 403)
+  OK     no entra a /suppliers  (llego 403)
+  OK     no entra a /replenishment/suggest  (llego 403)
+  OK     no entra a /auth/users  (llego 403)
+  OK     no puede crear cuentas  (llego 403)
+
+==============================================================================
+TOTAL: 109 de 110 pasaron, 1 fallaron, 3 saltadas
+==============================================================================

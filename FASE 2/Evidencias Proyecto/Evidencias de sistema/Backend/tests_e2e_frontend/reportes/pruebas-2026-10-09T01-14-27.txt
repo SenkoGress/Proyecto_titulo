@@ -1,0 +1,24 @@
+﻿==============================================================================
+GesTock - Reporte de pruebas de endpoints
+Fecha:   08-10-2026, 10:14:27 p. m.
+Backend: http://localhost:3000
+Tenant:  00000000-0000-0000-0000-000000000001
+==============================================================================
+
+Permisos: lo que puede y no puede el cajero
+------------------------------------------------------------------------------
+  OK     el cajero puede entrar  (cajero@gestock.cl)
+  OK     entra con rol de cajero
+  OK     entra a /pos/inventory  (llego 200)
+  OK     entra a /pos/vencimientos  (llego 200)
+  OK     entra a /caja/resumen  (llego 200)
+  OK     entra a /pos/status  (llego 200)
+  OK     no entra a /dashboard/overview  (llego 403)
+  OK     no entra a /suppliers  (llego 403)
+  OK     no entra a /replenishment/suggest  (llego 403)
+  OK     no entra a /auth/users  (llego 403)
+  OK     no puede crear cuentas  (llego 403)
+
+==============================================================================
+TOTAL: 11 de 11 pasaron, 0 fallaron, 0 saltadas
+==============================================================================
