@@ -20,6 +20,12 @@ export function obtenerMensajeError(error: unknown): string {
       return 'El servidor recibio demasiadas peticiones seguidas. Espera un par de minutos y vuelve a intentar.'
     }
 
+    // un 5xx trae el detalle tecnico de la falla, que al usuario no le sirve y
+    // a veces expone nombres de tablas y restricciones de la base de datos
+    if (error.response.status >= 500) {
+      return 'El servidor no pudo completar la operacion. Intenta de nuevo en un momento.'
+    }
+
     // mensaje que manda el backend
     const data = error.response.data as { message?: string } | undefined
     return data?.message ?? `Error del servidor (${error.response.status})`

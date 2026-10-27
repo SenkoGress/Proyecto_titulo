@@ -10,9 +10,14 @@ import { PanelColaFacturas } from '@/features/invoices/components/compartidos/Pa
 import { FacturaIlegible } from '@/features/invoices/components/compartidos/FacturaIlegible'
 import { noSePudoLeer } from '@/features/invoices/utils/lecturaFactura'
 import { DialogoIngresoExitoso } from '@/features/invoices/components/compartidos/DialogoIngresoExitoso'
+import Alert from '@mui/material/Alert'
+import AlertTitle from '@mui/material/AlertTitle'
+import { formatFechaSola } from '@/shared/utils/formatFecha'
+import { facturaYaIngresada } from '@/features/invoices/utils/facturaDuplicada'
 import { RevisionFacturaVisual } from '@/features/invoices/components/visual/RevisionFacturaVisual'
 import { RevisionFacturaTecnica } from '@/features/invoices/components/tecnico/RevisionFacturaTecnica'
-import { useConfirmarFactura } from '@/features/invoices/hooks/useInvoices'
+import { useConfirmarFactura,
+  useFacturas } from '@/features/invoices/hooks/useInvoices'
 import { recalcularFila } from '@/features/invoices/utils/calculosFactura'
 import type { ItemFactura, PrevisualizacionFactura, ResultadoEscaneo } from '@/features/invoices/types'
 
@@ -37,6 +42,7 @@ function filaVacia(): ItemFactura {
 // paso 1 subir, paso 2 revisar lo que leyo la ia y confirmar (visual o tecnico)
 export function IngresoFacturasPage() {
   const esModoTecnico = useEsModoTecnico()
+  const facturas = useFacturas()
 
   const [preview, setPreview] = useState<PrevisualizacionFactura | null>(null)
   const [encolada, setEncolada] = useState<Extract<ResultadoEscaneo, { tipo: 'encolada' }> | null>(null)
@@ -107,6 +113,15 @@ export function IngresoFacturasPage() {
     })
   }
 
+  // misma factura del mismo proveedor que ya entro antes
+  const duplicada = preview
+    ? facturaYaIngresada(
+        preview.raw_data.folio_factura,
+        preview.raw_data.rut_proveedor,
+        facturas.data ?? [],
+      )
+    : null
+
   return (
     <Box sx={{ height: '100%', overflowY: 'auto' }}>
       <Migas rutas={['Facturas', 'Recepción de Mercadería', 'Lectura con IA']} />
@@ -130,6 +145,17 @@ export function IngresoFacturasPage() {
           mensaje={encolada.mensaje}
           onSubirOtra={cancelar}
         />
+      )}
+
+      {/* el backend todavia no rechaza una factura repetida: sin este aviso el
+          stock sube de nuevo por una compra que ya se ingreso */}
+      {preview && duplicada && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          <AlertTitle>Esta factura ya fue ingresada</AlertTitle>
+          El folio {duplicada.numero_factura} de {duplicada.proveedor_nombre ?? 'este proveedor'} se
+          ingreso el {formatFechaSola(duplicada.fecha_ingreso)}. Si la confirmas de nuevo, el stock vuelve
+          a subir por una compra que ya esta contada.
+        </Alert>
       )}
 
       {preview &&

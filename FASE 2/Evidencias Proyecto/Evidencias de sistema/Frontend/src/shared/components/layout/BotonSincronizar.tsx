@@ -41,6 +41,8 @@ export function BotonSincronizar() {
       >
         <Alert severity={salioMal ? 'warning' : 'success'} onClose={() => sincronizar.reset()}>
           {sincronizar.isError ? obtenerMensajeError(sincronizar.error) : resultado?.message}
+          {/* lo primero que piensa el dueño cuando esto falla es si perdio las ventas */}
+          {salioMal && ' Las ventas siguen guardadas en este equipo.'}
           {sinRespaldar > 0 && ` Quedan ${sinRespaldar} documentos de factura solo en este equipo.`}
         </Alert>
       </Snackbar>

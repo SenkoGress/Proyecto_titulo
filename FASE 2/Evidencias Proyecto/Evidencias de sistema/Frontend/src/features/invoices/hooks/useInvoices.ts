@@ -2,6 +2,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   confirmarFactura,
+  obtenerFacturas,
   escanearFactura,
   obtenerPendientes,
   procesarPendientes,
@@ -45,5 +46,13 @@ export function useProcesarPendientes() {
       clienteQuery.invalidateQueries({ queryKey: ['invoices'] })
       clienteQuery.invalidateQueries({ queryKey: ['pos', 'productos'] })
     },
+  })
+}
+
+// facturas ya ingresadas, para avisar si una viene repetida
+export function useFacturas() {
+  return useQuery({
+    queryKey: ['invoices', 'registradas'],
+    queryFn: obtenerFacturas,
   })
 }
