@@ -61,7 +61,9 @@ router.get('/email', async (req: Request, res: Response): Promise<void> => {
     res.status(200).json({
       success: true,
       email: email || '',
-      auto_send: autoSend
+      auto_send: autoSend,
+      dia_envio: await defaultTenantConfigService.getDiaEnvio(tenantId),
+      hora_envio: await defaultTenantConfigService.getHoraEnvio(tenantId)
     });
   } catch (error) {
     logger.error('ConfigRoutes', 'Error retrieving email config', error);
@@ -74,7 +76,7 @@ router.get('/email', async (req: Request, res: Response): Promise<void> => {
  * Actualiza el correo de órdenes de compra y la bandera de auto-envío
  */
 router.post('/email', async (req: Request, res: Response): Promise<void> => {
-  const { tenant_id, email, auto_send } = req.body;
+  const { tenant_id, email, auto_send, dia_envio, hora_envio } = req.body;
   const tenantId = tenant_id || '00000000-0000-0000-0000-000000000001';
 
   if (!email) {
@@ -84,6 +86,10 @@ router.post('/email', async (req: Request, res: Response): Promise<void> => {
 
   try {
     const savedEmail = await defaultTenantConfigService.setOrderNotificationEmail(tenantId, email);
+    // El dia y la hora son opcionales: si no vienen, conservan el valor guardado. Asi la
+    // pantalla de Configuracion puede conectarse por partes sin romper lo que ya funciona.
+    const horario = await defaultTenantConfigService.setHorarioEnvio(tenantId, dia_envio, hora_envio);
+
     if (auto_send !== undefined) {
       await defaultTenantConfigService.setAutoSendOrders(tenantId, auto_send === true || auto_send === 'true');
     }
@@ -92,7 +98,9 @@ router.post('/email', async (req: Request, res: Response): Promise<void> => {
       success: true,
       message: `Correo para órdenes de compra guardado: ${savedEmail}`,
       email: savedEmail,
-      auto_send: auto_send !== undefined ? auto_send : true
+      auto_send: auto_send !== undefined ? auto_send : true,
+      dia_envio: horario.dia_envio,
+      hora_envio: horario.hora_envio
     });
   } catch (error) {
     logger.error('ConfigRoutes', 'Error saving email config', error);

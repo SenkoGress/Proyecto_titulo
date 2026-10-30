@@ -113,8 +113,8 @@ app.get('/api', (_req: Request, res: Response): void => {
       'Offline-First Sync Engine',
       'Smart OCR Invoice Ingestion',
       'Predictive Replenishment & Purchase Orders',
+      'Scheduled Replenishment Notice (SMTP)',
       'Payment Gateways (Transbank, MercadoPago, SumUp)',
-      'Market Trends Intelligence (MercadoLibre, AliExpress)',
       'POS Terminal & Predictive Dashboard SPA'
     ]
   });
@@ -125,10 +125,17 @@ app.use(globalErrorHandler);
 
 import { initializeDatabase } from './database/init-db';
 
+import { defaultProgramadorAvisos } from './notifications/programador-avisos';
+
 if (process.env.NODE_ENV !== 'test') {
-  initializeDatabase().catch((err) => {
-    logger.error('Server', 'Database initialization error', err);
-  });
+  initializeDatabase()
+    .then(() => {
+      // El reloj parte despues de la base porque su primera revision consulta los locales
+      defaultProgramadorAvisos.iniciar();
+    })
+    .catch((err) => {
+      logger.error('Server', 'Database initialization error', err);
+    });
 }
 
 export const server = process.env.NODE_ENV !== 'test'

@@ -4,6 +4,8 @@ import { defaultSqliteClient, SqliteClient } from '../database/sqlite/client';
 import { calculateNextVisit } from '../utils/supplier.utils';
 import { defaultTenantConfigService } from '../config/tenant-config.service';
 import { logger } from '../utils/logger';
+import { EmailService, defaultEmailService } from '../notifications/email.service';
+import { redactarAvisoReposicion } from '../notifications/aviso-reposicion';
 import {
   ProductSalesVelocity,
   ReplenishmentConfig,
@@ -22,13 +24,17 @@ export class ReplenishmentService {
   private sqliteClient: SqliteClient;
   private config: ReplenishmentConfig;
 
+  private readonly emailService: EmailService;
+
   constructor(
     customPgClient?: PostgresClient,
     customSqliteClient?: SqliteClient,
-    customConfig?: Partial<ReplenishmentConfig>
+    customConfig?: Partial<ReplenishmentConfig>,
+    customEmailService?: EmailService
   ) {
     this.pgClient = customPgClient || defaultPgClient;
     this.sqliteClient = customSqliteClient || defaultSqliteClient;
+    this.emailService = customEmailService || defaultEmailService;
     this.config = {
       ...defaultReplenishmentConfig,
       ...customConfig
@@ -435,29 +441,54 @@ export class ReplenishmentService {
   public async sendPurchaseOrdersBatchEmail(
     tenantId: string,
     recipientEmail: string,
-    orders: SuggestedPurchaseOrder[]
+    orders: SuggestedPurchaseOrder[],
+    stockPorSku?: Map<string, number>
   ): Promise<{ sent: boolean; message: string; recipient: string }> {
     const totalMonto = orders.reduce((sum, o) => sum + o.totalEstimado, 0);
     const totalItems = orders.reduce((sum, o) => sum + o.items.length, 0);
 
-    logger.info('ReplenishmentService', `Simulating automated dispatch of purchase orders email to: ${recipientEmail}`, {
-      ordersCount: orders.length,
-      totalMonto,
-      totalItems
+    const aviso = redactarAvisoReposicion(orders, stockPorSku);
+    const resultado = await this.emailService.enviar({
+      para: recipientEmail,
+      asunto: aviso.asunto,
+      texto: aviso.texto,
+      html: aviso.html
     });
 
-    // Actualizar estado de las órdenes a 'enviada'
-    for (const ord of orders) {
-      try {
-        this.sqliteClient.execute("UPDATE purchase_orders SET estado = 'enviada' WHERE id = ?", [ord.orderId]);
-        await this.pgClient.query("UPDATE purchase_orders SET estado = 'enviada' WHERE id = $1", [ord.orderId]);
-      } catch {}
+    // Las ordenes se marcan como enviadas SOLO si el correo salio. Antes se marcaban igual,
+    // de modo que la base registraba como despachado algo que nunca se envio y el pedido
+    // desaparecia de las sugerencias sin que el proveedor hubiera recibido nada.
+    if (resultado.enviado) {
+      for (const ord of orders) {
+        // Los dos motores se actualizan por separado: sin conexion a la nube el estado local
+        // debe quedar correcto igual, y la copia en la nube se alinea al sincronizar.
+        try {
+          this.sqliteClient.execute("UPDATE purchase_orders SET estado = 'enviada' WHERE id = ?", [ord.orderId]);
+        } catch (err) {
+          logger.warn('ReplenishmentService', 'El correo salio pero no se pudo marcar la orden en el nodo local', {
+            orderId: ord.orderId,
+            error: err instanceof Error ? err.message : String(err)
+          });
+        }
+
+        try {
+          await this.pgClient.query("UPDATE purchase_orders SET estado = 'enviada' WHERE id = $1", [ord.orderId]);
+        } catch {
+          logger.debug('ReplenishmentService', 'La orden quedo enviada en local y pendiente de reflejarse en la nube', {
+            orderId: ord.orderId
+          });
+        }
+      }
     }
 
     return {
-      sent: true,
-      message: `Órdenes de compra enviadas automáticamente a ${recipientEmail} (${orders.length} órdenes, ${totalItems} productos, Total: $${totalMonto.toLocaleString('es-CL')})`,
-      recipient: recipientEmail
+      sent: resultado.enviado,
+      recipient: recipientEmail,
+      message: resultado.enviado
+        ? `Aviso de reposicion enviado a ${recipientEmail}: ${orders.length} ` +
+          `${orders.length === 1 ? 'proveedor' : 'proveedores'}, ${totalItems} productos, ` +
+          `total estimado $${totalMonto.toLocaleString('es-CL')}`
+        : resultado.mensaje
     };
   }
 
