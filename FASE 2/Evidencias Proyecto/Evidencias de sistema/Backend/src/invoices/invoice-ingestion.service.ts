@@ -8,6 +8,7 @@ import { DocumentoFactura, InvoiceFileStore, defaultInvoiceFileStore } from './i
 import { calcularPrecioVenta, desglosarIvaChileno } from '../utils/pricing';
 import { generateChileanBarcode } from '../utils/barcode.utils';
 import { logger } from '../utils/logger';
+import { normalizarFolio } from '../ocr/extraccion';
 import { defaultLotesService } from '../inventory/lotes.service';
 
 export interface IngestionResult {
@@ -59,6 +60,31 @@ export interface ScannedInvoicePreview {
   raw_data: ExtractedInvoiceData;
   /** Referencia al documento original ya almacenado; debe reenviarse en confirm para vincularlo. */
   documento?: DocumentoFactura;
+}
+
+/**
+ * La factura ya fue ingresada antes. No es un fallo del sistema ni del documento: es una compra
+ * que ya esta contada, y volver a aceptarla sumaria el stock y el credito fiscal por segunda vez.
+ */
+export class FacturaDuplicadaError extends Error {
+  public readonly duplicada = true;
+
+  constructor(
+    public readonly folio: string,
+    public readonly proveedor: string,
+    public readonly fechaIngreso?: string
+  ) {
+    super(
+      `La factura ${folio} de ${proveedor} ya fue ingresada` +
+        (fechaIngreso ? ` el ${fechaIngreso}` : '') +
+        '. Ingresarla de nuevo sumaria el stock por una compra que ya esta registrada.'
+    );
+    this.name = 'FacturaDuplicadaError';
+  }
+}
+
+export function esFacturaDuplicada(error: unknown): boolean {
+  return error instanceof FacturaDuplicadaError || (error as { duplicada?: boolean })?.duplicada === true;
 }
 
 export class InvoiceIngestionService {
@@ -372,6 +398,20 @@ export class InvoiceIngestionService {
   ): Promise<IngestionResult> {
     const startTime = Date.now();
     const lotesParaLaNube: Array<{ productoId: string; cantidad: number; fechaVencimiento: string; codigoLote: string | null }> = [];
+
+    // Una factura ya ingresada no se vuelve a aceptar: el stock y el credito fiscal de esa
+    // compra ya estan contados. Se compara folio con proveedor, porque dos proveedores pueden
+    // emitir el mismo numero y esas si son facturas distintas.
+    const yaIngresada = this.buscarFacturaExistente(tenantId, invoiceData);
+    if (yaIngresada) {
+      throw new FacturaDuplicadaError(
+        String(invoiceData.folio_factura),
+        invoiceData.razon_social || invoiceData.rut_proveedor || 'el proveedor',
+        yaIngresada.fecha_ingreso
+      );
+    }
+
+
     const configuredMargin = await defaultTenantConfigService.getProfitMargin(tenantId);
 
     let invoiceId = uuidv4();
@@ -778,6 +818,42 @@ export class InvoiceIngestionService {
       duration_ms: duration,
       persistido_local: persistidoLocal
     };
+  }
+
+
+  /**
+   * Busca la misma factura ya ingresada. Consulta el nodo local, que es el que siempre tiene el
+   * dato aunque la nube no este disponible, y descarta los tickets de la cola, que no son
+   * facturas ingresadas sino documentos esperando lectura.
+   */
+  private buscarFacturaExistente(
+    tenantId: string,
+    invoiceData: ExtractedInvoiceData
+  ): { fecha_ingreso: string } | null {
+    const folio = normalizarFolio(invoiceData.folio_factura);
+    const rut = invoiceData.rut_proveedor;
+    if (!folio || !rut) return null;
+
+    try {
+      return defaultSqliteClient.queryOne<{ fecha_ingreso: string }>(
+        `SELECT fi.fecha_ingreso
+         FROM factura_ingresos fi
+         LEFT JOIN proveedores p ON fi.proveedor_id = p.id
+         WHERE fi.tenant_id = ?
+           AND fi.numero_factura = ?
+           AND (p.rut_proveedor = ? OR fi.rut_proveedor = ?)
+           AND fi.estado NOT IN ('PENDIENTE_OCR', 'FALLIDA_OCR')
+         LIMIT 1`,
+        [tenantId, folio, rut, rut]
+      ) ?? null;
+    } catch (error) {
+      // Si la consulta falla no se bloquea la ingesta: el duplicado es un riesgo, perder la
+      // factura es una perdida cierta
+      logger.warn('InvoiceIngestionService', 'No fue posible comprobar si la factura ya existia', {
+        error: error instanceof Error ? error.message : String(error)
+      });
+      return null;
+    }
   }
 
   public async getInvoices(tenantId: string): Promise<any[]> {

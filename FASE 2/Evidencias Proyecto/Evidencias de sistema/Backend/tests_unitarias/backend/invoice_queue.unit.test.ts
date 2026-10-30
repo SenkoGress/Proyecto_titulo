@@ -97,7 +97,10 @@ describe('Pruebas Unitarias: Cola de Facturas Pendientes de Digitalizacion', () 
     expect(cola.listar(TENANT)).toHaveLength(0);
   });
 
-  test('un fallo deja la factura en cola y cuenta el intento', async () => {
+  test('una caida del servicio deja la factura en cola SIN gastar intento', async () => {
+    // El motor simulado lanza el error del despachador cuando no alcanza ningun motor, que es
+    // una caida del servicio y no un problema del documento. Gastar intento ahi terminaba
+    // marcando como fallida una factura perfectamente legible.
     const cola = new InvoiceQueueService(defaultSqliteClient, store, ingestaQueResponde(['falla']).servicio, 3);
     cola.encolar(TENANT, DOCUMENTO, 'factura.jpg', 'image/jpeg');
 
@@ -107,10 +110,26 @@ describe('Pruebas Unitarias: Cola de Facturas Pendientes de Digitalizacion', () 
     expect(resultado.pendientes).toBe(1);
     const enCola = cola.listar(TENANT);
     expect(enCola[0].estado).toBe(ESTADO_PENDIENTE);
-    expect(enCola[0].sync_attempts).toBe(1);
+    expect(Number(enCola[0].sync_attempts)).toBe(0);
   });
 
-  test('tras agotar los intentos pasa a FALLIDA_OCR y deja de reintentarse', async () => {
+  test('un fallo propio del sistema si cuenta el intento', async () => {
+    const servicio = {
+      async ingestInvoice(): Promise<never> {
+        throw new Error('la columna cantidad no admite nulos');
+      }
+    };
+
+    const cola = new InvoiceQueueService(defaultSqliteClient, store, servicio as never, 3);
+    cola.encolar(TENANT, DOCUMENTO, 'factura.jpg', 'image/jpeg');
+
+    await cola.procesarPendientes(TENANT);
+
+    // Lo que no depende del servicio externo si agota intentos: insistir no lo arregla
+    expect(Number(cola.listar(TENANT)[0].sync_attempts)).toBe(1);
+  });
+
+  test('el servicio caido se reintenta indefinidamente, no se da por perdida', async () => {
     const { servicio, usadas } = ingestaQueResponde(['falla']);
     const cola = new InvoiceQueueService(defaultSqliteClient, store, servicio, 2);
     cola.encolar(TENANT, DOCUMENTO, 'factura.jpg', 'image/jpeg');
@@ -119,12 +138,13 @@ describe('Pruebas Unitarias: Cola de Facturas Pendientes de Digitalizacion', () 
     await cola.procesarPendientes(TENANT);
     const tercera = await cola.procesarPendientes(TENANT);
 
-    // una foto ilegible no mejora por insistir: el ciclo se detiene y corresponde ingreso manual
-    expect(usadas).toHaveLength(2);
+    // Una caida del servicio se resuelve sola cuando el servicio vuelve. Antes la tercera
+    // pasada marcaba la factura como fallida y el documento quedaba fuera del ciclo.
+    expect(usadas).toHaveLength(3);
     expect(tercera.procesadas).toBe(0);
     const enCola = cola.listar(TENANT);
-    expect(enCola[0].estado).toBe(ESTADO_FALLIDA);
-    expect(cola.contarPendientes(TENANT)).toBe(0);
+    expect(enCola[0].estado).toBe(ESTADO_PENDIENTE);
+    expect(cola.contarPendientes(TENANT)).toBe(1);
   });
 
   test('una factura reintentada con exito despues de fallar termina procesada', async () => {

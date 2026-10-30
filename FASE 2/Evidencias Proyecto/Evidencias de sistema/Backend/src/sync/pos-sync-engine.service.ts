@@ -1,6 +1,7 @@
 import { SqliteClient, defaultSqliteClient } from '../database/sqlite/client';
 import { DetalleVenta, Producto, TransaccionVenta } from '../database/types';
 import { logger } from '../utils/logger';
+import { ProductoReferenciado, ProveedorReferenciado } from './types';
 import { defaultCloudSyncReceiver } from './cloud-sync-receiver.service';
 import { ConflictResolver, defaultConflictResolver } from './conflict-resolver';
 import { ExponentialBackoff, defaultBackoff } from './exponential-backoff';
@@ -45,7 +46,31 @@ export class PosSyncEngineService {
         'SELECT * FROM detalle_venta WHERE venta_id = ?',
         [sale.id]
       );
-      items.push({ sale, details });
+      // Los productos creados en el terminal pueden no existir en la nube. Viajan con la venta
+      // para que el receptor los registre antes de insertar el detalle.
+      const idsProducto = Array.from(new Set(details.map((d) => d.producto_id).filter(Boolean)));
+      const productos = idsProducto.length
+        ? this.sqlite.query<ProductoReferenciado>(
+            `SELECT id, sku, codigo_barra, nombre, precio_compra, precio_venta, proveedor_id
+             FROM productos WHERE id IN (${idsProducto.map(() => '?').join(',')})`,
+            idsProducto
+          )
+        : [];
+
+      // Los productos declaran proveedor: si ese proveedor no existe arriba, el producto
+      // tampoco se puede crear. El envio lleva exactamente lo que necesita para ser valido.
+      const idsProveedor = Array.from(
+        new Set(productos.map((p) => p.proveedor_id).filter((id): id is string => Boolean(id)))
+      );
+      const proveedores = idsProveedor.length
+        ? this.sqlite.query<ProveedorReferenciado>(
+            `SELECT id, rut_proveedor, nombre_proveedores, email
+             FROM proveedores WHERE id IN (${idsProveedor.map(() => '?').join(',')})`,
+            idsProveedor
+          )
+        : [];
+
+      items.push({ sale, details, productos, proveedores });
     }
 
     return items;
@@ -53,10 +78,11 @@ export class PosSyncEngineService {
 
   public async syncPush(
     tenantId: string,
-    transport?: (payload: SyncPushPayload) => Promise<SyncPushResponse>
+    transport?: (payload: SyncPushPayload) => Promise<SyncPushResponse>,
+    soloEstas?: SyncPushItem[]
   ): Promise<SyncPushResponse> {
     const transportFn = transport || (async (p: SyncPushPayload) => defaultCloudSyncReceiver.ingestPushBatch(p));
-    const pending = this.getPendingDirtySales(tenantId);
+    const pending = soloEstas || this.getPendingDirtySales(tenantId);
 
     if (pending.length === 0) {
       return {
@@ -65,6 +91,37 @@ export class PosSyncEngineService {
         failed_ids: [],
         processed_at: new Date().toISOString(),
         message: 'No pending offline sales to sync'
+      };
+    }
+
+    // Cada venta viaja en su propio envio. Antes iba el lote completo en una sola transaccion,
+    // de modo que un registro que la nube rechazara impedia sincronizar TODAS las ventas
+    // pendientes, incluidas las correctas. La venta es la unidad de trabajo de la caja y por eso
+    // es la granularidad adecuada para la atomicidad.
+    if (pending.length > 1) {
+      const sincronizadas: string[] = [];
+      const fallidas: string[] = [];
+      const motivos: string[] = [];
+
+      for (const item of pending) {
+        const parcial = await this.syncPush(tenantId, transportFn, [item]);
+        sincronizadas.push(...parcial.synced_ids);
+        fallidas.push(...parcial.failed_ids);
+        if (!parcial.success && parcial.message) {
+          motivos.push(parcial.message);
+        }
+      }
+
+      const unicos = Array.from(new Set(motivos));
+      return {
+        success: fallidas.length === 0,
+        synced_ids: sincronizadas,
+        failed_ids: fallidas,
+        processed_at: new Date().toISOString(),
+        message: fallidas.length === 0
+          ? `Se sincronizaron ${sincronizadas.length} ventas`
+          : `Se sincronizaron ${sincronizadas.length} de ${pending.length} ventas. ` +
+            `${fallidas.length} quedaron pendientes: ${unicos.join(' | ')}`
       };
     }
 

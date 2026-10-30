@@ -542,6 +542,46 @@ function patchExistingDatabaseFixes(): void {
       defaultSqliteClient.execute("ALTER TABLE factura_ingresos ADD COLUMN sync_status TEXT DEFAULT 'SYNCED'");
     } catch {}
 
+    // 5. Normalizar identificadores de producto que no son UUID
+    //
+    // SQLite declara los identificadores como TEXT y acepta cualquier cadena, mientras que la
+    // nube los declara UUID. Un producto creado con un identificador escrito a mano se guarda
+    // sin problema en el terminal y despues hace fallar la sincronizacion de toda la venta que
+    // lo referencia, con un error del motor que no nombra al producto. Se reasigna un UUID y se
+    // arrastran las referencias dentro de una transaccion.
+    const idsInvalidos = defaultSqliteClient.query<{ id: string; nombre: string }>(
+      `SELECT id, nombre FROM productos
+       WHERE id NOT GLOB '[0-9a-fA-F]*-[0-9a-fA-F]*-[0-9a-fA-F]*-[0-9a-fA-F]*-[0-9a-fA-F]*'`
+    );
+
+    for (const producto of idsInvalidos) {
+      const nuevoId = uuidv4();
+      defaultSqliteClient.withTransaction(() => {
+        // Las filas hijas apuntan todavia al identificador anterior, de modo que actualizar el
+        // producto primero viola la clave foranea. SQLite permite aplazar esa verificacion hasta
+        // el cierre de la transaccion, cuando las referencias ya fueron trasladadas.
+        defaultSqliteClient.execute('PRAGMA defer_foreign_keys = ON');
+        defaultSqliteClient.execute('UPDATE productos SET id = ? WHERE id = ?', [nuevoId, producto.id]);
+        for (const tabla of ['detalle_venta', 'historial_stock', 'movimientos_inventario',
+                             'producto_proveedores', 'mermas', 'lotes', 'purchase_order_details']) {
+          const columna = tabla === 'purchase_order_details' ? 'product_id' : 'producto_id';
+          try {
+            defaultSqliteClient.execute(
+              `UPDATE ${tabla} SET ${columna} = ? WHERE ${columna} = ?`,
+              [nuevoId, producto.id]
+            );
+          } catch {
+            // La tabla puede no existir todavia en una instalacion antigua
+          }
+        }
+      });
+      logger.warn('InitDB', 'Identificador de producto normalizado a UUID para permitir la sincronizacion', {
+        nombre: producto.nombre,
+        anterior: producto.id,
+        nuevo: nuevoId
+      });
+    }
+
     logger.info('InitDB', 'Idempotent patches for existing databases verified successfully in SQLite.');
   } catch (err) {
     logger.warn('InitDB', 'Error applying startup patches to existing SQLite database', { error: String(err) });

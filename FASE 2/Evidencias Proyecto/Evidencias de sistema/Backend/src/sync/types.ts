@@ -1,8 +1,29 @@
 import { DetalleVenta, Producto, TransaccionVenta } from '../database/types';
 
+export interface ProveedorReferenciado {
+  id: string;
+  rut_proveedor: string;
+  nombre_proveedores: string;
+  email: string | null;
+}
+
+export interface ProductoReferenciado {
+  id: string;
+  sku: string;
+  codigo_barra: string | null;
+  nombre: string;
+  precio_compra: number;
+  precio_venta: number;
+  proveedor_id: string | null;
+}
+
 export interface SyncPushItem {
   sale: TransaccionVenta;
   details: DetalleVenta[];
+  /** Productos que el detalle referencia, para que la nube pueda crear los que no conoce. */
+  productos?: ProductoReferenciado[];
+  /** Proveedores de esos productos: sin ellos el producto no se puede crear con su vinculo. */
+  proveedores?: ProveedorReferenciado[];
 }
 
 export interface SyncPushPayload {

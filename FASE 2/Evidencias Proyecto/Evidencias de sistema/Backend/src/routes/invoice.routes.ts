@@ -3,6 +3,7 @@ import { defaultInvoiceIngestionService } from '../invoices/invoice-ingestion.se
 import { defaultInvoiceQueue } from '../invoices/invoice-queue.service';
 import { defaultInvoiceFileStore } from '../invoices/invoice-file.store';
 import { esDocumentoIlegible } from '../ocr/extraccion';
+import { esFacturaDuplicada } from '../invoices/invoice-ingestion.service';
 import { defaultSqliteClient } from '../database/sqlite/client';
 import { InvoiceInput, ExtractedInvoiceData } from '../ocr/types';
 import { logger } from '../utils/logger';
@@ -185,6 +186,17 @@ router.post('/confirm', async (req: Request, res: Response): Promise<void> => {
       data: result
     });
   } catch (error) {
+    // Una factura ya ingresada no es un error del sistema: es una compra ya contada. Se responde
+    // 409 para que la interfaz lo distinga de un fallo y lo explique al usuario.
+    if (esFacturaDuplicada(error)) {
+      res.status(409).json({
+        success: false,
+        duplicada: true,
+        message: error instanceof Error ? error.message : String(error)
+      });
+      return;
+    }
+
     logger.error('InvoiceRoutes', 'Failed to confirm invoice ingestion', error);
     res.status(500).json({
       success: false,
@@ -229,6 +241,17 @@ router.post('/ingest', async (req: Request, res: Response): Promise<void> => {
       res.status(422).json({ success: false, ilegible: true, message: errorMsg });
       return;
     }
+    // Una factura ya ingresada no es un error del sistema: es una compra ya contada. Se responde
+    // 409 para que la interfaz lo distinga de un fallo y lo explique al usuario.
+    if (esFacturaDuplicada(error)) {
+      res.status(409).json({
+        success: false,
+        duplicada: true,
+        message: error instanceof Error ? error.message : String(error)
+      });
+      return;
+    }
+
     logger.error('InvoiceRoutes', 'Failed to ingest invoice', error);
     res.status(500).json({
       success: false,

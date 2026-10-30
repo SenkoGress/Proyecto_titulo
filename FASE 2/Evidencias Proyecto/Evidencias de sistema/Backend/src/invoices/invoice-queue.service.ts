@@ -37,6 +37,31 @@ export interface ResultadoCola {
  *
  * La cola vive en el nodo local (SQLite), que es donde importa la ausencia de red.
  */
+
+/**
+ * Distingue el fallo del servicio externo del fallo del documento. El primero se resuelve solo
+ * cuando el servicio vuelve; el segundo no mejora por insistir.
+ */
+export function esFalloDelServicio(error: unknown): boolean {
+  const mensaje = (error instanceof Error ? error.message : String(error)).toLowerCase();
+  const senales = [
+    'no fue posible digitalizar',
+    'enotfound',
+    'econnrefused',
+    'econnreset',
+    'etimedout',
+    'timeout',
+    'socket hang up',
+    'network',
+    'rate limit',
+    '429',
+    '503',
+    'service unavailable',
+    'api key'
+  ];
+  return senales.some((s) => mensaje.includes(s));
+}
+
 export class InvoiceQueueService {
   private readonly sqlite: SqliteClient;
   private readonly store: InvoiceFileStore;
@@ -206,22 +231,33 @@ export class InvoiceQueueService {
           continue;
         }
 
-        if (intentos >= this.maxIntentos) {
+        // Un intento se gasta cuando el sistema hizo su parte y el resultado no sirvio. Que el
+        // servicio de reconocimiento no responda no es merito ni culpa del documento: contarlo
+        // como intento terminaba marcando FALLIDA_OCR una factura perfectamente legible, solo
+        // porque el servicio estuvo caido tres veces seguidas.
+        const fueElServicio = esFalloDelServicio(error);
+
+        if (!fueElServicio && intentos >= this.maxIntentos) {
           this.marcarFallida(factura.id, mensaje, intentos);
           resultado.fallidas += 1;
           resultado.detalle.push({ id: factura.id, estado: ESTADO_FALLIDA, error: mensaje });
         } else {
+          const intentosRegistrados = fueElServicio ? Number(factura.sync_attempts ?? 0) : intentos;
           this.sqlite.execute(
             'UPDATE factura_ingresos SET sync_attempts = ?, ultimo_error = ? WHERE id = ?',
-            [intentos, mensaje, factura.id]
+            [intentosRegistrados, mensaje, factura.id]
           );
           resultado.pendientes += 1;
           resultado.detalle.push({ id: factura.id, estado: ESTADO_PENDIENTE, error: mensaje });
         }
-        logger.warn('InvoiceQueueService', `Reintento ${intentos} de ${this.maxIntentos} sin exito`, {
-          id: factura.id,
-          error: mensaje
-        });
+
+        logger.warn(
+          'InvoiceQueueService',
+          fueElServicio
+            ? 'El servicio de reconocimiento no respondio: la factura sigue en cola y no gasta intento'
+            : `Reintento ${intentos} de ${this.maxIntentos} sin exito`,
+          { id: factura.id, error: mensaje }
+        );
       }
     }
 

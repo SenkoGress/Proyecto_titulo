@@ -41,7 +41,7 @@ export class CloudSyncReceiverService {
         const movTipoId = movTipoRes.rows[0].id;
 
         for (const item of payload.sales) {
-          const { sale, details } = item;
+          const { sale, details, productos, proveedores } = item;
 
           try {
             // 1. Idempotencia: Verificar si la transacción ya fue consolidada en la nube
@@ -96,6 +96,41 @@ export class CloudSyncReceiverService {
                 (sale as any).referencia_venta_id || null
               ]
             );
+
+            // El proveedor va antes que el producto: el producto lo referencia
+            for (const proveedor of proveedores || []) {
+              await client.query(
+                `INSERT INTO proveedores
+                 (id, tenant_id, rut_proveedor, nombre_proveedores, email, origen_creacion)
+                 VALUES ($1, $2, $3, $4, $5, 'SINCRONIZACION')
+                 ON CONFLICT (id) DO NOTHING`,
+                [proveedor.id, payload.tenant_id, proveedor.rut_proveedor,
+                 proveedor.nombre_proveedores, proveedor.email]
+              );
+            }
+
+            // Registrar primero los productos que la nube no conoce: un producto creado en el
+            // terminal y nunca replicado impedia sincronizar la venta que lo referenciaba, y esa
+            // venta quedaba atascada sin forma de avanzar desde la caja.
+            for (const producto of productos || []) {
+              await client.query(
+                `INSERT INTO productos
+                 (id, tenant_id, proveedor_id, sku, codigo_barra, nombre, stock_actual,
+                  stock_minimo, precio_compra, precio_venta, activo, origen_creacion)
+                 VALUES ($1, $2, $8, $3, $4, $5, 0, 0, $6, $7, true, 'SINCRONIZACION')
+                 ON CONFLICT (id) DO NOTHING`,
+                [
+                  producto.id,
+                  payload.tenant_id,
+                  producto.sku,
+                  producto.codigo_barra,
+                  producto.nombre,
+                  producto.precio_compra,
+                  producto.precio_venta,
+                  producto.proveedor_id
+                ]
+              );
+            }
 
             // 3. Procesar detalles e implementar Resolución de Conflicto de Stock por Delta Neto
             for (const detail of details) {
