@@ -5,7 +5,7 @@ import Snackbar from '@mui/material/Snackbar'
 import Alert from '@mui/material/Alert'
 import CloudSyncIcon from '@mui/icons-material/CloudSync'
 import { useEstadoPos, useSincronizar } from '@/features/pos/hooks/usePos'
-import { obtenerMensajeError } from '@/lib/api/apiError'
+import { resumenSincronizacion } from '@/features/pos/utils/resumenSincronizacion'
 
 // subir ventas pendientes a la nube, y de paso la cola de facturas
 export function BotonSincronizar() {
@@ -40,9 +40,8 @@ export function BotonSincronizar() {
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
         <Alert severity={salioMal ? 'warning' : 'success'} onClose={() => sincronizar.reset()}>
-          {sincronizar.isError ? obtenerMensajeError(sincronizar.error) : resultado?.message}
-          {/* lo primero que piensa el dueño cuando esto falla es si perdio las ventas */}
-          {salioMal && ' Las ventas siguen guardadas en este equipo.'}
+          {/* una subida parcial llega como error: parte de las ventas si quedo en la nube */}
+          {sincronizar.isError ? resumenSincronizacion(sincronizar.error) : resultado?.message}
           {sinRespaldar > 0 && ` Quedan ${sinRespaldar} documentos de factura solo en este equipo.`}
         </Alert>
       </Snackbar>
