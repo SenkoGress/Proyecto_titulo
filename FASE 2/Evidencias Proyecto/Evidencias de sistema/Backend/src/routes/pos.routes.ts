@@ -862,9 +862,15 @@ router.post('/checkout', async (req: Request, res: Response): Promise<void> => {
 
 /**
  * POST /api/v1/pos/sync
- * Sincronización manual o periódica iniciada desde el POS:
- * 1. Push: envía ventas y transacciones pendientes locales (is_dirty = 1) a la nube
- * 2. Pull: descarga actualizaciones del catálogo (precios, stock) desde la nube
+ * Sincronización manual o periódica iniciada desde el POS. Los seis pasos corren siempre, salvo
+ * que la nube no responda: un push parcial no cancela el resto, porque la bajada del catálogo, la
+ * cola de facturas y el respaldo documental no dependen de la venta que quedó abajo.
+ * 1. Push: envía a la nube las ventas pendientes locales, cada una en su propio envío
+ * 2. Respaldo del catálogo: sube los productos y proveedores que la nube no tiene
+ * 3. Pull: descarga actualizaciones del catálogo (precios, stock) desde la nube
+ * 4. Cola de facturas: reintenta las que quedaron sin digitalizar
+ * 5. Respaldo documental: sube los archivos de factura que quedaron solo en disco
+ * 6. Conteo de pendientes y de ventas detenidas
  */
 router.post('/sync', async (req: Request, res: Response): Promise<void> => {
   const tenantId = (req.body?.tenant_id as string) || (req.query?.tenant_id as string) || '00000000-0000-0000-0000-000000000001';
@@ -883,17 +889,26 @@ router.post('/sync', async (req: Request, res: Response): Promise<void> => {
     // 1. Enviar ventas locales pendientes a la nube (Push)
     const result = await defaultPosSyncEngine.syncPush(tenantId);
 
-    // Si falló el push, retornar error estructurado para que el frontend reporte el problema correctamente
-    if (!result.success) {
-      res.status(500).json({
-        success: false,
-        message: `Fallo en sincronización: ${result.message}`,
-        result
+    // Un push parcial no detiene el resto de la sincronizacion. Antes la ruta respondia 500 y
+    // retornaba aqui, de modo que una venta rechazada dejaba sin correr la bajada del catalogo,
+    // la cola de facturas y el respaldo de documentos, que no dependen de esa venta.
+    const fracasoTotal = !result.success && result.synced_ids.length === 0;
+
+    // 2. Respaldar el catalogo del local en la nube (RF-59)
+    let respaldoCatalogo = { productos_nuevos: 0, proveedores_nuevos: 0 };
+    try {
+      const resultadoCatalogo = await defaultPosSyncEngine.respaldarCatalogoEnNube(tenantId);
+      respaldoCatalogo = {
+        productos_nuevos: resultadoCatalogo.productos_nuevos,
+        proveedores_nuevos: resultadoCatalogo.proveedores_nuevos
+      };
+    } catch (catErr) {
+      logger.warn('PosRoutes', 'El respaldo del catálogo no pudo completarse en esta sincronización', {
+        error: catErr instanceof Error ? catErr.message : String(catErr)
       });
-      return;
     }
 
-    // 2. Traer actualizaciones de catálogo desde la nube (Pull)
+    // 3. Traer actualizaciones de catálogo desde la nube (Pull)
     let catalogUpdatedCount = 0;
     try {
       catalogUpdatedCount = await defaultPosSyncEngine.syncPullCatalog(tenantId);
@@ -903,7 +918,7 @@ router.post('/sync', async (req: Request, res: Response): Promise<void> => {
       });
     }
 
-    // 3. Reintentar las facturas que quedaron sin digitalizar por falta de conexión (RF-43)
+    // 4. Reintentar las facturas que quedaron sin digitalizar por falta de conexión (RF-43)
     let colaFacturas = { procesadas: 0, fallidas: 0, pendientes: 0 };
     try {
       const resultadoCola = await defaultInvoiceQueue.procesarPendientes(tenantId);
@@ -918,7 +933,7 @@ router.post('/sync', async (req: Request, res: Response): Promise<void> => {
       });
     }
 
-    // 4. Subir a la nube los documentos de factura que quedaron solo en disco (RF-46)
+    // 5. Subir a la nube los documentos de factura que quedaron solo en disco (RF-46)
     let respaldoNube = { respaldados: 0, pendientes: 0, omitidos: 0 };
     try {
       respaldoNube = await defaultInvoiceIngestionService.respaldarFacturasEnNube(tenantId);
@@ -928,25 +943,43 @@ router.post('/sync', async (req: Request, res: Response): Promise<void> => {
       });
     }
 
-    // 5. Obtener conteo actualizado de pendientes
+    // 6. Obtener conteo actualizado de pendientes
     const dirtyCountResult = sqlite.queryOne<{ count: number }>(
       'SELECT COUNT(*) as count FROM transacciones_venta WHERE is_dirty = 1'
     );
+
+    const detenidas = defaultPosSyncEngine.contarVentasDetenidas(tenantId);
 
     const partes = [
       result.synced_ids.length > 0
         ? `${result.synced_ids.length} ventas respaldadas en la nube`
         : 'ventas ya sincronizadas',
+      respaldoCatalogo.productos_nuevos > 0
+        ? `${respaldoCatalogo.productos_nuevos} productos respaldados en la nube`
+        : null,
       colaFacturas.procesadas > 0 ? `${colaFacturas.procesadas} facturas digitalizadas desde la cola` : null,
       respaldoNube.respaldados > 0 ? `${respaldoNube.respaldados} documentos respaldados en la nube` : null
     ].filter(Boolean);
 
-    res.status(200).json({
-      success: true,
-      message: `Sincronización completada: ${partes.join(' y ')}.`,
+    // El parcial es un exito con cuentas, no un fracaso: hay ventas arriba. Solo cuando no
+    // subio ninguna y habia pendientes se responde error, que es lo que el aviso de la caja
+    // necesita para decir que las ventas siguen guardadas en el equipo.
+    const mensaje = fracasoTotal
+      ? `Fallo en sincronización: ${result.message}`
+      : result.failed_ids.length > 0
+        ? `Subieron ${result.synced_ids.length} de ${result.synced_ids.length + result.failed_ids.length} ventas. ` +
+          `El resto sigue guardado en el equipo y se sube al sincronizar de nuevo.`
+        : `Sincronización completada: ${partes.join(' y ')}.`;
+
+    res.status(fracasoTotal ? 500 : 200).json({
+      success: !fracasoTotal,
+      partial: !fracasoTotal && result.failed_ids.length > 0,
+      message: mensaje,
       synced_sales_count: result.synced_ids.length,
       failed_sales_count: result.failed_ids.length,
+      stopped_sales_count: detenidas,
       catalog_updated_count: catalogUpdatedCount,
+      catalog_backup: respaldoCatalogo,
       pending_dirty_count: dirtyCountResult?.count || 0,
       invoice_queue: colaFacturas,
       invoice_document_backup: respaldoNube,

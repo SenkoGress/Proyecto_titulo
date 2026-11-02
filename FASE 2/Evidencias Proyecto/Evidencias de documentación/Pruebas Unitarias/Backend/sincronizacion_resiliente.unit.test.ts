@@ -1,8 +1,16 @@
 import { defaultSqliteClient } from '../../backend/src/database/sqlite/client';
 import { initializeDatabase } from '../../backend/src/database/init-db';
 import { defaultPgClient } from '../../backend/src/database/postgres/client';
-import { PosSyncEngineService } from '../../backend/src/sync/pos-sync-engine.service';
-import { SyncPushPayload, SyncPushResponse } from '../../backend/src/sync/types';
+import {
+  PosSyncEngineService,
+  TOPE_REINTENTOS_VENTA
+} from '../../backend/src/sync/pos-sync-engine.service';
+import {
+  ProductoReferenciado,
+  ProveedorReferenciado,
+  SyncPushPayload,
+  SyncPushResponse
+} from '../../backend/src/sync/types';
 
 const TENANT = '00000000-0000-0000-0000-000000000001';
 /** Se toma un usuario sembrado: inventar uno viola la clave foranea de la venta. */
@@ -149,4 +157,94 @@ describe('Pruebas Unitarias: Resiliencia del Envio de Ventas a la Nube', () => {
     expect(r.success).toBe(true);
     expect(r.synced_ids).toEqual([]);
   });
+
+  test('7. Un rechazo por el dato mismo gasta intento, igual que un corte de red', async () => {
+    // sync_attempts solo subia dentro del catch de red. La venta que la nube rechazaba por su
+    // contenido quedaba con cero intentos y se reintentaba en cada sincronizacion para siempre.
+    await motor.syncPush(TENANT, nubeQueRechazaUna());
+
+    expect(intentosDe(VENTA_MALA)).toBe(1);
+    expect(intentosDe(VENTA_BUENA)).toBe(0);
+  });
+
+  test('8. Al agotar los intentos la venta queda detenida y sale del ciclo', async () => {
+    defaultSqliteClient.execute(
+      'UPDATE transacciones_venta SET sync_attempts = ? WHERE id = ?',
+      [TOPE_REINTENTOS_VENTA - 1, VENTA_MALA]
+    );
+
+    await motor.syncPush(TENANT, nubeQueRechazaUna());
+
+    expect(intentosDe(VENTA_MALA)).toBe(TOPE_REINTENTOS_VENTA);
+    expect(motor.contarVentasDetenidas(TENANT)).toBe(1);
+    // Ya no se reintenta: insistir no cambia un dato que la nube no acepta
+    expect(motor.getPendingDirtySales(TENANT).map((p) => p.sale.id)).not.toContain(VENTA_MALA);
+    // Y deja de contarse como pendiente, porque decir que esta por subir seria falso
+    expect(estadoDe(VENTA_MALA)).toEqual({ sync_status: 'FAILED', is_dirty: 0 });
+  });
+
+  test('9. El respaldo del catalogo sube lo que nunca se vendio', async () => {
+    // Los productos viajaban solo como dependencia de una venta, de modo que la mercaderia que
+    // entro por factura y no se vendio no existia en ninguna parte fuera del equipo del local.
+    const NUNCA_VENDIDO = '00000000-0000-0000-0000-00000000pr99';
+    defaultSqliteClient.execute(
+      `INSERT OR IGNORE INTO productos (id, tenant_id, proveedor_id, sku, nombre, stock_actual, precio_compra, precio_venta, activo)
+       VALUES (?, ?, ?, 'SKU-SYNC-99', 'Harina Sin Polvos 1kg', 12, 700, 1200, 1)`,
+      [NUNCA_VENDIDO, TENANT, PROVEEDOR]
+    );
+
+    try {
+      let recibidos: ProductoReferenciado[] = [];
+      let recibidosProveedores: ProveedorReferenciado[] = [];
+
+      await motor.respaldarCatalogoEnNube(TENANT, async (_t, productos, proveedores) => {
+        recibidos = productos;
+        recibidosProveedores = proveedores;
+        return {
+          success: true,
+          productos_nuevos: productos.length,
+          proveedores_nuevos: proveedores.length,
+          message: 'ok'
+        };
+      });
+
+      const enviado = recibidos.find((p) => p.id === NUNCA_VENDIDO);
+      expect(enviado).toBeDefined();
+      // El stock viaja en la fila nueva: es el unico lugar donde esa cantidad existe
+      expect(enviado?.stock_actual).toBe(12);
+      expect(recibidosProveedores.map((p) => p.id)).toContain(PROVEEDOR);
+    } finally {
+      defaultSqliteClient.execute('DELETE FROM productos WHERE id = ?', [NUNCA_VENDIDO]);
+    }
+  });
+
+  test('10. Las ventas de la siembra pueden subir: su identificador es un UUID', () => {
+    const sembradas = defaultSqliteClient.query<{ id: string }>(
+      `SELECT id FROM transacciones_venta
+       WHERE tenant_id = ? AND folio_local_sqlite LIKE 'FOLIO-HIST-%'`,
+      [TENANT]
+    );
+
+    // Eran del tipo v1-<uuid del producto>, que PostgreSQL rechaza por no ser UUID
+    expect(sembradas.length).toBeGreaterThan(0);
+    for (const venta of sembradas) {
+      expect(venta.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+    }
+  });
+
+  function intentosDe(ventaId: string): number {
+    const fila = defaultSqliteClient.queryOne<{ sync_attempts: number }>(
+      'SELECT sync_attempts FROM transacciones_venta WHERE id = ?',
+      [ventaId]
+    );
+    return Number(fila?.sync_attempts) || 0;
+  }
+
+  function estadoDe(ventaId: string): { sync_status: string; is_dirty: number } {
+    const fila = defaultSqliteClient.queryOne<{ sync_status: string; is_dirty: number }>(
+      'SELECT sync_status, is_dirty FROM transacciones_venta WHERE id = ?',
+      [ventaId]
+    );
+    return { sync_status: String(fila?.sync_status), is_dirty: Number(fila?.is_dirty) };
+  }
 });

@@ -79,13 +79,19 @@ router.post('/email', async (req: Request, res: Response): Promise<void> => {
   const { tenant_id, email, auto_send, dia_envio, hora_envio } = req.body;
   const tenantId = tenant_id || '00000000-0000-0000-0000-000000000001';
 
-  if (!email) {
+  // Se puede guardar solo el horario: la pantalla de Configuracion cambia el dia o la hora sin
+  // tocar el correo ya guardado. Lo que no se acepta es un POST que no traiga ningun campo.
+  const soloHorario = !email && (dia_envio !== undefined || hora_envio !== undefined);
+
+  if (!email && !soloHorario) {
     res.status(400).json({ success: false, message: 'email is required' });
     return;
   }
 
   try {
-    const savedEmail = await defaultTenantConfigService.setOrderNotificationEmail(tenantId, email);
+    const savedEmail = email
+      ? await defaultTenantConfigService.setOrderNotificationEmail(tenantId, email)
+      : await defaultTenantConfigService.getOrderNotificationEmail(tenantId);
     // El dia y la hora son opcionales: si no vienen, conservan el valor guardado. Asi la
     // pantalla de Configuracion puede conectarse por partes sin romper lo que ya funciona.
     const horario = await defaultTenantConfigService.setHorarioEnvio(tenantId, dia_envio, hora_envio);
@@ -96,9 +102,13 @@ router.post('/email', async (req: Request, res: Response): Promise<void> => {
 
     res.status(200).json({
       success: true,
-      message: `Correo para órdenes de compra guardado: ${savedEmail}`,
+      message: email
+        ? `Correo para órdenes de compra guardado: ${savedEmail}`
+        : `Horario del aviso guardado: dia ${horario.dia_envio}, ${horario.hora_envio}`,
       email: savedEmail,
-      auto_send: auto_send !== undefined ? auto_send : true,
+      // El valor devuelto es el que quedo guardado, no el que vino en la peticion: si el
+      // llamador no manda auto_send, informar true seria afirmar algo que no se verifico.
+      auto_send: await defaultTenantConfigService.getAutoSendOrders(tenantId),
       dia_envio: horario.dia_envio,
       hora_envio: horario.hora_envio
     });

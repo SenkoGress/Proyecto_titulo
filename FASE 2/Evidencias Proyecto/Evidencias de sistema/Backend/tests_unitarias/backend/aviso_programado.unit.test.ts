@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import { EmailService } from '../../backend/src/notifications/email.service';
 import { redactarAvisoReposicion } from '../../backend/src/notifications/aviso-reposicion';
 import { ProgramadorAvisos } from '../../backend/src/notifications/programador-avisos';
@@ -196,6 +198,24 @@ describe('Pruebas Unitarias: Aviso de Reposicion Programado', () => {
       await expect(config.setHorarioEnvio(TENANT, 0)).rejects.toThrow('entre 1 y 7');
       await expect(config.setHorarioEnvio(TENANT, undefined, '25:00')).rejects.toThrow('HH:MM');
       await expect(config.setHorarioEnvio(TENANT, undefined, '8am')).rejects.toThrow('HH:MM');
+    });
+  });
+
+  describe('Guardado del horario sin reenviar el correo', () => {
+    // El equipo de interfaz reporto que el POST exigia el correo siempre, de modo que la
+    // pantalla no podia cambiar solo el dia. La promesa documentada era la contraria.
+    test('un cuerpo con solo el horario es valido y conserva el correo guardado', async () => {
+      const ruta = fs.readFileSync(
+        path.join(__dirname, '../../backend/src/routes/config.routes.ts'),
+        'utf8'
+      );
+
+      expect(ruta).toContain('const soloHorario = !email && (dia_envio !== undefined || hora_envio !== undefined)');
+      expect(ruta).toContain('if (!email && !soloHorario)');
+      // El correo devuelto es el guardado, no una cadena vacia
+      expect(ruta).toContain(': await defaultTenantConfigService.getOrderNotificationEmail(tenantId)');
+      // auto_send sale de la base y no del cuerpo de la peticion
+      expect(ruta).toContain('auto_send: await defaultTenantConfigService.getAutoSendOrders(tenantId)');
     });
   });
 

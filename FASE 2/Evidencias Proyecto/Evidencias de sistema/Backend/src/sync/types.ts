@@ -15,6 +15,9 @@ export interface ProductoReferenciado {
   precio_compra: number;
   precio_venta: number;
   proveedor_id: string | null;
+  /** Solo viaja en el respaldo del catalogo: en la fila que la nube ya tiene manda su propia cuenta. */
+  stock_actual?: number;
+  stock_minimo?: number;
 }
 
 export interface SyncPushItem {
@@ -56,4 +59,11 @@ export interface BackoffConfig {
   maxDelayMs: number;
   multiplier: number;
   jitterFactor: number;
+}
+
+export interface RespaldoCatalogoResultado {
+  success: boolean;
+  productos_nuevos: number;
+  proveedores_nuevos: number;
+  message: string;
 }

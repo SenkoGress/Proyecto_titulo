@@ -3,7 +3,14 @@ import { PostgresClient, defaultPgClient } from '../database/postgres/client';
 import { Producto } from '../database/types';
 import { logger } from '../utils/logger';
 import { defaultLotesService } from '../inventory/lotes.service';
-import { SyncPullResponse, SyncPushPayload, SyncPushResponse } from './types';
+import {
+  ProductoReferenciado,
+  ProveedorReferenciado,
+  RespaldoCatalogoResultado,
+  SyncPullResponse,
+  SyncPushPayload,
+  SyncPushResponse
+} from './types';
 
 export class CloudSyncReceiverService {
   private pgClient: PostgresClient;
@@ -248,6 +255,97 @@ export class CloudSyncReceiverService {
         failed_ids: payload.sales.map((s) => s.sale.id),
         processed_at: new Date().toISOString(),
         message: error instanceof Error ? error.message : 'Unknown sync error'
+      };
+    }
+  }
+
+  /**
+   * Recibe el catalogo del terminal y guarda lo que la nube no tiene.
+   *
+   * La operacion es estrictamente aditiva: una fila que ya existe arriba no se toca. El motivo
+   * es la politica de catalogo, donde la nube manda sobre precios y nombres y el terminal los
+   * recibe en la bajada. Sobrescribir aqui pelearia con esa bajada. Lo que esto resuelve es
+   * distinto: que no quede mercaderia registrada unicamente en el equipo del local.
+   *
+   * El stock viaja solo en la fila nueva. En las existentes lo mantiene la sincronizacion de
+   * ventas, y escribirlo de nuevo descuadraria la cuenta de la nube.
+   */
+  public async respaldarCatalogo(
+    tenantId: string,
+    productos: ProductoReferenciado[],
+    proveedores: ProveedorReferenciado[]
+  ): Promise<RespaldoCatalogoResultado> {
+    if (!this.pgClient.isCloudAvailable()) {
+      return {
+        success: false,
+        productos_nuevos: 0,
+        proveedores_nuevos: 0,
+        message: 'El servidor en la nube no esta disponible: el catalogo se respalda al reconectar.'
+      };
+    }
+
+    let productosNuevos = 0;
+    let proveedoresNuevos = 0;
+
+    try {
+      // El proveedor va antes que el producto, que lo referencia por clave foranea
+      for (const proveedor of proveedores) {
+        const res = await this.pgClient.query(
+          `INSERT INTO proveedores
+           (id, tenant_id, rut_proveedor, nombre_proveedores, email, origen_creacion)
+           VALUES ($1, $2, $3, $4, $5, 'SINCRONIZACION')
+           ON CONFLICT (id) DO NOTHING`,
+          [proveedor.id, tenantId, proveedor.rut_proveedor, proveedor.nombre_proveedores, proveedor.email]
+        );
+        proveedoresNuevos += res.rowCount || 0;
+      }
+
+      for (const producto of productos) {
+        const res = await this.pgClient.query(
+          `INSERT INTO productos
+           (id, tenant_id, proveedor_id, sku, codigo_barra, nombre, stock_actual,
+            stock_minimo, precio_compra, precio_venta, activo, origen_creacion)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, true, 'SINCRONIZACION')
+           ON CONFLICT (id) DO NOTHING`,
+          [
+            producto.id,
+            tenantId,
+            producto.proveedor_id,
+            producto.sku,
+            producto.codigo_barra,
+            producto.nombre,
+            producto.stock_actual ?? 0,
+            producto.stock_minimo ?? 0,
+            producto.precio_compra,
+            producto.precio_venta
+          ]
+        );
+        productosNuevos += res.rowCount || 0;
+      }
+
+      if (productosNuevos > 0 || proveedoresNuevos > 0) {
+        logger.info('CloudSyncReceiver', 'Catalogo respaldado en la nube', {
+          productosNuevos,
+          proveedoresNuevos
+        });
+      }
+
+      return {
+        success: true,
+        productos_nuevos: productosNuevos,
+        proveedores_nuevos: proveedoresNuevos,
+        message: productosNuevos + proveedoresNuevos === 0
+          ? 'La nube ya tiene todo el catalogo del local.'
+          : `Respaldados ${productosNuevos} productos y ${proveedoresNuevos} proveedores que la nube no tenia.`
+      };
+    } catch (error) {
+      const detalle = error instanceof Error ? error.message : String(error);
+      logger.warn('CloudSyncReceiver', 'El respaldo del catalogo no pudo completarse', { error: detalle });
+      return {
+        success: false,
+        productos_nuevos: productosNuevos,
+        proveedores_nuevos: proveedoresNuevos,
+        message: `El respaldo del catalogo quedo incompleto: ${detalle}`
       };
     }
   }

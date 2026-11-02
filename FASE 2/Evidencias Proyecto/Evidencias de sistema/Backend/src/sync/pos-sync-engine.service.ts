@@ -6,12 +6,20 @@ import { defaultCloudSyncReceiver } from './cloud-sync-receiver.service';
 import { ConflictResolver, defaultConflictResolver } from './conflict-resolver';
 import { ExponentialBackoff, defaultBackoff } from './exponential-backoff';
 import {
+  RespaldoCatalogoResultado,
   SyncPullRequest,
   SyncPullResponse,
   SyncPushItem,
   SyncPushPayload,
   SyncPushResponse
 } from './types';
+
+/**
+ * Intentos antes de dejar una venta detenida. Un corte de red se resuelve solo cuando vuelve la
+ * conexion, pero un rechazo por el dato mismo no mejora por insistir: la venta queda en FAILED
+ * con los intentos agotados, fuera del ciclo, y la interfaz puede mostrarla para revision.
+ */
+export const TOPE_REINTENTOS_VENTA = 5;
 
 export class PosSyncEngineService {
   private sqlite: SqliteClient;
@@ -35,8 +43,9 @@ export class PosSyncEngineService {
     const dirtySales = this.sqlite.query<TransaccionVenta>(
       `SELECT * FROM transacciones_venta 
        WHERE tenant_id = ? AND (is_dirty = 1 OR sync_status IN ('PENDING', 'FAILED'))
+         AND COALESCE(sync_attempts, 0) < ?
        ORDER BY fecha ASC`,
-      [tenantId]
+      [tenantId, TOPE_REINTENTOS_VENTA]
     );
 
     const items: SyncPushItem[] = [];
@@ -150,6 +159,14 @@ export class PosSyncEngineService {
         logger.info('PosSyncEngine', `Synced ${response.synced_ids.length} sales with cloud`);
       }
 
+      // La nube contesto y rechazo la venta por el dato mismo. Antes esto no gastaba intento,
+      // de modo que la venta se reintentaba en cada sincronizacion indefinidamente y nadie
+      // podia distinguirla de una que todavia tiene posibilidad de subir.
+      const rechazadas = pending.filter((p) => !response.synced_ids.includes(p.sale.id));
+      if (rechazadas.length > 0) {
+        this.registrarRechazo(rechazadas);
+      }
+
       return response;
     } catch (networkError) {
       // Degeneración elegante ante cortes de red: el POS sigue 100% operativo
@@ -181,6 +198,85 @@ export class PosSyncEngineService {
         message: 'Offline mode active: transactions retained locally for retry'
       };
     }
+  }
+
+  /**
+   * Cuenta el intento de una venta que la nube rechazo por sus datos. Al agotar el tope la deja
+   * detenida: sale del conjunto de pendientes y deja de contar como pendiente, porque afirmar
+   * que esta por subir seria falso. Queda en FAILED con los intentos agotados, que es el estado
+   * que la interfaz muestra para revision manual.
+   */
+  private registrarRechazo(items: SyncPushItem[]): void {
+    this.sqlite.withTransaction(() => {
+      for (const item of items) {
+        const intentos = (item.sale.sync_attempts || 0) + 1;
+        const detenida = intentos >= TOPE_REINTENTOS_VENTA;
+
+        this.sqlite.execute(
+          `UPDATE transacciones_venta
+           SET sync_attempts = ?, sync_status = 'FAILED', is_dirty = ?
+           WHERE id = ?`,
+          [intentos, detenida ? 0 : 1, item.sale.id]
+        );
+
+        if (detenida) {
+          logger.warn('PosSyncEngine', 'Venta detenida tras agotar los intentos: requiere revision manual', {
+            ventaId: item.sale.id,
+            folio: item.sale.folio_local_sqlite,
+            intentos
+          });
+        }
+      }
+    });
+  }
+
+  /** Ventas que agotaron los intentos y ya no se reintentan. */
+  public contarVentasDetenidas(tenantId: string): number {
+    try {
+      const fila = this.sqlite.queryOne<{ total: number }>(
+        `SELECT COUNT(*) AS total FROM transacciones_venta
+         WHERE tenant_id = ? AND sync_status = 'FAILED' AND COALESCE(sync_attempts, 0) >= ?`,
+        [tenantId, TOPE_REINTENTOS_VENTA]
+      );
+      return Number(fila?.total) || 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
+   * Sube el catalogo del local para que la nube no dependa de que el producto se haya vendido.
+   *
+   * Se envia completo y el receptor decide: lo que ya existe arriba no se toca. A escala de un
+   * minimarket el catalogo son decenas o cientos de filas, de modo que mandarlo entero en cada
+   * sincronizacion cuesta menos que mantener de este lado una marca de que viajo, que seria otra
+   * cosa mas que puede quedar desalineada con la realidad.
+   */
+  public async respaldarCatalogoEnNube(
+    tenantId: string,
+    transport?: (
+      tenantId: string,
+      productos: ProductoReferenciado[],
+      proveedores: ProveedorReferenciado[]
+    ) => Promise<RespaldoCatalogoResultado>
+  ): Promise<RespaldoCatalogoResultado> {
+    const enviar = transport
+      || ((t: string, p: ProductoReferenciado[], v: ProveedorReferenciado[]) =>
+            defaultCloudSyncReceiver.respaldarCatalogo(t, p, v));
+
+    const productos = this.sqlite.query<ProductoReferenciado>(
+      `SELECT id, sku, codigo_barra, nombre, precio_compra, precio_venta, proveedor_id,
+              stock_actual, stock_minimo
+       FROM productos WHERE tenant_id = ?`,
+      [tenantId]
+    );
+
+    const proveedores = this.sqlite.query<ProveedorReferenciado>(
+      'SELECT id, rut_proveedor, nombre_proveedores, email FROM proveedores WHERE tenant_id = ?',
+      [tenantId]
+    );
+
+    return enviar(tenantId, productos, proveedores);
   }
 
   public async syncPullCatalog(

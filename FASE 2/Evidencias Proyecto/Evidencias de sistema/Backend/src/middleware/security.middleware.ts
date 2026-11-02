@@ -125,7 +125,7 @@ export const validateTenantAndAuth = (req: Request, res: Response, next: NextFun
 };
 
 /**
- * Tenants que la petición declara (cabecera, query, body o /trends/:tenantId).
+ * Tenants que la petición declara (cabecera, query o body).
  * Se comparan contra el tenant del token para impedir operar sobre otro comercio.
  */
 function requestedTenantIds(req: Request, fullPath: string): string[] {
@@ -136,11 +136,6 @@ function requestedTenantIds(req: Request, fullPath: string): string[] {
     req.body?.tenant_id,
     req.body?.tenantId
   ];
-
-  const trendsMatch = req.method === 'GET' ? /^\/api\/v1\/trends\/([^/]+)$/.exec(fullPath) : null;
-  if (trendsMatch && trendsMatch[1] !== 'sync') {
-    candidates.push(trendsMatch[1]);
-  }
 
   return candidates
     .flatMap((value) => (Array.isArray(value) ? value : [value]))

@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import { Request, Response } from 'express';
 import {
   validateTenantAndAuth,
@@ -261,14 +263,22 @@ describe('Pruebas Unitarias: Seguridad, Validacion de Tenant y Error Handling', 
       expect(nextFunction).not.toHaveBeenCalled();
     });
 
-    test('bloquea con HTTP 403 la consulta de tendencias de otro comercio por parámetro de ruta', () => {
-      mockRequest.method = 'GET';
-      mockRequest.originalUrl = '/api/v1/trends/t-2';
-      mockRequest.headers = { authorization: `Bearer ${adminToken}` };
+    test('ninguna ruta declara el comercio en el camino, que es lo que el middleware no valida', () => {
+      // El middleware lee el tenant de la cabecera, de la query y del cuerpo. La unica ruta que
+      // lo llevaba en el camino era la del modulo de tendencias, retirado en la migracion 017,
+      // y con el se fue la rama que lo leia. Si alguien agrega una ruta con el comercio en el
+      // camino, el aislamiento multi-tenant no lo cubriria y esta prueba lo detiene aqui.
+      const directorio = path.join(__dirname, '../../backend/src/routes');
+      const infractoras = fs
+        .readdirSync(directorio)
+        .filter((archivo) => archivo.endsWith('.routes.ts'))
+        .flatMap((archivo) => {
+          const contenido = fs.readFileSync(path.join(directorio, archivo), 'utf8');
+          const rutas = contenido.match(/router\.\w+\(\s*'[^']*:tenant[^']*'/gi) || [];
+          return rutas.map((ruta) => `${archivo}: ${ruta}`);
+        });
 
-      rbacAuthMiddleware(mockRequest as Request, mockResponse as Response, nextFunction);
-
-      expect(mockResponse.status).toHaveBeenCalledWith(403);
+      expect(infractoras).toEqual([]);
     });
 
     test('permite el paso cuando el tenant declarado coincide con el del token', () => {

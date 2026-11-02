@@ -301,12 +301,12 @@ function seedSqliteDemoData(): void {
       defaultSqliteClient.execute(
         `INSERT INTO transacciones_venta (id, tenant_id, usuario_id, folio_local_sqlite, total, unidades, estado, is_dirty, sync_status, fecha)
          VALUES (?, ?, ?, ?, ?, 10, 'COMPLETADA', 0, 'SYNCED', datetime('now', '-2 days'))`,
-        [`v1-${p.id}`, DEMO_TENANT_ID, sellerId, `FOLIO-HIST-${p.sku}`, p.precio * 10]
+        [idVentaSembrada(p.id), DEMO_TENANT_ID, sellerId, `FOLIO-HIST-${p.sku}`, p.precio * 10]
       );
       defaultSqliteClient.execute(
         `INSERT INTO detalle_venta (id, venta_id, producto_id, cantidad, precio_unitario, subtotal)
          VALUES (?, ?, ?, 10, ?, ?)`,
-        [`dv1-${p.id}`, `v1-${p.id}`, p.id, p.precio, p.precio * 10]
+        [idDetalleSembrado(p.id), idVentaSembrada(p.id), p.id, p.precio, p.precio * 10]
       );
     }
 
@@ -376,6 +376,31 @@ async function ensurePostgresInitialUsers(): Promise<void> {
   }
 }
 
+/**
+ * Identificadores de la siembra derivados del producto: deterministas, para que repetir el
+ * arranque no duplique filas, y con forma de UUID, porque PostgreSQL los declara asi y rechaza
+ * cualquier otra cosa. El primer bloque distingue la familia de la fila, igual que el resto de
+ * la siembra: 11111111 metodos de pago, 22222222 proveedores, 33333333 productos.
+ */
+/**
+ * Patron GLOB de un UUID, con la cuenta exacta de digitos por bloque.
+ *
+ * La version anterior usaba `[0-9a-fA-F]*` por bloque, que exige un digito hexadecimal y acepta
+ * cualquier cosa despues. Eso dejaba pasar como valido todo identificador cuya primera letra
+ * fuese hexadecimal: `v1-...` se detectaba porque la v no lo es, y `dv1-...` no, porque la d si.
+ * La cuenta exacta no admite esa ambiguedad.
+ */
+const H = '[0-9a-fA-F]';
+const GLOB_UUID = `${H.repeat(8)}-${H.repeat(4)}-${H.repeat(4)}-${H.repeat(4)}-${H.repeat(12)}`;
+
+function idVentaSembrada(productoId: string): string {
+  return `44444444${productoId.slice(8)}`;
+}
+
+function idDetalleSembrado(productoId: string): string {
+  return `66666666${productoId.slice(8)}`;
+}
+
 async function seedPostgresDemoData(): Promise<void> {
   const res = await defaultPgClient.query(
     'SELECT id FROM tenants WHERE id = $1',
@@ -438,6 +463,39 @@ async function seedPostgresDemoData(): Promise<void> {
        ON CONFLICT DO NOTHING`,
       [DEMO_TENANT_ID]
     );
+
+    // 5. Historial de ventas de demostracion, el mismo que la siembra local. Sin esto el
+    // historial de la nube arranca despues que el del terminal y el respaldo nace incompleto.
+    const vendedor = await client.query<{ id: string }>(
+      `SELECT id FROM usuarios WHERE tenant_id = $1
+       ORDER BY CASE rol WHEN 'admin' THEN 0 ELSE 1 END LIMIT 1`,
+      [DEMO_TENANT_ID]
+    );
+
+    if (vendedor.rows.length > 0) {
+      const vendedorId = vendedor.rows[0].id;
+      const sembrados = await client.query<{ id: string; sku: string; precio_venta: string }>(
+        'SELECT id, sku, precio_venta FROM productos WHERE tenant_id = $1',
+        [DEMO_TENANT_ID]
+      );
+
+      for (const p of sembrados.rows) {
+        const total = Number(p.precio_venta) * 10;
+        await client.query(
+          `INSERT INTO transacciones_venta
+           (id, tenant_id, usuario_id, folio_local_sqlite, total, unidades, estado, is_dirty, sync_status, fecha)
+           VALUES ($1, $2, $3, $4, $5, 10, 'COMPLETADA', 0, 'SYNCED', NOW() - INTERVAL '2 days')
+           ON CONFLICT (id) DO NOTHING`,
+          [idVentaSembrada(p.id), DEMO_TENANT_ID, vendedorId, `FOLIO-HIST-${p.sku}`, total]
+        );
+        await client.query(
+          `INSERT INTO detalle_venta (id, venta_id, producto_id, cantidad, precio_unitario, subtotal)
+           VALUES ($1, $2, $3, 10, $4, $5)
+           ON CONFLICT (id) DO NOTHING`,
+          [idDetalleSembrado(p.id), idVentaSembrada(p.id), p.id, Number(p.precio_venta), total]
+        );
+      }
+    }
 
     // 6. Configuración inicial del negocio (Margen y Ley de Redondeo)
     await client.query(
@@ -551,7 +609,7 @@ function patchExistingDatabaseFixes(): void {
     // arrastran las referencias dentro de una transaccion.
     const idsInvalidos = defaultSqliteClient.query<{ id: string; nombre: string }>(
       `SELECT id, nombre FROM productos
-       WHERE id NOT GLOB '[0-9a-fA-F]*-[0-9a-fA-F]*-[0-9a-fA-F]*-[0-9a-fA-F]*-[0-9a-fA-F]*'`
+       WHERE id NOT GLOB '${GLOB_UUID}'`
     );
 
     for (const producto of idsInvalidos) {
@@ -579,6 +637,72 @@ function patchExistingDatabaseFixes(): void {
         nombre: producto.nombre,
         anterior: producto.id,
         nuevo: nuevoId
+      });
+    }
+
+    // Parche 6: las ventas sembradas antes de esta correccion llevan identificadores del tipo
+    // v1-<uuid>, que la nube rechaza. Se normalizan con la misma mecanica que los productos.
+    const ventasInvalidas = defaultSqliteClient.query<{ id: string; folio_local_sqlite: string }>(
+      `SELECT id, folio_local_sqlite FROM transacciones_venta
+       WHERE id NOT GLOB '${GLOB_UUID}'`
+    );
+
+    for (const venta of ventasInvalidas) {
+      const nuevoId = uuidv4();
+      defaultSqliteClient.withTransaction(() => {
+        defaultSqliteClient.execute('PRAGMA defer_foreign_keys = ON');
+        // La venta queda pendiente de subir. Estaba marcada como sincronizada con un
+        // identificador que la nube nunca pudo recibir, de modo que esa marca era falsa: la
+        // venta existe solo en este equipo. Ahora que el identificador es valido, el ciclo
+        // normal de sincronizacion la sube y los dos historiales coinciden.
+        defaultSqliteClient.execute(
+          `UPDATE transacciones_venta
+           SET id = ?, is_dirty = 1, sync_status = 'PENDING', sync_attempts = 0, last_synced_at = NULL
+           WHERE id = ?`,
+          [nuevoId, venta.id]
+        );
+        defaultSqliteClient.execute(
+          'UPDATE transacciones_venta SET referencia_venta_id = ? WHERE referencia_venta_id = ?',
+          [nuevoId, venta.id]
+        );
+        for (const [tabla, columna] of [['detalle_venta', 'venta_id'],
+                                        ['payment_transactions', 'sale_id'],
+                                        ['sii_dte_emitidos', 'venta_id']] as const) {
+          try {
+            defaultSqliteClient.execute(
+              `UPDATE ${tabla} SET ${columna} = ? WHERE ${columna} = ?`,
+              [nuevoId, venta.id]
+            );
+          } catch {
+            // La tabla puede no existir en una instalacion antigua
+          }
+        }
+      });
+      logger.warn('InitDB', 'Identificador de venta normalizado a UUID para permitir la sincronizacion', {
+        folio: venta.folio_local_sqlite,
+        anterior: venta.id,
+        nuevo: nuevoId
+      });
+    }
+
+    // La misma correccion sobre las lineas del detalle: la nube rechaza la venta completa si
+    // una sola de sus lineas no tiene forma de UUID. La siembra las creaba como dv1-<uuid>.
+    const detallesInvalidos = defaultSqliteClient.query<{ id: string; venta_id: string }>(
+      `SELECT id, venta_id FROM detalle_venta
+       WHERE id NOT GLOB '${GLOB_UUID}'`
+    );
+
+    if (detallesInvalidos.length > 0) {
+      defaultSqliteClient.withTransaction(() => {
+        for (const detalle of detallesInvalidos) {
+          defaultSqliteClient.execute(
+            'UPDATE detalle_venta SET id = ? WHERE id = ?',
+            [uuidv4(), detalle.id]
+          );
+        }
+      });
+      logger.warn('InitDB', 'Lineas de detalle normalizadas a UUID para permitir la sincronizacion', {
+        cantidad: detallesInvalidos.length
       });
     }
 
