@@ -45,7 +45,8 @@ export function useSincronizar() {
 
   return useMutation({
     mutationFn: () => sincronizarVentas(tenantActual()),
-    onSuccess: () => {
+    // una subida parcial responde error y aun asi deja menos ventas pendientes
+    onSettled: () => {
       clienteQuery.invalidateQueries({ queryKey: ['pos', 'estado'] })
       clienteQuery.invalidateQueries({ queryKey: ['pos', 'productos'] })
     },

@@ -24,11 +24,19 @@ export async function obtenerCorreo() {
   return data
 }
 
-export async function guardarCorreo(correo: string, envioAutomatico: boolean) {
+// el correo es obligatorio en cada guardado, aunque solo cambie el horario
+export async function guardarCorreo(
+  correo: string,
+  envioAutomatico: boolean,
+  diaEnvio: number,
+  horaEnvio: string
+) {
   const { data } = await httpClient.post<RespuestaGuardado>(endpoints.configuracion.correo, {
     tenant_id: tenantActual(),
     email: correo,
     auto_send: envioAutomatico,
+    dia_envio: diaEnvio,
+    hora_envio: horaEnvio,
   })
   return data
 }

@@ -43,8 +43,12 @@ export function useGuardarCorreo() {
   const clienteQuery = useQueryClient()
 
   return useMutation({
-    mutationFn: (variables: { correo: string; envioAutomatico: boolean }) =>
-      guardarCorreo(variables.correo, variables.envioAutomatico),
+    mutationFn: (variables: {
+      correo: string
+      envioAutomatico: boolean
+      diaEnvio: number
+      horaEnvio: string
+    }) => guardarCorreo(variables.correo, variables.envioAutomatico, variables.diaEnvio, variables.horaEnvio),
     onSuccess: () => {
       clienteQuery.invalidateQueries({ queryKey: ['configuracion', 'correo'] })
     },
