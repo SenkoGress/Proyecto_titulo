@@ -12,7 +12,10 @@ import { TipoDTE } from '../dte/types';
 import { defaultReplenishmentService } from '../replenishment/replenishment.service';
 import { defaultTenantConfigService } from '../config/tenant-config.service';
 import { defaultInvoiceQueue } from '../invoices/invoice-queue.service';
-import { defaultInvoiceIngestionService } from '../invoices/invoice-ingestion.service';
+import {
+  defaultInvoiceIngestionService,
+  ResumenRespaldoDocumentos
+} from '../invoices/invoice-ingestion.service';
 
 import { generateChileanBarcode } from '../utils/barcode.utils';
 
@@ -824,7 +827,9 @@ router.post('/checkout', async (req: Request, res: Response): Promise<void> => {
 
           if (lowStockItems.length > 0) {
             logger.info('PosRoutes', `Triggering background replenishment email for tenant ${tenant_id} (${lowStockItems.length} products reached ROP)`);
-            await defaultReplenishmentService.generateSuggestedOrders(tenant_id);
+            // Las ordenes se graban solo si el correo salio: antes cada venta que dejaba un
+            // producto bajo el punto de reorden grababa una orden nueva, saliera o no el aviso.
+            await defaultReplenishmentService.despacharAvisoReposicion(tenant_id);
           }
         }
       } catch (err) {
@@ -934,7 +939,14 @@ router.post('/sync', async (req: Request, res: Response): Promise<void> => {
     }
 
     // 5. Subir a la nube los documentos de factura que quedaron solo en disco (RF-46)
-    let respaldoNube = { respaldados: 0, pendientes: 0, omitidos: 0 };
+    let respaldoNube: ResumenRespaldoDocumentos = {
+      respaldados: 0,
+      omitidos: 0,
+      pendientes: 0,
+      sin_archivo: 0,
+      en_proceso_ocr: 0,
+      fallidos_ocr: 0
+    };
     try {
       respaldoNube = await defaultInvoiceIngestionService.respaldarFacturasEnNube(tenantId);
     } catch (respErr) {

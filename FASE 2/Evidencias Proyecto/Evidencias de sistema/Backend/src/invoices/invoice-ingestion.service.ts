@@ -83,6 +83,23 @@ export class FacturaDuplicadaError extends Error {
   }
 }
 
+/** Documentos que todavia no estan en la nube, separados por lo que hace falta en cada caso. */
+export interface ClasificacionDocumentos {
+  /** Tienen el archivo en disco y el estado permite subirlos: el proximo ciclo los intenta. */
+  pendientes: number;
+  /** Quedo la referencia pero el archivo no esta en el disco, de modo que no hay que subir. */
+  sin_archivo: number;
+  /** Esperando la digitalizacion; el respaldo no corresponde todavia. */
+  en_proceso_ocr: number;
+  /** La digitalizacion fallo y el respaldo los excluye hasta que se reingresen. */
+  fallidos_ocr: number;
+}
+
+export interface ResumenRespaldoDocumentos extends ClasificacionDocumentos {
+  respaldados: number;
+  omitidos: number;
+}
+
 export function esFacturaDuplicada(error: unknown): boolean {
   return error instanceof FacturaDuplicadaError || (error as { duplicada?: boolean })?.duplicada === true;
 }
@@ -204,13 +221,18 @@ export class InvoiceIngestionService {
    * de sincronización únicamente empuja ventas, así que una factura creada offline no existía en la
    * nube y no había fila que actualizar.
    */
-  public async respaldarFacturasEnNube(
-    tenantId: string
-  ): Promise<{ respaldados: number; pendientes: number; omitidos: number }> {
-    const resumen = { respaldados: 0, pendientes: 0, omitidos: 0 };
+  public async respaldarFacturasEnNube(tenantId: string): Promise<ResumenRespaldoDocumentos> {
+    const resumen: ResumenRespaldoDocumentos = {
+      respaldados: 0,
+      omitidos: 0,
+      pendientes: 0,
+      sin_archivo: 0,
+      en_proceso_ocr: 0,
+      fallidos_ocr: 0
+    };
 
     if (!this.pgClient.isCloudAvailable()) {
-      resumen.pendientes = this.contarDocumentosSinRespaldo(tenantId);
+      Object.assign(resumen, this.clasificarDocumentosSinRespaldo(tenantId));
       return resumen;
     }
 
@@ -279,7 +301,7 @@ export class InvoiceIngestionService {
       }
     }
 
-    resumen.pendientes = this.contarDocumentosSinRespaldo(tenantId);
+    Object.assign(resumen, this.clasificarDocumentosSinRespaldo(tenantId));
     return resumen;
   }
 
@@ -318,13 +340,51 @@ export class InvoiceIngestionService {
     return local.id;
   }
 
+  /**
+   * Separa los documentos sin respaldar segun lo que el ciclo puede hacer con cada uno.
+   *
+   * El contador anterior sumaba toda fila con ruta y sin respaldo, incluidas las que el respaldo
+   * nunca intenta —las excluidas por su estado de digitalizacion— y las que no pueden subir porque
+   * el archivo ya no esta en el disco. El aviso de la caja quedaba entonces en un numero que el
+   * dueno no podia bajar haciendo nada, y lo que le faltaba a esos documentos no era respaldo sino
+   * el archivo. Pendientes cuenta solo lo que el proximo ciclo va a intentar y puede lograr.
+   */
+  public clasificarDocumentosSinRespaldo(tenantId: string): ClasificacionDocumentos {
+    const clasificacion: ClasificacionDocumentos = {
+      pendientes: 0,
+      sin_archivo: 0,
+      en_proceso_ocr: 0,
+      fallidos_ocr: 0
+    };
+
+    let filas: { estado: string | null; archivo_ruta: string }[] = [];
+    try {
+      filas = defaultSqliteClient.query<{ estado: string | null; archivo_ruta: string }>(
+        `SELECT estado, archivo_ruta FROM factura_ingresos
+          WHERE tenant_id = ? AND archivo_respaldado = 0 AND archivo_ruta IS NOT NULL`,
+        [tenantId]
+      );
+    } catch {
+      return clasificacion;
+    }
+
+    for (const fila of filas) {
+      if (fila.estado === 'PENDIENTE_OCR') {
+        clasificacion.en_proceso_ocr += 1;
+      } else if (fila.estado === 'FALLIDA_OCR') {
+        clasificacion.fallidos_ocr += 1;
+      } else if (!this.fileStore.existe(fila.archivo_ruta)) {
+        clasificacion.sin_archivo += 1;
+      } else {
+        clasificacion.pendientes += 1;
+      }
+    }
+
+    return clasificacion;
+  }
+
   public contarDocumentosSinRespaldo(tenantId: string): number {
-    const fila = defaultSqliteClient.queryOne<{ total: number }>(
-      `SELECT COUNT(*) as total FROM factura_ingresos
-        WHERE tenant_id = ? AND archivo_respaldado = 0 AND archivo_ruta IS NOT NULL`,
-      [tenantId]
-    );
-    return Number(fila?.total ?? 0);
+    return this.clasificarDocumentosSinRespaldo(tenantId).pendientes;
   }
 
   /** Recupera el documento desde la nube cuando el archivo local ya no está disponible. */

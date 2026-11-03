@@ -3,6 +3,12 @@ import { PostgresClient, defaultPgClient } from '../database/postgres/client';
 import { defaultSqliteClient, SqliteClient } from '../database/sqlite/client';
 import { logger } from '../utils/logger';
 
+export interface IntentosAviso {
+  fecha: string;
+  intentos: number;
+  ultimoIntento: string;
+}
+
 export class TenantConfigService {
   private pgClient: PostgresClient;
   private sqliteClient: SqliteClient;
@@ -219,6 +225,51 @@ export class TenantConfigService {
   public async marcarAvisoEnviado(tenantId: string, fecha: string): Promise<void> {
     await this.guardarClave(tenantId, 'ultimo_aviso_rop_email', fecha,
       'Fecha del ultimo aviso automatico de reposicion despachado');
+  }
+
+  /**
+   * Intentos de despacho del aviso acumulados en el dia. Se guardan en la base y no en memoria
+   * por la misma razon que la fecha del ultimo aviso: un reinicio no debe devolver el contador a
+   * cero y reabrir la ronda de reintentos.
+   */
+  public async getIntentosAviso(tenantId: string): Promise<IntentosAviso> {
+    const vacio: IntentosAviso = { fecha: '', intentos: 0, ultimoIntento: '' };
+
+    try {
+      const row = this.sqliteClient.queryOne<{ valor: string }>(
+        "SELECT valor FROM configuracion_sistema WHERE tenant_id = ? AND clave = 'intentos_aviso_rop_email'",
+        [tenantId]
+      );
+      if (!row?.valor) return vacio;
+
+      const guardado = JSON.parse(row.valor) as Partial<IntentosAviso>;
+      return {
+        fecha: typeof guardado.fecha === 'string' ? guardado.fecha : '',
+        intentos: Number(guardado.intentos) || 0,
+        ultimoIntento: typeof guardado.ultimoIntento === 'string' ? guardado.ultimoIntento : ''
+      };
+    } catch {
+      return vacio;
+    }
+  }
+
+  /** Suma un intento al dia indicado, o abre la cuenta si el ultimo registro es de otro dia. */
+  public async registrarIntentoAviso(
+    tenantId: string,
+    fecha: string,
+    momento: Date
+  ): Promise<IntentosAviso> {
+    const previo = await this.getIntentosAviso(tenantId);
+    const registro: IntentosAviso = {
+      fecha,
+      intentos: (previo.fecha === fecha ? previo.intentos : 0) + 1,
+      ultimoIntento: momento.toISOString()
+    };
+
+    await this.guardarClave(tenantId, 'intentos_aviso_rop_email', JSON.stringify(registro),
+      'Intentos de despacho del aviso de reposicion acumulados en el dia');
+
+    return registro;
   }
 
   /** Guarda una clave de configuracion en los dos motores, sin que uno impida al otro. */

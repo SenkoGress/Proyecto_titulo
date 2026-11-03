@@ -88,7 +88,14 @@ describe('Pruebas Unitarias: Respaldo de Facturas en la Nube', () => {
 
     const resumen = await servicio.respaldarFacturasEnNube(TENANT);
 
-    expect(resumen).toEqual({ respaldados: 1, pendientes: 0, omitidos: 0 });
+    expect(resumen).toEqual({
+      respaldados: 1,
+      omitidos: 0,
+      pendientes: 0,
+      sin_archivo: 0,
+      en_proceso_ocr: 0,
+      fallidos_ocr: 0
+    });
 
     const insercion = consultas.find((c) => c.sql.includes('INSERT INTO factura_ingresos'));
     expect(insercion).toBeDefined();
@@ -151,6 +158,11 @@ describe('Pruebas Unitarias: Respaldo de Facturas en la Nube', () => {
     expect(resumen.omitidos).toBe(1);
     expect(consultas).toHaveLength(0);
     expect(pendientes()?.archivo_respaldado).toBe(0);
+
+    // Lo que le falta a este documento es el archivo, no el respaldo: contarlo como pendiente
+    // dejaba el aviso de la caja en un numero que el dueno no podia bajar haciendo nada.
+    expect(resumen.pendientes).toBe(0);
+    expect(resumen.sin_archivo).toBe(1);
   });
 
   test('las facturas en cola no se respaldan: todavia no son una compra registrada', async () => {
@@ -161,6 +173,37 @@ describe('Pruebas Unitarias: Respaldo de Facturas en la Nube', () => {
 
     expect(resumen.respaldados).toBe(0);
     expect(consultas).toHaveLength(0);
+    expect(resumen.pendientes).toBe(0);
+    expect(resumen.en_proceso_ocr).toBe(1);
+  });
+
+  test('la factura con digitalizacion fallida se informa aparte, no como pendiente', async () => {
+    // El respaldo excluye este estado, de modo que insistir no la va a subir nunca: mientras se
+    // contara como pendiente, el contador de la caja no podia llegar a cero.
+    defaultSqliteClient.execute("UPDATE factura_ingresos SET estado = 'FALLIDA_OCR' WHERE id = ?", [FACTURA_ID]);
+    const { cliente, consultas } = nubeSimulada();
+
+    const resumen = await new InvoiceIngestionService(cliente, undefined, store).respaldarFacturasEnNube(TENANT);
+
+    expect(consultas).toHaveLength(0);
+    expect(resumen.pendientes).toBe(0);
+    expect(resumen.fallidos_ocr).toBe(1);
+  });
+
+  test('el desglose suma lo mismo que la consulta antigua, repartido segun lo que falta', () => {
+    const servicio = new InvoiceIngestionService(nubeSimulada().cliente, undefined, store);
+
+    const conArchivo = servicio.clasificarDocumentosSinRespaldo(TENANT);
+    expect(conArchivo.pendientes).toBe(1);
+    expect(conArchivo.sin_archivo).toBe(0);
+
+    fs.rmSync(path.join(directorio, rutaDocumento));
+    const sinArchivo = servicio.clasificarDocumentosSinRespaldo(TENANT);
+
+    expect(sinArchivo.pendientes).toBe(0);
+    expect(sinArchivo.sin_archivo).toBe(1);
+    const total = (c: typeof sinArchivo) => c.pendientes + c.sin_archivo + c.en_proceso_ocr + c.fallidos_ocr;
+    expect(total(sinArchivo)).toBe(total(conArchivo));
   });
 
   test('recupera el documento desde la nube cuando el equipo local lo perdio', async () => {

@@ -377,39 +377,10 @@ export class ReplenishmentService {
       };
 
       createdOrders.push(order);
+    }
 
-      // Persistir orden en SQLite y PostgreSQL a menos que se especifique persist === false
-      if (customConfig?.persist !== false) {
-        try {
-          this.sqliteClient.execute(
-            `INSERT INTO purchase_orders (id, tenant_id, supplier_id, estado, fecha_creacion, total_estimado)
-             VALUES (?, ?, ?, 'sugerida', datetime('now'), ?)`,
-            [orderId, tenantId, finalSupplierId, totalEstimado]
-          );
-          for (const line of orderLines) {
-            this.sqliteClient.execute(
-              `INSERT INTO purchase_order_details (id, purchase_order_id, product_id, cantidad_sugerida, precio_unitario, subtotal)
-               VALUES (?, ?, ?, ?, ?, ?)`,
-              [uuidv4(), orderId, line.productId, line.cantidadSugerida, line.precioUnitario, line.subtotalEstimado]
-            );
-          }
-        } catch {}
-
-        try {
-          await this.pgClient.query(
-            `INSERT INTO purchase_orders (id, tenant_id, supplier_id, estado, fecha_creacion, total_estimado)
-             VALUES ($1, $2, $3, 'sugerida', now(), $4)`,
-            [orderId, tenantId, finalSupplierId, totalEstimado]
-          );
-          for (const line of orderLines) {
-            await this.pgClient.query(
-              `INSERT INTO purchase_order_details (id, purchase_order_id, product_id, cantidad_sugerida, precio_unitario, subtotal)
-               VALUES ($1, $2, $3, $4, $5, $6)`,
-              [uuidv4(), orderId, line.productId, line.cantidadSugerida, line.precioUnitario, line.subtotalEstimado]
-            );
-          }
-        } catch {}
-      }
+    if (customConfig?.persist !== false) {
+      await this.persistirOrdenes(tenantId, createdOrders, 'sugerida');
     }
 
     // 3. Evaluar envío automático de órdenes de compra por correo
@@ -433,6 +404,82 @@ export class ReplenishmentService {
       totalCritical: lowStockAlerts.length,
       emailDispatchStatus
     };
+  }
+
+  /** Graba las ordenes y sus lineas en los dos motores, sin que el fallo de uno impida el otro. */
+  private async persistirOrdenes(
+    tenantId: string,
+    orders: SuggestedPurchaseOrder[],
+    estado: 'sugerida' | 'enviada'
+  ): Promise<void> {
+    for (const order of orders) {
+      try {
+        this.sqliteClient.execute(
+          `INSERT INTO purchase_orders (id, tenant_id, supplier_id, estado, fecha_creacion, total_estimado)
+           VALUES (?, ?, ?, ?, datetime('now'), ?)`,
+          [order.orderId, tenantId, order.proveedorId, estado, order.totalEstimado]
+        );
+        for (const line of order.items) {
+          this.sqliteClient.execute(
+            `INSERT INTO purchase_order_details (id, purchase_order_id, product_id, cantidad_sugerida, precio_unitario, subtotal)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [uuidv4(), order.orderId, line.productId, line.cantidadSugerida, line.precioUnitario, line.subtotalEstimado]
+          );
+        }
+      } catch (err) {
+        // Un producto sin proveedor asignado viaja con proveedorId 'UNASSIGNED' y la clave foranea
+        // rechaza la fila. Callar el fallo dejaba el pedido sin registro, y con el aviso ya
+        // despachado eso significa prometerle al local un pedido que la base no tiene.
+        logger.warn('ReplenishmentService', 'La orden no se pudo grabar en el nodo local', {
+          orderId: order.orderId,
+          proveedorId: order.proveedorId,
+          error: err instanceof Error ? err.message : String(err)
+        });
+      }
+
+      try {
+        await this.pgClient.query(
+          `INSERT INTO purchase_orders (id, tenant_id, supplier_id, estado, fecha_creacion, total_estimado)
+           VALUES ($1, $2, $3, $4, now(), $5)`,
+          [order.orderId, tenantId, order.proveedorId, estado, order.totalEstimado]
+        );
+        for (const line of order.items) {
+          await this.pgClient.query(
+            `INSERT INTO purchase_order_details (id, purchase_order_id, product_id, cantidad_sugerida, precio_unitario, subtotal)
+             VALUES ($1, $2, $3, $4, $5, $6)`,
+            [uuidv4(), order.orderId, line.productId, line.cantidadSugerida, line.precioUnitario, line.subtotalEstimado]
+          );
+        }
+      } catch {}
+    }
+  }
+
+  /**
+   * Despacha el aviso de reposicion sin dejar rastro si el correo no sale.
+   *
+   * El camino automatico —el programador del dia y la hora, y el aviso del punto de reorden al
+   * cerrar una venta— calcula las ordenes sin grabarlas y las graba unicamente cuando el correo
+   * salio, ya marcadas como enviadas. Grabarlas antes de intentar el envio dejaba una orden nueva
+   * en cada pasada: con el servidor de correo caido, el programador escribia tres ordenes por
+   * minuto, mas de cuatro mil al dia, y el minimarket sin internet es justamente el escenario que
+   * el sistema promete aguantar. La fila grabada ahora significa una sola cosa, que el aviso se
+   * despacho.
+   */
+  public async despacharAvisoReposicion(tenantId: string): Promise<{
+    orders: SuggestedPurchaseOrder[];
+    despacho?: { sent: boolean; message: string; recipient?: string };
+  }> {
+    const resultado = await this.generateSuggestedOrders(tenantId, { persist: false });
+
+    if (resultado.orders.length === 0) {
+      return { orders: [], despacho: resultado.emailDispatchStatus };
+    }
+
+    if (resultado.emailDispatchStatus?.sent) {
+      await this.persistirOrdenes(tenantId, resultado.orders, 'enviada');
+    }
+
+    return { orders: resultado.orders, despacho: resultado.emailDispatchStatus };
   }
 
   /**

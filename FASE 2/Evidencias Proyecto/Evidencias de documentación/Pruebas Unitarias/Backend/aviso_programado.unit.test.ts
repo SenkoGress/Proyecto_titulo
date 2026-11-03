@@ -2,8 +2,12 @@ import fs from 'fs';
 import path from 'path';
 import { EmailService } from '../../backend/src/notifications/email.service';
 import { redactarAvisoReposicion } from '../../backend/src/notifications/aviso-reposicion';
-import { ProgramadorAvisos } from '../../backend/src/notifications/programador-avisos';
-import { TenantConfigService } from '../../backend/src/config/tenant-config.service';
+import {
+  ProgramadorAvisos,
+  TOPE_INTENTOS_AVISO,
+  ESPERA_ENTRE_INTENTOS_MIN
+} from '../../backend/src/notifications/programador-avisos';
+import { IntentosAviso, TenantConfigService } from '../../backend/src/config/tenant-config.service';
 import { ReplenishmentService } from '../../backend/src/replenishment/replenishment.service';
 import { SuggestedPurchaseOrder } from '../../backend/src/replenishment/types';
 import { defaultSqliteClient } from '../../backend/src/database/sqlite/client';
@@ -113,6 +117,7 @@ describe('Pruebas Unitarias: Aviso de Reposicion Programado', () => {
     });
 
     const PROVEEDOR = '00000000-0000-0000-0000-0000000avi01';
+    const PRODUCTO_SEMBRADO = '33333333-0000-0000-0000-000000000001';
 
     beforeAll(() => {
       defaultSqliteClient.execute(
@@ -123,7 +128,12 @@ describe('Pruebas Unitarias: Aviso de Reposicion Programado', () => {
     });
 
     afterAll(() => {
-      defaultSqliteClient.execute("DELETE FROM purchase_orders WHERE id IN ('ord-ok', 'ord-falla')");
+      defaultSqliteClient.execute(
+        "DELETE FROM purchase_order_details WHERE purchase_order_id = 'ord-desp'"
+      );
+      defaultSqliteClient.execute(
+        "DELETE FROM purchase_orders WHERE id IN ('ord-ok', 'ord-falla', 'ord-desp')"
+      );
       defaultSqliteClient.execute('DELETE FROM proveedores WHERE id = ?', [PROVEEDOR]);
     });
 
@@ -152,6 +162,14 @@ describe('Pruebas Unitarias: Aviso de Reposicion Programado', () => {
       return pedido;
     }
 
+    function filasDe(id: string): number {
+      const row = defaultSqliteClient.queryOne<{ total: number }>(
+        'SELECT COUNT(*) as total FROM purchase_orders WHERE id = ?',
+        [id]
+      );
+      return Number(row?.total ?? 0);
+    }
+
     function estadoDe(id: string): string {
       const row = defaultSqliteClient.queryOne<{ estado: string }>(
         'SELECT estado FROM purchase_orders WHERE id = ?',
@@ -173,6 +191,54 @@ describe('Pruebas Unitarias: Aviso de Reposicion Programado', () => {
       expect(estadoDe('ord-ok')).toBe('enviada');
     });
 
+    test('con el correo caido el despacho no graba ninguna orden, y al salir las graba enviadas', async () => {
+      // El camino automatico grababa las ordenes antes de intentar el envio, de modo que cada
+      // pasada dejaba una orden nueva aunque el correo no saliera nunca.
+      const servicio = servicioConCorreo(false);
+      const pedido = orden('Leche Entera 1L', 24, 16800);
+      pedido.orderId = 'ord-desp';
+      pedido.proveedorId = PROVEEDOR;
+      pedido.items[0].productId = PRODUCTO_SEMBRADO;
+
+      const calculo = jest.spyOn(servicio, 'generateSuggestedOrders').mockResolvedValue({
+        orders: [pedido],
+        lowStockAlerts: [],
+        totalCritical: 0,
+        emailDispatchStatus: { sent: false, message: 'el servidor de correo no respondio' }
+      });
+
+      await servicio.despacharAvisoReposicion(TENANT);
+      await servicio.despacharAvisoReposicion(TENANT);
+      await servicio.despacharAvisoReposicion(TENANT);
+
+      expect(filasDe('ord-desp')).toBe(0);
+
+      calculo.mockResolvedValue({
+        orders: [pedido],
+        lowStockAlerts: [],
+        totalCritical: 0,
+        emailDispatchStatus: { sent: true, message: 'Correo enviado' }
+      });
+
+      await servicio.despacharAvisoReposicion(TENANT);
+
+      expect(filasDe('ord-desp')).toBe(1);
+      expect(estadoDe('ord-desp')).toBe('enviada');
+      calculo.mockRestore();
+    });
+
+    test('el cierre de venta ya no graba ordenes por su cuenta', () => {
+      const ruta = fs.readFileSync(
+        path.join(__dirname, '../../backend/src/routes/pos.routes.ts'),
+        'utf8'
+      );
+
+      // La tercera puerta del mismo defecto: cada venta que dejaba un producto bajo el punto de
+      // reorden grababa una orden, saliera o no el aviso.
+      expect(ruta).not.toContain('generateSuggestedOrders');
+      expect(ruta).toContain('despacharAvisoReposicion');
+    });
+
     test('si el correo no sale, la orden sigue sugerida y el resultado lo dice', async () => {
       const pedido = crearOrden('ord-falla');
 
@@ -187,6 +253,58 @@ describe('Pruebas Unitarias: Aviso de Reposicion Programado', () => {
       expect(resultado.sent).toBe(false);
       expect(resultado.message).toContain('rechazo');
       expect(estadoDe('ord-falla')).toBe('sugerida');
+    });
+  });
+
+  describe('Contador de intentos del dia', () => {
+    const CLAVE = 'intentos_aviso_rop_email';
+
+    beforeAll(async () => {
+      defaultPgClient.tripCircuit();
+      await initializeDatabase();
+    });
+
+    const limpiar = () =>
+      defaultSqliteClient.execute(
+        'DELETE FROM configuracion_sistema WHERE tenant_id = ? AND clave = ?',
+        [TENANT, CLAVE]
+      );
+
+    beforeEach(limpiar);
+    afterAll(limpiar);
+
+    test('el contador vive en la base: suma dentro del dia y se reinicia al cambiar de dia', async () => {
+      const config = new TenantConfigService();
+
+      expect(await config.getIntentosAviso(TENANT)).toEqual({ fecha: '', intentos: 0, ultimoIntento: '' });
+
+      const primero = await config.registrarIntentoAviso(TENANT, '2026-11-02', new Date(2026, 10, 2, 9, 0, 0));
+      const segundo = await config.registrarIntentoAviso(TENANT, '2026-11-02', new Date(2026, 10, 2, 9, 30, 0));
+
+      expect(primero.intentos).toBe(1);
+      expect(segundo.intentos).toBe(2);
+
+      // Se relee de la base y no de memoria: un reinicio a media manana no reabre la ronda
+      const leido = await config.getIntentosAviso(TENANT);
+      expect(leido.intentos).toBe(2);
+      expect(leido.fecha).toBe('2026-11-02');
+      expect(leido.ultimoIntento).toBe(new Date(2026, 10, 2, 9, 30, 0).toISOString());
+
+      const otroDia = await config.registrarIntentoAviso(TENANT, '2026-11-03', new Date(2026, 10, 3, 9, 0, 0));
+      expect(otroDia.intentos).toBe(1);
+    });
+
+    test('un valor ilegible en la base no deja al local sin aviso', async () => {
+      defaultSqliteClient.execute(
+        `INSERT INTO configuracion_sistema (id, tenant_id, clave, valor, descripcion, actualizado_at)
+         VALUES (?, ?, ?, 'esto no es json', 'prueba', datetime('now'))
+         ON CONFLICT (tenant_id, clave) DO UPDATE SET valor = excluded.valor`,
+        ['cfg-intentos-ilegible', TENANT, CLAVE]
+      );
+
+      const leido = await new TenantConfigService().getIntentosAviso(TENANT);
+
+      expect(leido).toEqual({ fecha: '', intentos: 0, ultimoIntento: '' });
     });
   });
 
@@ -232,15 +350,20 @@ describe('Pruebas Unitarias: Aviso de Reposicion Programado', () => {
       correo?: string;
       ordenes?: number;
       despachado?: boolean;
+      intentos?: IntentosAviso;
+      falla?: boolean;
     }
 
     function programador(guion: Guion): {
       prog: ProgramadorAvisos;
       marcas: string[];
       generadas: number[];
+      registros: IntentosAviso[];
     } {
       const marcas: string[] = [];
       const generadas: number[] = [];
+      const registros: IntentosAviso[] = [];
+      let intentos: IntentosAviso = guion.intentos ?? { fecha: '', intentos: 0, ultimoIntento: '' };
 
       const config = {
         async getAutoSendOrders() {
@@ -260,18 +383,29 @@ describe('Pruebas Unitarias: Aviso de Reposicion Programado', () => {
         },
         async marcarAvisoEnviado(_tenantId: string, fecha: string) {
           marcas.push(fecha);
+        },
+        async getIntentosAviso() {
+          return intentos;
+        },
+        async registrarIntentoAviso(_tenantId: string, fecha: string, momento: Date) {
+          intentos = {
+            fecha,
+            intentos: (intentos.fecha === fecha ? intentos.intentos : 0) + 1,
+            ultimoIntento: momento.toISOString()
+          };
+          registros.push(intentos);
+          return intentos;
         }
       } as unknown as TenantConfigService;
 
       const reposicion = {
-        async generateSuggestedOrders() {
+        async despacharAvisoReposicion() {
           const cantidad = guion.ordenes ?? 1;
           generadas.push(cantidad);
+          if (guion.falla) throw new Error('la nube rechazo la consulta');
           return {
             orders: cantidad > 0 ? [orden('Leche Entera 1L', 24, 16800)] : [],
-            lowStockAlerts: [],
-            totalCritical: 0,
-            emailDispatchStatus:
+            despacho:
               cantidad > 0
                 ? {
                     sent: guion.despachado !== false,
@@ -289,7 +423,7 @@ describe('Pruebas Unitarias: Aviso de Reposicion Programado', () => {
         }
       } as unknown as typeof defaultSqliteClient;
 
-      return { prog: new ProgramadorAvisos(sqlite, config, reposicion), marcas, generadas };
+      return { prog: new ProgramadorAvisos(sqlite, config, reposicion), marcas, generadas, registros };
     }
 
     test('despacha el dia y a la hora configurados', async () => {
@@ -340,13 +474,16 @@ describe('Pruebas Unitarias: Aviso de Reposicion Programado', () => {
       expect(generadas).toHaveLength(0);
     });
 
-    test('si el correo falla no marca el dia, para reintentar cuando el servidor vuelva', async () => {
-      const { prog, marcas } = programador({ dia: 1, despachado: false });
+    test('si el correo falla no marca el dia, pero deja el intento registrado', async () => {
+      const { prog, marcas, registros } = programador({ dia: 1, despachado: false });
 
       const [revision] = await prog.revisar(LUNES_9);
 
       expect(revision.despachado).toBe(false);
       expect(marcas).toHaveLength(0);
+      expect(registros).toHaveLength(1);
+      expect(registros[0].intentos).toBe(1);
+      expect(revision.motivo).toContain(`intento 1 de ${TOPE_INTENTOS_AVISO}`);
     });
 
     test('sin productos bajo el punto de reorden no manda un correo vacio, pero cierra el dia', async () => {
@@ -367,6 +504,106 @@ describe('Pruebas Unitarias: Aviso de Reposicion Programado', () => {
       expect((await sinCorreo.prog.revisar(LUNES_9))[0].motivo).toContain('correo configurado');
       expect(apagado.generadas).toHaveLength(0);
       expect(sinCorreo.generadas).toHaveLength(0);
+    });
+
+    /**
+     * El equipo de interfaz midio la consecuencia de reintentar cada minuto: con el servidor de
+     * correo caido, la tabla de ordenes crecia tres filas por minuto, mas de cuatro mil al dia,
+     * sin que el dueno hiciera nada. El reintento queda acotado y espaciado.
+     */
+    describe('Reintento acotado', () => {
+      /** Registro de intentos de hoy, con el ultimo intento hace los minutos indicados. */
+      function intentosDeHoy(cantidad: number, haceMinutos: number): IntentosAviso {
+        return {
+          fecha: '2026-11-02',
+          intentos: cantidad,
+          ultimoIntento: new Date(LUNES_9.getTime() - haceMinutos * 60_000).toISOString()
+        };
+      }
+
+      test('no reintenta un minuto despues del intento anterior', async () => {
+        const { prog, generadas } = programador({
+          dia: 1,
+          despachado: false,
+          intentos: intentosDeHoy(1, 1)
+        });
+
+        const [revision] = await prog.revisar(LUNES_9);
+
+        expect(revision.despachado).toBe(false);
+        expect(revision.motivo).toContain('se espera ' + ESPERA_ENTRE_INTENTOS_MIN);
+        // Y sobre todo: no vuelve a calcular ni a despachar, de donde salian las filas
+        expect(generadas).toHaveLength(0);
+      });
+
+      test('pasada la espera vuelve a intentar', async () => {
+        const { prog, generadas, registros } = programador({
+          dia: 1,
+          despachado: false,
+          intentos: intentosDeHoy(1, ESPERA_ENTRE_INTENTOS_MIN + 5)
+        });
+
+        await prog.revisar(LUNES_9);
+
+        expect(generadas).toHaveLength(1);
+        expect(registros[0].intentos).toBe(2);
+      });
+
+      test('en el ultimo intento cierra el dia en vez de insistir hasta medianoche', async () => {
+        const { prog, marcas, registros } = programador({
+          dia: 1,
+          despachado: false,
+          intentos: intentosDeHoy(TOPE_INTENTOS_AVISO - 1, ESPERA_ENTRE_INTENTOS_MIN + 1)
+        });
+
+        const [revision] = await prog.revisar(LUNES_9);
+
+        expect(registros[0].intentos).toBe(TOPE_INTENTOS_AVISO);
+        expect(marcas).toEqual(['2026-11-02']);
+        expect(revision.motivo).toContain('queda sin enviar');
+      });
+
+      test('agotados los intentos no vuelve a calcular ni a escribir', async () => {
+        const { prog, generadas, marcas } = programador({
+          dia: 1,
+          despachado: false,
+          intentos: intentosDeHoy(TOPE_INTENTOS_AVISO, ESPERA_ENTRE_INTENTOS_MIN + 60)
+        });
+
+        const [revision] = await prog.revisar(LUNES_9);
+
+        expect(revision.motivo).toContain('se agotaron los intentos');
+        expect(generadas).toHaveLength(0);
+        expect(marcas).toHaveLength(0);
+      });
+
+      test('un fallo del despacho tambien consume un intento', async () => {
+        // Si solo el correo que no sale consumiera intentos, una excepcion repetida volveria a
+        // dejar el dia abierto hasta medianoche, escribiendo un error por minuto.
+        const { prog, registros } = programador({ dia: 1, falla: true });
+
+        const [revision] = await prog.revisar(LUNES_9);
+
+        expect(revision.despachado).toBe(false);
+        expect(revision.motivo).toContain('la nube rechazo la consulta');
+        expect(registros).toHaveLength(1);
+      });
+
+      test('los intentos de ayer no consumen los de hoy', async () => {
+        const { prog, generadas } = programador({
+          dia: 1,
+          intentos: {
+            fecha: '2026-11-01',
+            intentos: TOPE_INTENTOS_AVISO,
+            ultimoIntento: new Date(2026, 10, 1, 20, 0, 0).toISOString()
+          }
+        });
+
+        const [revision] = await prog.revisar(LUNES_9);
+
+        expect(revision.despachado).toBe(true);
+        expect(generadas).toHaveLength(1);
+      });
     });
   });
 });
