@@ -12,6 +12,7 @@ import { SeccionRedondeo } from '@/features/configuracion/components/SeccionRedo
 import { SeccionPciDss } from '@/features/configuracion/components/SeccionPciDss'
 import { SeccionUsuarios } from '@/features/configuracion/components/SeccionUsuarios'
 import { SeccionClave } from '@/features/configuracion/components/SeccionClave'
+import { SeccionImpresion } from '@/features/configuracion/components/SeccionImpresion'
 import { usePuedeAdministrar } from '@/features/auth/stores/sesionStore'
 
 // configuracion del sistema
@@ -35,6 +36,7 @@ export function ConfiguracionPage() {
 
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, maxWidth: 980 }}>
         <SeccionApariencia />
+        <SeccionImpresion />
         <SeccionClave />
 
         {esAdmin && (

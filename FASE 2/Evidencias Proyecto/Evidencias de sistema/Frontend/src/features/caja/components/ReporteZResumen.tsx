@@ -2,6 +2,8 @@
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Divider from '@mui/material/Divider'
+import { usePapelStore } from '@/shared/stores/papelStore'
+import { anchoVistaPx } from '@/shared/utils/papelTermico'
 import { formatoClp } from '@/shared/utils/formatoClp'
 import { formatFecha } from '@/shared/utils/formatFecha'
 import { desglosarIvaClp } from '@/shared/utils/ivaClp'
@@ -24,12 +26,13 @@ function Fila({ texto, valor }: { texto: string; valor: string }) {
 
 // comprobante del cierre, sin timbre SII ni folio Z
 export function ReporteZResumen({ sesion }: Props) {
+  const anchoPapel = usePapelStore((estado) => estado.ancho)
   const { data: configLocal } = useConfigDte()
   const tax = desglosarIvaClp(sesion.total_ventas)
   const diferencia = sesion.diferencia_efectivo ?? 0
 
   return (
-    <Box id="reporte-z" sx={{ maxWidth: 320, mx: 'auto', fontFamily: 'monospace' }}>
+    <Box id="reporte-z" sx={{ maxWidth: anchoVistaPx(anchoPapel), mx: 'auto', fontFamily: 'monospace' }}>
       <Box sx={{ textAlign: 'center', mb: 1 }}>
         <Typography sx={{ fontWeight: 700, fontFamily: 'monospace' }}>
           {configLocal?.emisor.razonSocial ?? 'GESTOCK'}
