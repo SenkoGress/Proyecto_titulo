@@ -6,6 +6,7 @@ import Alert from '@mui/material/Alert'
 import CloudSyncIcon from '@mui/icons-material/CloudSync'
 import { useEstadoPos, useSincronizar } from '@/features/pos/hooks/usePos'
 import { avisoVentasDetenidas, resumenSincronizacion } from '@/features/pos/utils/resumenSincronizacion'
+import { avisoDocumentos, documentosNecesitanAtencion } from '@/features/pos/utils/avisoDocumentos'
 
 // subir ventas pendientes a la nube, y de paso la cola de facturas
 export function BotonSincronizar() {
@@ -15,14 +16,17 @@ export function BotonSincronizar() {
   const pendientes = estado?.pending_dirty_count ?? 0
   const resultado = sincronizar.data
 
-  // documentos de factura que todavia estan solo en este equipo
-  const sinRespaldar = resultado?.invoice_document_backup?.pendientes ?? 0
+  const documentos = resultado?.invoice_document_backup
   const detenidas = resultado?.stopped_sales_count ?? 0
 
-  // el servidor da por exitosa una subida parcial, y una venta detenida no se reintenta sola:
-  // ninguna de las dos es una buena noticia para el dueño
+  // el servidor da por exitosa una subida parcial, y ni una venta detenida ni un documento que
+  // perdio su archivo se arreglan solos: ninguno es una buena noticia para el dueño
   const salioMal =
-    sincronizar.isError || resultado?.success === false || resultado?.partial === true || detenidas > 0
+    sincronizar.isError ||
+    resultado?.success === false ||
+    resultado?.partial === true ||
+    detenidas > 0 ||
+    documentosNecesitanAtencion(documentos)
 
   return (
     <>
@@ -47,7 +51,7 @@ export function BotonSincronizar() {
         <Alert severity={salioMal ? 'warning' : 'success'} onClose={() => sincronizar.reset()}>
           {sincronizar.isError ? resumenSincronizacion(sincronizar.error) : resultado?.message}
           {avisoVentasDetenidas(detenidas)}
-          {sinRespaldar > 0 && ` Quedan ${sinRespaldar} documentos de factura solo en este equipo.`}
+          {avisoDocumentos(documentos)}
         </Alert>
       </Snackbar>
     </>
