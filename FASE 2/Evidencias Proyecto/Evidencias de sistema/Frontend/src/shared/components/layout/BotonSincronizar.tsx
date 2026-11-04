@@ -5,7 +5,7 @@ import Snackbar from '@mui/material/Snackbar'
 import Alert from '@mui/material/Alert'
 import CloudSyncIcon from '@mui/icons-material/CloudSync'
 import { useEstadoPos, useSincronizar } from '@/features/pos/hooks/usePos'
-import { resumenSincronizacion } from '@/features/pos/utils/resumenSincronizacion'
+import { avisoVentasDetenidas, resumenSincronizacion } from '@/features/pos/utils/resumenSincronizacion'
 
 // subir ventas pendientes a la nube, y de paso la cola de facturas
 export function BotonSincronizar() {
@@ -17,7 +17,12 @@ export function BotonSincronizar() {
 
   // documentos de factura que todavia estan solo en este equipo
   const sinRespaldar = resultado?.invoice_document_backup?.pendientes ?? 0
-  const salioMal = sincronizar.isError || resultado?.success === false
+  const detenidas = resultado?.stopped_sales_count ?? 0
+
+  // el servidor da por exitosa una subida parcial, y una venta detenida no se reintenta sola:
+  // ninguna de las dos es una buena noticia para el dueño
+  const salioMal =
+    sincronizar.isError || resultado?.success === false || resultado?.partial === true || detenidas > 0
 
   return (
     <>
@@ -40,8 +45,8 @@ export function BotonSincronizar() {
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
         <Alert severity={salioMal ? 'warning' : 'success'} onClose={() => sincronizar.reset()}>
-          {/* una subida parcial llega como error: parte de las ventas si quedo en la nube */}
           {sincronizar.isError ? resumenSincronizacion(sincronizar.error) : resultado?.message}
+          {avisoVentasDetenidas(detenidas)}
           {sinRespaldar > 0 && ` Quedan ${sinRespaldar} documentos de factura solo en este equipo.`}
         </Alert>
       </Snackbar>

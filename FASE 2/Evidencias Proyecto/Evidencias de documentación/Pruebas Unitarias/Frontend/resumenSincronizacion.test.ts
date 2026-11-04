@@ -1,9 +1,9 @@
 // src/features/pos/utils/resumenSincronizacion.test.ts
 import { describe, expect, it } from 'vitest'
 import { AxiosError, AxiosHeaders } from 'axios'
-import { resumenSincronizacion } from '@/features/pos/utils/resumenSincronizacion'
+import { avisoVentasDetenidas, resumenSincronizacion } from '@/features/pos/utils/resumenSincronizacion'
 
-// el backend responde 500 aunque algunas ventas si hayan subido
+// desde el 02-11 el servidor responde 500 solo cuando no subio ninguna venta
 function errorDeSync(syncedIds: string[], failedIds: string[]): AxiosError {
   const error = new AxiosError('Request failed with status code 500')
   error.response = {
@@ -59,5 +59,17 @@ describe('resumenSincronizacion', () => {
     const texto = resumenSincronizacion(new AxiosError('Network Error'))
     expect(texto).toContain('No se pudo conectar con el servidor')
     expect(texto).toContain('Las ventas siguen guardadas en este equipo.')
+  })
+})
+
+describe('avisoVentasDetenidas', () => {
+  it('avisa aparte de las que agotaron los intentos', () => {
+    expect(avisoVentasDetenidas(3)).toBe(' Hay 3 ventas que no pudieron subir y necesitan revision.')
+    expect(avisoVentasDetenidas(1)).toBe(' Hay 1 venta que no pudo subir y necesita revision.')
+  })
+
+  it('no dice nada cuando no hay ninguna', () => {
+    expect(avisoVentasDetenidas(0)).toBeNull()
+    expect(avisoVentasDetenidas(undefined)).toBeNull()
   })
 })

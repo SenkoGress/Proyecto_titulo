@@ -47,3 +47,12 @@ export function resumenSincronizacion(error: unknown): string {
 
   return `${subida} de ${subieron + quedaron} ventas. ${resto}`
 }
+
+// las que agotaron los intentos no vuelven a intentarse solas, asi que no sirve
+// decir que se suben al sincronizar de nuevo
+export function avisoVentasDetenidas(detenidas: number | undefined): string | null {
+  if (!detenidas || detenidas < 1) return null
+  return detenidas === 1
+    ? ' Hay 1 venta que no pudo subir y necesita revision.'
+    : ` Hay ${detenidas} ventas que no pudieron subir y necesitan revision.`
+}

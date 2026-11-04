@@ -117,8 +117,14 @@ export type RespuestaCheckout = {
 // respuesta de POST /pos/sync: ventas, cola de facturas y respaldo de documentos
 export type ResultadoSync = {
   success: boolean
+  // subieron algunas ventas y fallaron otras: es exito con cuentas, no fracaso
+  partial?: boolean
   message: string
   synced_sales_count?: number
+  failed_sales_count?: number
+  // agotaron los intentos: no se reintentan solas
+  stopped_sales_count?: number
+  catalog_backup?: { productos_nuevos: number; proveedores_nuevos: number }
   pending_dirty_count?: number
   invoice_queue?: { procesadas: number; fallidas: number; pendientes: number }
   invoice_document_backup?: { respaldados: number; pendientes: number; omitidos: number }
