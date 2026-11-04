@@ -2,6 +2,8 @@
 import Box from '@mui/material/Box'
 import Divider from '@mui/material/Divider'
 import { QRCodeSVG } from 'qrcode.react'
+import { usePapelStore } from '@/shared/stores/papelStore'
+import { anchoVistaPx, tamanoLetraPx } from '@/shared/utils/papelTermico'
 import { formatoClp } from '@/shared/utils/formatoClp'
 import { formatFecha } from '@/shared/utils/formatFecha'
 import { env } from '@/config/env'
@@ -15,9 +17,6 @@ type Props = {
   metodoPago: string
   ajusteRedondeo: number
 }
-
-// ancho de un ticket termico de 80mm
-const ANCHO_TICKET = 320
 
 // linea de separacion igual a la del papel
 function Separador() {
@@ -34,8 +33,9 @@ function Fila({ etiqueta, valor, fuerte }: { etiqueta: string; valor: string; fu
   )
 }
 
-// representacion del ticket tal como se imprime en papel de 80mm
+// representacion del ticket tal como se imprime, en el rollo que tenga esta caja
 export function TicketImpreso({ comprobante, emisor, metodoPago, ajusteRedondeo }: Props) {
+  const anchoPapel = usePapelStore((estado) => estado.ancho)
   const { neto, iva, exento, total } = comprobante.totales
 
   // lo que sobra despues de neto, iva, exento y el redondeo es el impuesto adicional
@@ -45,7 +45,7 @@ export function TicketImpreso({ comprobante, emisor, metodoPago, ajusteRedondeo 
     <Box
       id="ticket-impreso"
       sx={{
-        width: ANCHO_TICKET,
+        width: anchoVistaPx(anchoPapel),
         maxWidth: '100%',
         mx: 'auto',
         p: 2,
@@ -55,7 +55,7 @@ export function TicketImpreso({ comprobante, emisor, metodoPago, ajusteRedondeo 
         borderColor: 'divider',
         borderRadius: 1,
         fontFamily: 'monospace',
-        fontSize: 12,
+        fontSize: tamanoLetraPx(anchoPapel),
         lineHeight: 1.6,
       }}
     >

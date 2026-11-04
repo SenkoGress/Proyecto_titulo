@@ -114,6 +114,18 @@ export type RespuestaCheckout = {
   data: VentaRegistrada
 }
 
+// documentos de factura que no estan en la nube, separados por lo que le falta a cada uno
+export type RespaldoDocumentos = {
+  respaldados: number
+  omitidos: number
+  // los que el proximo ciclo va a intentar y puede lograr
+  pendientes: number
+  // quedo la referencia pero el archivo no esta en el equipo
+  sin_archivo: number
+  en_proceso_ocr: number
+  fallidos_ocr: number
+}
+
 // respuesta de POST /pos/sync: ventas, cola de facturas y respaldo de documentos
 export type ResultadoSync = {
   success: boolean
@@ -127,6 +139,6 @@ export type ResultadoSync = {
   catalog_backup?: { productos_nuevos: number; proveedores_nuevos: number }
   pending_dirty_count?: number
   invoice_queue?: { procesadas: number; fallidas: number; pendientes: number }
-  invoice_document_backup?: { respaldados: number; pendientes: number; omitidos: number }
+  invoice_document_backup?: RespaldoDocumentos
   cloud_online: boolean
 }
