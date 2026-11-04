@@ -331,12 +331,22 @@ export class ReplenishmentService {
         } catch {}
       }
 
+      // El producto sin proveedor no se agrupa bajo un proveedor inventado. Antes el grupo
+      // 'UNASSIGNED' salia en el aviso como 'Proveedor Mayorista General' con un RUT y un correo
+      // de ejemplo, y la orden que generaba era rechazada por la clave foranea, de modo que el
+      // local recibia un pedido dirigido a un proveedor inexistente y la base no lo registraba.
+      const sinProveedor = !supplierInfo && supplierIdKey === 'UNASSIGNED';
+
       const finalSupplierId = supplierInfo?.id || supplierIdKey;
-      const supplierName = supplierInfo?.nombre_proveedores || 'Proveedor Mayorista General';
-      const supplierRut = supplierInfo?.rut_proveedor || '78.450.685-1';
-      const supplierEmail = supplierInfo?.email || 'pedidos@proveedor.cl';
-      const supplierTel = supplierInfo?.telefono || supplierInfo?.whatsapp_contacto || '+56 9 1122 3344';
-      const diasVisita = supplierInfo?.dias_visita_proveedores || 'Lunes';
+      const supplierName = sinProveedor
+        ? 'Sin proveedor asignado'
+        : supplierInfo?.nombre_proveedores || 'Proveedor Mayorista General';
+      const supplierRut = sinProveedor ? '' : supplierInfo?.rut_proveedor || '78.450.685-1';
+      const supplierEmail = sinProveedor ? '' : supplierInfo?.email || 'pedidos@proveedor.cl';
+      const supplierTel = sinProveedor
+        ? ''
+        : supplierInfo?.telefono || supplierInfo?.whatsapp_contacto || '+56 9 1122 3344';
+      const diasVisita = sinProveedor ? '' : supplierInfo?.dias_visita_proveedores || 'Lunes';
       const visit = calculateNextVisit(diasVisita);
 
       const orderId = uuidv4();
@@ -367,6 +377,7 @@ export class ReplenishmentService {
         proveedorRut: supplierRut,
         proveedorEmail: supplierEmail,
         proveedorTelefono: supplierTel,
+        sinProveedor,
         diasVisita,
         proximaVisitaTexto: visit.displayText,
         diasHastaVisita: visit.daysUntil,
@@ -413,6 +424,10 @@ export class ReplenishmentService {
     estado: 'sugerida' | 'enviada'
   ): Promise<void> {
     for (const order of orders) {
+      // El producto sin proveedor no genera orden: no hay a quien pedirle, y la clave foranea
+      // rechazaria la fila. Va nombrado en el aviso para que el local le asigne proveedor.
+      if (order.sinProveedor) continue;
+
       try {
         this.sqliteClient.execute(
           `INSERT INTO purchase_orders (id, tenant_id, supplier_id, estado, fecha_creacion, total_estimado)

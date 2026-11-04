@@ -46,6 +46,12 @@ export interface SuggestedPurchaseOrder {
   proximaVisitaTexto: string;
   diasHastaVisita: number;
   estado: 'sugerida' | 'enviada' | 'recibida' | 'cancelada';
+  /**
+   * El producto esta bajo el punto de reorden y no tiene proveedor asignado. No es un pedido: no se
+   * graba y en el aviso va nombrado aparte, para que el local sepa que hay que reponerlo y que
+   * antes hay que asignarle proveedor.
+   */
+  sinProveedor?: boolean;
   fechaCreacion: string;
   totalEstimado: number;
   items: {

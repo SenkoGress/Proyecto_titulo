@@ -37,19 +37,28 @@ export function redactarAvisoReposicion(
   texto: string;
   html: string;
 } {
-  const total = orders.reduce((suma, o) => suma + (Number(o.totalEstimado) || 0), 0);
+  // Los productos sin proveedor asignado no son un pedido: no hay a quien pedirles y no llevan
+  // total. Van en su propia seccion para que el local sepa que hay que reponerlos y que antes
+  // tiene que asignarles proveedor.
+  const pedidos = orders.filter((o) => !o.sinProveedor);
+  const huerfanos = orders.filter((o) => o.sinProveedor);
+
+  const total = pedidos.reduce((suma, o) => suma + (Number(o.totalEstimado) || 0), 0);
   const productos = orders.reduce((suma, o) => suma + o.items.length, 0);
+  const sinProveedor = huerfanos.reduce((suma, o) => suma + o.items.length, 0);
 
   const asunto =
-    orders.length === 1
-      ? `Pedido sugerido para ${orders[0].proveedorNombre}`
-      : `Pedidos sugeridos para ${orders.length} proveedores`;
+    pedidos.length === 0
+      ? 'Productos por reponer sin proveedor asignado'
+      : pedidos.length === 1
+        ? `Pedido sugerido para ${pedidos[0].proveedorNombre}`
+        : `Pedidos sugeridos para ${pedidos.length} proveedores`;
 
   const lineas: string[] = [];
   lineas.push('Esto es lo que conviene pedir segun el stock de hoy.');
   lineas.push('');
 
-  for (const orden of orders) {
+  for (const orden of pedidos) {
     const visita = orden.proximaVisitaTexto ? ` (${orden.proximaVisitaTexto})` : '';
     lineas.push(`${orden.proveedorNombre}${visita}`);
     for (const item of orden.items) {
@@ -59,8 +68,19 @@ export function redactarAvisoReposicion(
     lineas.push('');
   }
 
-  if (orders.length > 1) {
-    lineas.push(`Total de los ${orders.length} pedidos: ${monto(total)}`);
+  if (pedidos.length > 1) {
+    lineas.push(`Total de los ${pedidos.length} pedidos: ${monto(total)}`);
+    lineas.push('');
+  }
+
+  if (sinProveedor > 0) {
+    lineas.push('Sin proveedor asignado');
+    for (const orden of huerfanos) {
+      for (const item of orden.items) {
+        lineas.push(`  - ${item.nombre}: ${existencia(item.sku, stockPorSku)}faltan ${item.cantidadSugerida}`);
+      }
+    }
+    lineas.push('  Estos no se pueden pedir todavia. Asigneles un proveedor en Inventario.');
     lineas.push('');
   }
 
@@ -68,7 +88,7 @@ export function redactarAvisoReposicion(
   lineas.push('');
   lineas.push('Aviso automatico de GesTock. Puede cambiar el dia y la hora en Configuracion.');
 
-  const filas = orders
+  const filas = pedidos
     .map((orden) => {
       const items = orden.items
         .map(
@@ -86,6 +106,24 @@ export function redactarAvisoReposicion(
     })
     .join('');
 
+  const filasSinProveedor = huerfanos
+    .flatMap((orden) => orden.items)
+    .map(
+      (item) =>
+        `<li>${escapar(item.nombre)}: ${escapar(existencia(item.sku, stockPorSku))}faltan <strong>${item.cantidadSugerida}</strong></li>`
+    )
+    .join('');
+
+  const bloqueSinProveedor =
+    sinProveedor === 0
+      ? ''
+      : `
+    <div style="margin:18px 0 0;padding:14px;border:1px solid #f0d9a8;border-radius:6px;background:#fdf7ea">
+      <div style="font-weight:600;color:#7a5b16">Sin proveedor asignado</div>
+      <ul style="margin:8px 0 6px 18px;padding:0;color:#333">${filasSinProveedor}</ul>
+      <div style="color:#7a5b16;font-size:13px">Estos no se pueden pedir todavia. Asigneles un proveedor en Inventario.</div>
+    </div>`;
+
   const html = `<!doctype html>
 <html lang="es"><head><meta charset="utf-8"></head>
 <body style="margin:0;padding:24px;background:#f6f8fb;font-family:Segoe UI,system-ui,sans-serif">
@@ -93,7 +131,8 @@ export function redactarAvisoReposicion(
     <h1 style="margin:0 0 4px;font-size:19px;color:#1f3a5f">Pedido sugerido</h1>
     <p style="margin:0 0 16px;color:#556;font-size:14px">Esto es lo que conviene pedir segun el stock de hoy.</p>
     <table style="width:100%;border-collapse:collapse">${filas}</table>
-    ${orders.length > 1 ? `<p style="margin:16px 0 0;color:#1f3a5f"><strong>Total de los ${orders.length} pedidos: ${monto(total)}</strong></p>` : ''}
+    ${pedidos.length > 1 ? `<p style="margin:16px 0 0;color:#1f3a5f"><strong>Total de los ${pedidos.length} pedidos: ${monto(total)}</strong></p>` : ''}
+    ${bloqueSinProveedor}
     <p style="margin:16px 0 0;color:#556;font-size:13px">
       ${productos} producto${productos === 1 ? '' : 's'} bajo el punto de reorden.
     </p>

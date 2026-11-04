@@ -77,6 +77,37 @@ describe('Pruebas Unitarias: Aviso de Reposicion Programado', () => {
       expect(sinDato.texto).not.toContain('quedan');
     });
 
+    test('el producto sin proveedor va nombrado aparte, no bajo un proveedor inventado', () => {
+      // El grupo sin proveedor salia como 'Proveedor Mayorista General' con un RUT y un correo de
+      // ejemplo: el local recibia un pedido dirigido a un proveedor que no existe.
+      const huerfano = orden('Fosforos Los Gemelos', 6, 3000);
+      huerfano.orderId = 'ord-sin-prov';
+      huerfano.proveedorNombre = 'Sin proveedor asignado';
+      huerfano.proveedorRut = '';
+      huerfano.proximaVisitaTexto = '';
+      huerfano.sinProveedor = true;
+      huerfano.items[0].sku = 'SKU-SP-01';
+
+      const soloHuerfano = redactarAvisoReposicion([huerfano]);
+
+      expect(soloHuerfano.asunto).toBe('Productos por reponer sin proveedor asignado');
+      expect(soloHuerfano.texto).toContain('Sin proveedor asignado');
+      expect(soloHuerfano.texto).toContain('Fosforos Los Gemelos');
+      expect(soloHuerfano.texto).toContain('Asigneles un proveedor en Inventario');
+      expect(soloHuerfano.texto).not.toContain('Proveedor Mayorista General');
+      // No es un pedido: no lleva total estimado ni se cuenta entre los pedidos
+      expect(soloHuerfano.texto).not.toContain('Total estimado');
+      expect(soloHuerfano.html).toContain('Sin proveedor asignado');
+
+      const mezclado = redactarAvisoReposicion([orden('Leche Entera 1L', 24, 16800), huerfano]);
+
+      // El asunto y el total hablan del unico pedido real, no de dos
+      expect(mezclado.asunto).toBe('Pedido sugerido para Distribuidora Central');
+      expect(mezclado.texto).not.toContain('Total de los');
+      expect(mezclado.texto).toContain('2 productos bajo el punto de reorden.');
+      expect(mezclado.texto).toContain('faltan 6');
+    });
+
     test('el nombre del producto se escapa en la version HTML', () => {
       const aviso = redactarAvisoReposicion([orden('Pan <especial> & Co', 10, 5000)]);
 
@@ -129,10 +160,10 @@ describe('Pruebas Unitarias: Aviso de Reposicion Programado', () => {
 
     afterAll(() => {
       defaultSqliteClient.execute(
-        "DELETE FROM purchase_order_details WHERE purchase_order_id = 'ord-desp'"
+        "DELETE FROM purchase_order_details WHERE purchase_order_id IN ('ord-desp', 'ord-con-prov')"
       );
       defaultSqliteClient.execute(
-        "DELETE FROM purchase_orders WHERE id IN ('ord-ok', 'ord-falla', 'ord-desp')"
+        "DELETE FROM purchase_orders WHERE id IN ('ord-ok', 'ord-falla', 'ord-desp', 'ord-con-prov', 'ord-sin-prov')"
       );
       defaultSqliteClient.execute('DELETE FROM proveedores WHERE id = ?', [PROVEEDOR]);
     });
@@ -224,6 +255,35 @@ describe('Pruebas Unitarias: Aviso de Reposicion Programado', () => {
 
       expect(filasDe('ord-desp')).toBe(1);
       expect(estadoDe('ord-desp')).toBe('enviada');
+      calculo.mockRestore();
+    });
+
+    test('el producto sin proveedor no genera orden en la base', async () => {
+      const servicio = servicioConCorreo(true);
+      const huerfano = orden('Fosforos Los Gemelos', 6, 3000);
+      huerfano.orderId = 'ord-sin-prov';
+      huerfano.proveedorId = 'UNASSIGNED';
+      huerfano.sinProveedor = true;
+      huerfano.items[0].productId = PRODUCTO_SEMBRADO;
+
+      const pedido = orden('Leche Entera 1L', 24, 16800);
+      pedido.orderId = 'ord-con-prov';
+      pedido.proveedorId = PROVEEDOR;
+      pedido.items[0].productId = PRODUCTO_SEMBRADO;
+
+      const calculo = jest.spyOn(servicio, 'generateSuggestedOrders').mockResolvedValue({
+        orders: [pedido, huerfano],
+        lowStockAlerts: [],
+        totalCritical: 0,
+        emailDispatchStatus: { sent: true, message: 'Correo enviado' }
+      });
+
+      await servicio.despacharAvisoReposicion(TENANT);
+
+      // El correo salio y el pedido con proveedor quedo grabado; el otro no, porque no hay a
+      // quien pedirle y la clave foranea lo rechazaria.
+      expect(estadoDe('ord-con-prov')).toBe('enviada');
+      expect(filasDe('ord-sin-prov')).toBe(0);
       calculo.mockRestore();
     });
 
