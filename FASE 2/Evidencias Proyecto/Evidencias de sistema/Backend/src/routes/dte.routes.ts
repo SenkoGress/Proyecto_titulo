@@ -11,6 +11,7 @@ import { defaultDteEmitter } from '../dte/dte-emitter.service';
 import { defaultRcofService } from '../dte/rcof.service';
 import { defaultSiiCertification } from '../dte/sii-certification.service';
 import { defaultF29ReportService } from '../dte/f29-report.service';
+import { defaultSiiEnvio } from '../dte/sii-envio.service';
 import { defaultSqliteClient } from '../database/sqlite/client';
 import { TipoDTE } from '../dte/types';
 import { logger } from '../utils/logger';
@@ -456,6 +457,79 @@ dteRouter.get('/guias', (req: Request, res: Response) => {
     );
     res.json({ success: true, data: guias });
   } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * GET /api/v1/dte/envio/pendientes
+ * Documentos emitidos que todavia no viajaron al SII, y lo que falta para poder enviarlos.
+ * Es lo que la pantalla necesita para decidir si el boton de envio esta disponible y para
+ * explicar, cuando no lo esta, que gestion tiene pendiente el local.
+ */
+dteRouter.get('/envio/pendientes', (req: Request, res: Response) => {
+  try {
+    const tenantId = (req.query.tenantId as string) || DEFAULT_TENANT;
+    const pendientes = defaultSiiEnvio.documentosPendientes(tenantId);
+    const faltantes = defaultSiiEnvio.revisarRequisitos(tenantId);
+
+    res.json({
+      success: true,
+      data: {
+        ambiente: defaultSiiEnvio.getAmbiente(tenantId),
+        pendientes_count: pendientes.length,
+        provisionales_count: pendientes.filter((d) => d.folio_provisional).length,
+        puede_enviar: faltantes.length === 0 && pendientes.length > 0,
+        faltantes,
+        documentos: pendientes,
+        envios_recientes: defaultSiiEnvio.listarEnvios(tenantId)
+      }
+    });
+  } catch (err: any) {
+    logger.error('DteRoutes', 'Error listando documentos pendientes de envio', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * POST /api/v1/dte/envio
+ * Arma el sobre EnvioDTE con los documentos pendientes y lo sube al SII cuando hay con que.
+ * Si falta el certificado o los folios autorizados, el sobre igual queda preparado y firmado
+ * para subirlo a mano en el portal, y la respuesta dice que no se envio.
+ */
+dteRouter.post('/envio', async (req: Request, res: Response) => {
+  try {
+    const tenantId = (req.body.tenantId as string) || DEFAULT_TENANT;
+    const dteIds = Array.isArray(req.body.dte_ids) ? (req.body.dte_ids as string[]) : undefined;
+
+    const resultado = await defaultSiiEnvio.enviar(tenantId, dteIds);
+
+    res.json({ success: true, data: resultado });
+  } catch (err: any) {
+    logger.error('DteRoutes', 'Error preparando el envio al SII', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * GET /api/v1/dte/envio/:id/sobre
+ * Descarga el sobre firmado para subirlo a mano en el portal del SII.
+ */
+dteRouter.get('/envio/:id/sobre', (req: Request, res: Response) => {
+  try {
+    const tenantId = (req.query.tenantId as string) || DEFAULT_TENANT;
+    const sobre = defaultSiiEnvio.getSobre(tenantId, String(req.params.id));
+
+    if (!sobre) {
+      res.status(404).json({ success: false, message: 'El envio no existe' });
+      return;
+    }
+
+    res.setHeader('Content-Type', 'application/xml; charset=ISO-8859-1');
+    res.setHeader('Content-Disposition', `attachment; filename="EnvioDTE-${req.params.id}.xml"`);
+    res.send(sobre.sobre_xml);
+  } catch (err: any) {
+    logger.error('DteRoutes', 'Error entregando el sobre', err);
     res.status(500).json({ success: false, error: err.message });
   }
 });

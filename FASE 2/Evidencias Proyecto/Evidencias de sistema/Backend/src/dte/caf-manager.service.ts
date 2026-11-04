@@ -26,7 +26,10 @@ export class CafManagerService {
       return this.mapRowToCaf(existing);
     }
 
-    logger.info('CafManager', `No active CAF found for tenant ${tenantId} and tipoDte ${tipoDte}. Auto-generating certified test CAF.`);
+    // El local tiene que poder vender aunque todavia no haya pedido folios al SII, de modo que
+    // el sistema se provisiona un rango propio. Queda marcado como PROVISIONAL: los documentos
+    // emitidos con el no son enviables, porque el SII nunca autorizo esos folios.
+    logger.warn('CafManager', `Sin CAF autorizado para el tipo ${tipoDte}: se provisiona un rango local. Los documentos emitidos con el no son enviables al SII.`);
     return this.provisionTestCaf(tenantId, tipoDte);
   }
 
@@ -146,8 +149,8 @@ export class CafManagerService {
     const id = uuidv4();
     defaultSqliteClient.execute(
       `INSERT INTO sii_caf 
-       (id, tenant_id, tipo_dte, folio_desde, folio_hasta, ultimo_folio_usado, fecha_autorizacion, rsask_private_key, rsapk_public_key, caf_xml_content, activo)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+       (id, tenant_id, tipo_dte, folio_desde, folio_hasta, ultimo_folio_usado, fecha_autorizacion, rsask_private_key, rsapk_public_key, caf_xml_content, activo, origen)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'SII')`,
       [
         id,
         tenantId,
@@ -184,13 +187,14 @@ export class CafManagerService {
     const id = uuidv4();
     const fechaHoy = new Date().toISOString().split('T')[0];
 
-    // Estructura XML CAF simulando respuesta oficial de certificación del SII
+    // Estructura con la forma del CAF del SII, pero sin su firma: el nodo FRMA lleva una marca
+    // literal en lugar de la firma de la autoridad, y por eso el rango queda como PROVISIONAL.
     const cafXml = `<CAF version="1.0"><DA><RE>76123456-7</RE><RS>COMERCIAL DON TITO SPA</RS><TD>${tipoDte}</TD><RNG><D>${desde}</D><H>${hasta}</H></RNG><FA>${fechaHoy}</FA><RSAPK><M>${cleanPubKey.substring(0, 120)}</M><E>AQAB</E></RSAPK><IDK>300</IDK></DA><FRMA alg="SHA1withRSA">MOCK_SII_CERTIFIED_CAF_SIGNATURE</FRMA></CAF>`;
 
     defaultSqliteClient.execute(
       `INSERT INTO sii_caf 
-       (id, tenant_id, tipo_dte, folio_desde, folio_hasta, ultimo_folio_usado, fecha_autorizacion, rsask_private_key, rsapk_public_key, caf_xml_content, activo)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+       (id, tenant_id, tipo_dte, folio_desde, folio_hasta, ultimo_folio_usado, fecha_autorizacion, rsask_private_key, rsapk_public_key, caf_xml_content, activo, origen)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'PROVISIONAL')`,
       [
         id,
         tenantId,
@@ -205,7 +209,7 @@ export class CafManagerService {
       ]
     );
 
-    logger.info('CafManager', `Provisioned test CAF for Tipo ${tipoDte}: Rango ${desde}-${hasta}`);
+    logger.info('CafManager', `Rango provisional ${desde}-${hasta} para el tipo ${tipoDte}`);
     return {
       id,
       tenant_id: tenantId,
@@ -236,6 +240,7 @@ export class CafManagerService {
     porcentajeDisponible: number;
     fechaAutorizacion: string;
     activo: boolean;
+    origen: string;
   }> {
     const rows = defaultSqliteClient.query<any>(
       `SELECT * FROM sii_caf WHERE tenant_id = ? AND activo = 1 ORDER BY tipo_dte ASC`,
@@ -274,7 +279,10 @@ export class CafManagerService {
         porcentaje_disponible: pct,
         fechaAutorizacion: r.fecha_autorizacion,
         fecha_autorizacion: r.fecha_autorizacion,
-        activo: r.activo === 1
+        activo: r.activo === 1,
+        // SII cuando el rango lo autorizo el servicio, PROVISIONAL cuando lo abrio el equipo
+        // para poder operar: con el segundo los documentos no son enviables.
+        origen: r.origen || 'PROVISIONAL'
       };
     });
   }

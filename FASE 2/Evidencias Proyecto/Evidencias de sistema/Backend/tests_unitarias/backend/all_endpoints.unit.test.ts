@@ -17,7 +17,7 @@ const rsaKey = crypto.generateKeyPairSync('rsa', {
   privateKeyEncoding: { type: 'pkcs1', format: 'pem' }
 });
 
-describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (69/69)', () => {
+describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (72/72)', () => {
   let server: http.Server;
   let baseUrl: string;
   let dteId = 'demo-dte-01';
@@ -204,6 +204,8 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (6
   });
 
   describe('11. Módulo Tributario DTE & SII (dte.routes.ts)', () => {
+    let envioId = '';
+
     test('14. GET /api/v1/dte/config retorna configuración fiscal', async () => {
       const res = await requestApi('GET', `/api/v1/dte/config?tenantId=${DEMO_TENANT}`);
       expect(res.status).toBe(200);
@@ -292,6 +294,31 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (6
       });
       expect(res.status).toBe(200);
       expect(res.data.success).toBe(true);
+    });
+
+    test('24b. GET /api/v1/dte/envio/pendientes lista lo emitido y lo que falta para enviarlo', async () => {
+      const res = await requestApi('GET', `/api/v1/dte/envio/pendientes?tenantId=${DEMO_TENANT}`);
+      expect(res.status).toBe(200);
+      expect(res.data.success).toBe(true);
+      expect(res.data.data).toHaveProperty('pendientes_count');
+      expect(res.data.data).toHaveProperty('puede_enviar');
+      expect(Array.isArray(res.data.data.faltantes)).toBe(true);
+    });
+
+    test('24c. POST /api/v1/dte/envio prepara el sobre y declara si no se envio', async () => {
+      const res = await requestApi('POST', '/api/v1/dte/envio', { tenantId: DEMO_TENANT });
+      expect(res.status).toBe(200);
+      expect(res.data.success).toBe(true);
+      // Sin certificado ni folios autorizados el sobre queda listo, pero el envio no se afirma
+      expect(res.data.data.enviado).toBe(false);
+      expect(res.data.data.faltantes.length).toBeGreaterThan(0);
+      envioId = res.data.data.envio_id;
+    });
+
+    test('24d. GET /api/v1/dte/envio/:id/sobre entrega el XML firmado para el portal del SII', async () => {
+      const res = await requestApi('GET', `/api/v1/dte/envio/${envioId}/sobre?tenantId=${DEMO_TENANT}`);
+      expect(res.status).toBe(200);
+      expect(String(res.data)).toContain('EnvioDTE');
     });
 
     test('25. POST /api/v1/dte/send-email despacha DTE por correo a receptor', async () => {
