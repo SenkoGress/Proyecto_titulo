@@ -2,7 +2,7 @@
   "name": "gestock-backend",
   "version": "0.1.0",
   "description": "Gestock - Predictive Inventory Management System (Cloud SaaS & POS Offline-First)",
-  "main": "dist/backend/src/index.js",
+  "main": "electron/main.js",
   "scripts": {
     "build": "tsc",
     "start": "node dist/backend/src/index.js",
@@ -15,7 +15,12 @@
     "test:coverage": "jest --runInBand --coverage",
     "migrate:pg": "ts-node backend/src/database/postgres/run-migration.ts",
     "migrate:sqlite": "ts-node backend/src/database/sqlite/run-migration.ts",
-    "test:coverage:total": "jest --config jest.coverage.config.js --runInBand"
+    "test:coverage:total": "jest --config jest.coverage.config.js --runInBand",
+    "build:frontend": "npm --prefix front-end run build",
+    "build:desktop": "npm run build && npm run build:frontend",
+    "electron:dev": "npm run build:desktop && electron .",
+    "pack:dir": "npm run build:desktop && electron-builder --dir",
+    "dist:win": "npm run build:desktop && electron-builder --win"
   },
   "keywords": [
     "inventory",
@@ -51,10 +56,47 @@
     "@types/pg": "^8.11.11",
     "@types/uuid": "^10.0.0",
     "docx": "^9.7.1",
+    "electron": "^44.10.2",
+    "electron-builder": "^26.18.0",
     "jest": "^30.5.2",
     "pg-mem": "^3.0.4",
     "ts-jest": "^29.4.14",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.2"
+  },
+  "allowScripts": {
+    "electron@44.10.2": true
+  },
+  "build": {
+    "appId": "cl.gestock.pos",
+    "productName": "GesTock",
+    "copyright": "GesTock",
+    "directories": {
+      "output": "release",
+      "buildResources": "electron/recursos"
+    },
+    "files": [
+      "dist/backend/**/*",
+      "front-end/dist/**/*",
+      "electron/**/*",
+      "package.json",
+      "!**/*.map"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "electron/recursos/icono.ico",
+      "artifactName": "GesTock-${version}-instalador.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "GesTock"
+    }
   }
 }

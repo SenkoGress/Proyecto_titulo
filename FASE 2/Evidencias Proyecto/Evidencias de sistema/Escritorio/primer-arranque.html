@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <title>GesTock — Primer inicio</title>
+    <style>
+      :root { color-scheme: light; }
+      body {
+        margin: 0;
+        padding: 32px;
+        font-family: "Segoe UI", system-ui, sans-serif;
+        background: #f4f6fb;
+        color: #1f3a5f;
+      }
+      h1 { font-size: 20px; margin: 0 0 6px; }
+      p.intro { margin: 0 0 20px; color: #55607a; font-size: 14px; line-height: 1.5; }
+      label { display: block; font-size: 13px; font-weight: 600; margin: 14px 0 4px; }
+      input {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 9px 10px;
+        border: 1px solid #c7d0e0;
+        border-radius: 6px;
+        font-size: 14px;
+        background: #fff;
+      }
+      input:focus { outline: 2px solid #3b6fd4; border-color: #3b6fd4; }
+      button {
+        margin-top: 22px;
+        width: 100%;
+        padding: 11px;
+        border: 0;
+        border-radius: 6px;
+        background: #1f3a5f;
+        color: #fff;
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button:disabled { background: #9aa6bd; cursor: default; }
+      .aviso { margin-top: 14px; font-size: 13px; color: #b3261e; min-height: 18px; }
+      .pie { margin-top: 18px; font-size: 12px; color: #78839a; line-height: 1.5; }
+    </style>
+  </head>
+  <body>
+    <h1>Cuenta de administrador del local</h1>
+    <p class="intro">
+      Esta cuenta abre la configuracion del negocio y crea las cuentas de caja. Queda guardada
+      solo en este equipo.
+    </p>
+
+    <form id="formulario">
+      <label for="correo">Correo</label>
+      <input id="correo" type="email" required autocomplete="username" placeholder="duenio@milocal.cl" />
+
+      <label for="clave">Clave (minimo 8 caracteres)</label>
+      <input id="clave" type="password" required minlength="8" autocomplete="new-password" />
+
+      <label for="repetir">Repetir la clave</label>
+      <input id="repetir" type="password" required minlength="8" autocomplete="new-password" />
+
+      <button type="submit" id="boton">Crear la cuenta y abrir GesTock</button>
+      <div class="aviso" id="aviso"></div>
+    </form>
+
+    <p class="pie">
+      Si cierra esta ventana sin crear la cuenta, GesTock no se abrira: sin administrador no hay
+      quien configure el local.
+    </p>
+
+    <script>
+      const formulario = document.getElementById('formulario');
+      const aviso = document.getElementById('aviso');
+      const boton = document.getElementById('boton');
+
+      formulario.addEventListener('submit', (evento) => {
+        evento.preventDefault();
+        const correo = document.getElementById('correo').value.trim();
+        const clave = document.getElementById('clave').value;
+        const repetir = document.getElementById('repetir').value;
+
+        if (clave !== repetir) {
+          aviso.textContent = 'Las dos claves no coinciden.';
+          return;
+        }
+        if (clave.length < 8) {
+          aviso.textContent = 'La clave debe tener al menos 8 caracteres.';
+          return;
+        }
+
+        aviso.textContent = '';
+        boton.disabled = true;
+        boton.textContent = 'Creando la cuenta...';
+        window.instalacion.crearAdministrador({ correo, clave });
+      });
+    </script>
+  </body>
+</html>

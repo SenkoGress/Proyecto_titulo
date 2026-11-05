@@ -66,10 +66,28 @@ app.use(express.json({ limit: '10mb' }));
 app.use('/api/v1', validateTenantAndAuth);
 app.use('/api/v1', rbacAuthMiddleware);
 
-// Servir frontend estatico del POS
-const publicDir = fs.existsSync(path.resolve(process.cwd(), 'backend/public'))
-  ? path.resolve(process.cwd(), 'backend/public')
-  : path.join(__dirname, '../public');
+/**
+ * Interfaz del POS servida por el propio backend.
+ *
+ * La caja abre una sola direccion y las peticiones salen al mismo origen, de modo que no hay
+ * politica de CORS que resolver ni una segunda direccion que configurar en el equipo del local.
+ * Es tambien lo que permite empaquetar el sistema como una aplicacion de escritorio sin levantar
+ * un servidor aparte para la interfaz.
+ *
+ * Se busca primero la interfaz construida; si no esta, se cae a la carpeta publica historica, que
+ * es la que usa el entorno de desarrollo cuando la interfaz corre con su propio servidor.
+ */
+const candidatosFrontend = [
+  process.env.FRONTEND_DIST,
+  path.resolve(process.cwd(), 'front-end', 'dist'),
+  path.join(__dirname, '../../../front-end/dist'),
+  path.resolve(process.cwd(), 'backend/public'),
+  path.join(__dirname, '../public')
+].filter(Boolean) as string[];
+
+const publicDir = candidatosFrontend.find((ruta) => fs.existsSync(path.join(ruta, 'index.html')))
+  || candidatosFrontend[candidatosFrontend.length - 1];
+
 app.use(express.static(publicDir));
 
 // Montaje de rutas de modulos de negocio
@@ -122,6 +140,18 @@ app.get('/api', (_req: Request, res: Response): void => {
 
 // Middleware global para captura y sanitizacion de errores no controlados
 app.use(globalErrorHandler);
+
+/**
+ * La interfaz resuelve sus rutas en el navegador, de modo que al recargar en /login el servidor
+ * recibe una peticion que no corresponde a ningun archivo. Se devuelve la pagina y el enrutador
+ * del cliente hace el resto. Solo para navegaciones: lo que empieza en /api o /health sigue su
+ * camino, y una peticion que no acepta HTML tampoco se responde con la pagina.
+ */
+app.get(/^\/(?!api|health).*/, (req, res, next) => {
+  const indice = path.join(publicDir, 'index.html');
+  if (req.method !== 'GET' || !req.accepts('html') || !fs.existsSync(indice)) return next();
+  res.sendFile(indice);
+});
 
 import { initializeDatabase } from './database/init-db';
 
