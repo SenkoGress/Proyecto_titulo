@@ -15,6 +15,7 @@ import Skeleton from '@mui/material/Skeleton'
 import EventOutlined from '@mui/icons-material/EventOutlined'
 import WhatsAppIcon from '@mui/icons-material/WhatsApp'
 import { formatoClp } from '@/shared/utils/formatoClp'
+import { esOrdenSinProveedor } from '@/features/replenishment/utils/sinProveedor'
 import { alternativas, lineasDePropuesta, motivoEleccion } from '@/features/replenishment/utils/ordenesPorProveedor'
 import type { ItemOrdenSugerida, OrdenSugerida } from '@/features/replenishment/types'
 
@@ -105,12 +106,14 @@ export function TablaPropuestasOrdenes({ ordenes, cargando, onPedir }: Props) {
                   <Typography variant="body2" sx={{ fontWeight: 700 }}>
                     {orden.proveedor_nombre}
                   </Typography>
-                  <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
-                    <EventOutlined sx={{ fontSize: 14, color: 'text.secondary' }} />
-                    <Typography variant="caption" color="text.secondary">
-                      {orden.proxima_visita.displayText}
-                    </Typography>
-                  </Box>
+                  {!esOrdenSinProveedor(orden) && (
+                    <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
+                      <EventOutlined sx={{ fontSize: 14, color: 'text.secondary' }} />
+                      <Typography variant="caption" color="text.secondary">
+                        {orden.proxima_visita.displayText}
+                      </Typography>
+                    </Box>
+                  )}
                 </TableCell>
 
                 <TableCell>
@@ -152,12 +155,19 @@ export function TablaPropuestasOrdenes({ ordenes, cargando, onPedir }: Props) {
                 </TableCell>
 
                 <TableCell align="right">
-                  <Tooltip title={`Armar el pedido por WhatsApp a ${orden.proveedor_nombre}`}>
+                  <Tooltip
+                    title={
+                      esOrdenSinProveedor(orden)
+                        ? 'Asignale un proveedor en Inventario para poder pedirlo'
+                        : `Armar el pedido por WhatsApp a ${orden.proveedor_nombre}`
+                    }
+                  >
                     <span>
                       <Button
                         size="small"
                         color="success"
                         startIcon={<WhatsAppIcon />}
+                        disabled={esOrdenSinProveedor(orden)}
                         onClick={() => onPedir(orden.proveedor_id)}
                       >
                         Pedir

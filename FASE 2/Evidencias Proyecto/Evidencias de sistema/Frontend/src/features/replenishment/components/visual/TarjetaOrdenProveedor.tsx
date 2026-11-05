@@ -3,6 +3,7 @@ import Paper from '@mui/material/Paper'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Chip from '@mui/material/Chip'
+import Alert from '@mui/material/Alert'
 import Button from '@mui/material/Button'
 import Divider from '@mui/material/Divider'
 import Tooltip from '@mui/material/Tooltip'
@@ -10,6 +11,7 @@ import EventOutlined from '@mui/icons-material/EventOutlined'
 import WhatsAppIcon from '@mui/icons-material/WhatsApp'
 import { formatoClp } from '@/shared/utils/formatoClp'
 import { alternativas } from '@/features/replenishment/utils/ordenesPorProveedor'
+import { esOrdenSinProveedor } from '@/features/replenishment/utils/sinProveedor'
 import type { OrdenSugerida } from '@/features/replenishment/types'
 
 type Props = {
@@ -21,6 +23,9 @@ type Props = {
 export function TarjetaOrdenProveedor({ orden, onPedir }: Props) {
   const hoy = orden.proxima_visita.daysUntil === 0
 
+  // sin proveedor no hay visita que mostrar ni pedido que armar
+  const sinProveedor = esOrdenSinProveedor(orden)
+
   return (
     <Paper variant="outlined" sx={{ p: 2.5, display: 'flex', flexDirection: 'column', gap: 1.5, height: '100%' }}>
       <Box>
@@ -28,12 +33,14 @@ export function TarjetaOrdenProveedor({ orden, onPedir }: Props) {
           {orden.proveedor_nombre}
         </Typography>
 
-        <Box sx={{ display: 'flex', gap: 0.75, alignItems: 'center', mt: 0.25 }}>
-          <EventOutlined fontSize="small" color={hoy ? 'success' : 'action'} />
-          <Typography variant="body2" sx={{ fontWeight: hoy ? 700 : 400, color: hoy ? 'success.main' : 'text.secondary' }}>
-            {orden.proxima_visita.displayText}
-          </Typography>
-        </Box>
+        {!sinProveedor && (
+          <Box sx={{ display: 'flex', gap: 0.75, alignItems: 'center', mt: 0.25 }}>
+            <EventOutlined fontSize="small" color={hoy ? 'success' : 'action'} />
+            <Typography variant="body2" sx={{ fontWeight: hoy ? 700 : 400, color: hoy ? 'success.main' : 'text.secondary' }}>
+              {orden.proxima_visita.displayText}
+            </Typography>
+          </Box>
+        )}
       </Box>
 
       <Divider />
@@ -86,26 +93,38 @@ export function TarjetaOrdenProveedor({ orden, onPedir }: Props) {
       <Divider />
 
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1 }}>
-        <Box>
+        {sinProveedor ? (
           <Typography variant="caption" color="text.secondary">
-            Total del pedido
+            Sin proveedor no hay pedido que armar
           </Typography>
-          <Typography variant="h6" sx={{ fontWeight: 700 }}>
-            {formatoClp(orden.total_estimado)}
-          </Typography>
-        </Box>
+        ) : (
+          <Box>
+            <Typography variant="caption" color="text.secondary">
+              Total del pedido
+            </Typography>
+            <Typography variant="h6" sx={{ fontWeight: 700 }}>
+              {formatoClp(orden.total_estimado)}
+            </Typography>
+          </Box>
+        )}
 
         <Chip label={`${orden.items.length} productos`} size="small" variant="outlined" />
       </Box>
 
-      <Button
-        variant="contained"
-        color="success"
-        startIcon={<WhatsAppIcon />}
-        onClick={() => onPedir(orden.proveedor_id)}
-      >
-        Pedir por WhatsApp
-      </Button>
+      {sinProveedor ? (
+        <Alert severity="warning" sx={{ py: 0.25 }}>
+          Asignales un proveedor en Inventario para poder pedirlos.
+        </Alert>
+      ) : (
+        <Button
+          variant="contained"
+          color="success"
+          startIcon={<WhatsAppIcon />}
+          onClick={() => onPedir(orden.proveedor_id)}
+        >
+          Pedir por WhatsApp
+        </Button>
+      )}
     </Paper>
   )
 }
