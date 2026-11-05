@@ -146,6 +146,18 @@ export async function initializeDatabase(): Promise<void> {
   } catch (err) {
     logger.warn('InitDB', 'PostgreSQL initialization failed or offline. Continuing in local mode.', { error: String(err) });
   }
+
+  // 3. Catalogo de demostracion, solo cuando se pide expresamente. La aplicacion de escritorio lo
+  // ofrece en el primer inicio: una instalacion real empieza con su propio catalogo, de modo que
+  // sembrar productos de ejemplo sin preguntar seria dejarle al local mercaderia que no existe.
+  if (process.env.CARGAR_CATALOGO_DEMO === 'true') {
+    try {
+      const { cargarCatalogoDemo } = await import('./cargar-catalogo-demo');
+      await cargarCatalogoDemo();
+    } catch (err) {
+      logger.warn('InitDB', 'No se pudo cargar el catalogo de demostracion', { error: String(err) });
+    }
+  }
 }
 
 function seedSqliteDemoData(): void {

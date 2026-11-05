@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { defaultCierreCajaService } from '../caja/cierre-caja.service';
 import { defaultSqliteClient } from '../database/sqlite/client';
 import { logger } from '../utils/logger';
+import { defaultSiiEnvio } from '../dte/sii-envio.service';
 
 const router = Router();
 
@@ -80,6 +81,10 @@ router.post('/cerrar', async (req: Request, res: Response): Promise<void> => {
       observaciones
     );
     res.status(200).json({ success: true, data: cierre });
+
+    // Las boletas del turno viajan juntas en su propio sobre al cerrar la caja, que es el momento
+    // en que el dia queda completo. Despues de responder: el cierre no espera por el servicio.
+    void defaultSiiEnvio.intentarEnvioAutomatico(tenant_id, 'cierre_caja');
   } catch (error) {
     logger.error('CajaRoutes', 'Error closing cash session', error);
     res.status(400).json({

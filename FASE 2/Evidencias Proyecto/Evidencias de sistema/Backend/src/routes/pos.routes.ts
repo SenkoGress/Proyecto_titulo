@@ -8,6 +8,7 @@ import { aplicarRedondeoChileno } from '../utils/pricing';
 import { logger } from '../utils/logger';
 import { defaultLotesService } from '../inventory/lotes.service';
 import { defaultDteEmitter } from '../dte/dte-emitter.service';
+import { defaultSiiEnvio } from '../dte/sii-envio.service';
 import { TipoDTE } from '../dte/types';
 import { defaultReplenishmentService } from '../replenishment/replenishment.service';
 import { defaultTenantConfigService } from '../config/tenant-config.service';
@@ -835,6 +836,11 @@ router.post('/checkout', async (req: Request, res: Response): Promise<void> => {
       } catch (err) {
         logger.warn('PosRoutes', 'Background auto-replenishment check failed', { err });
       }
+
+      // El documento tributario intenta salir al SII sin que nadie lo pida: en un local nadie
+      // aprieta un boton para eso. Va despues de responder la venta, de modo que la caja no
+      // espera por el servicio.
+      await defaultSiiEnvio.intentarEnvioAutomatico(tenant_id, 'emision');
     });
 
     const duration = Date.now() - startTime;

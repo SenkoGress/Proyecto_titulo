@@ -43,6 +43,8 @@ function formatReplenishmentResponse(result: any) {
     proveedor_rut: o.proveedorRut,
     proveedor_email: o.proveedorEmail,
     proveedor_telefono: o.proveedorTelefono,
+    // La pantalla necesita distinguir el producto sin proveedor sin mirar un valor centinela
+    sin_proveedor: o.sinProveedor === true,
     dias_visita: o.diasVisita,
     proxima_visita: {
       displayText: o.proximaVisitaTexto,

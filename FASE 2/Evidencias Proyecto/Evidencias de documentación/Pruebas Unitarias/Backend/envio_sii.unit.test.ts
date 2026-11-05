@@ -267,6 +267,95 @@ describe('Pruebas Unitarias: Envio de Documentos al SII', () => {
     });
   });
 
+  describe('El envio automatico', () => {
+    test('sin requisitos no arma sobre ni toca los documentos: quedan en la cola', async () => {
+      const servicio = new SiiEnvioService();
+      emitirDocumento(7001);
+
+      const resultado = await servicio.intentarEnvioAutomatico(TENANT, 'emision');
+
+      // Armar un sobre que no se puede enviar sacaria el documento de la cola, y la pantalla
+      // dejaria de mostrar lo que hay pendiente
+      expect(resultado).toBeNull();
+      expect(servicio.documentosPendientes(TENANT).some((d) => d.folio === 7001)).toBe(true);
+      const sobres = defaultSqliteClient.query<{ id: string }>(
+        'SELECT id FROM sii_envios WHERE tenant_id = ?',
+        [TENANT]
+      );
+      expect(sobres).toHaveLength(0);
+    });
+
+    test('al emitir viaja la factura; la boleta espera al cierre de la caja', async () => {
+      const enviados: string[] = [];
+      const transporte: SiiTransport = {
+        disponible: () => true,
+        async subirSobre(sobreXml: string) {
+          enviados.push(sobreXml.includes('<EnvioBOLETA') ? 'EnvioBOLETA' : 'EnvioDTE');
+          return { trackId: `TRK-${enviados.length}` };
+        }
+      };
+      const servicio = new SiiEnvioService(undefined, undefined, undefined, transporte);
+      cargarCertificado();
+      // Los dos rangos tienen que existir y constar como autorizados: el folio que no cae en
+      // ninguno se considera provisional, y el envio automatico no lo intenta.
+      defaultCafManager.getOrCreateActiveCaf(TENANT, TipoDTE.BOLETA_ELECTRONICA);
+      defaultCafManager.getOrCreateActiveCaf(TENANT, TipoDTE.FACTURA_ELECTRONICA);
+      defaultSqliteClient.execute("UPDATE sii_caf SET origen = 'SII' WHERE tenant_id = ?", [TENANT]);
+
+      emitirDocumento(2002, TipoDTE.BOLETA_ELECTRONICA);
+      emitirDocumento(2003, TipoDTE.FACTURA_ELECTRONICA);
+
+      await servicio.intentarEnvioAutomatico(TENANT, 'emision');
+
+      expect(enviados).toEqual(['EnvioDTE']);
+      // La boleta sigue pendiente, esperando el cierre del turno
+      expect(servicio.documentosPendientes(TENANT).some((d) => d.folio === 2002)).toBe(true);
+
+      await servicio.intentarEnvioAutomatico(TENANT, 'cierre_caja');
+
+      expect(enviados).toEqual(['EnvioDTE', 'EnvioBOLETA']);
+      expect(servicio.documentosPendientes(TENANT).some((d) => d.folio === 2002)).toBe(false);
+
+      borrarCertificado();
+      defaultSqliteClient.execute("UPDATE sii_caf SET origen = 'PROVISIONAL' WHERE tenant_id = ?", [TENANT]);
+    });
+
+    test('el documento con folio provisional no se intenta enviar', async () => {
+      const transporte: SiiTransport = {
+        disponible: () => true,
+        async subirSobre() {
+          throw new Error('no deberia intentarse');
+        }
+      };
+      const servicio = new SiiEnvioService(undefined, undefined, undefined, transporte);
+      cargarCertificado();
+      // Un CAF autorizado existe, pero este folio cae fuera de su rango
+      defaultSqliteClient.execute("UPDATE sii_caf SET origen = 'SII' WHERE tenant_id = ?", [TENANT]);
+      emitirDocumento(991234, TipoDTE.FACTURA_ELECTRONICA);
+
+      const resultado = await servicio.intentarEnvioAutomatico(TENANT, 'emision');
+
+      expect(resultado).toBeNull();
+
+      borrarCertificado();
+      defaultSqliteClient.execute("UPDATE sii_caf SET origen = 'PROVISIONAL' WHERE tenant_id = ?", [TENANT]);
+    });
+
+    test('el cierre de la venta y el de la caja lo disparan', () => {
+      const pos = fs.readFileSync(
+        path.join(__dirname, '../../backend/src/routes/pos.routes.ts'),
+        'utf8'
+      );
+      const caja = fs.readFileSync(
+        path.join(__dirname, '../../backend/src/routes/caja.routes.ts'),
+        'utf8'
+      );
+
+      expect(pos).toContain("intentarEnvioAutomatico(tenant_id, 'emision')");
+      expect(caja).toContain("intentarEnvioAutomatico(tenant_id, 'cierre_caja')");
+    });
+  });
+
   describe('El transporte hacia el SII', () => {
     test('sin certificado cargado no esta disponible y no intenta nada', async () => {
       const transporte = new SiiTransportHttp();

@@ -106,11 +106,18 @@ function asegurarAdministrador() {
 
       process.env.INITIAL_ADMIN_EMAIL = correo;
       process.env.INITIAL_ADMIN_PASSWORD = clave;
+      // El catalogo de demostracion solo se siembra si el usuario lo pide: una instalacion real
+      // empieza con su propia mercaderia.
+      process.env.CARGAR_CATALOGO_DEMO = datos && datos.demo ? 'true' : 'false';
 
       fs.mkdirSync(path.dirname(archivo), { recursive: true });
       fs.writeFileSync(
         archivo,
-        JSON.stringify({ correo, creada: new Date().toISOString() }, null, 2),
+        JSON.stringify(
+          { correo, creada: new Date().toISOString(), catalogo_demo: process.env.CARGAR_CATALOGO_DEMO === 'true' },
+          null,
+          2
+        ),
         'utf8'
       );
 

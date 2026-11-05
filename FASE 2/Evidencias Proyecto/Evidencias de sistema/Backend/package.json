@@ -20,7 +20,8 @@
     "build:desktop": "npm run build && npm run build:frontend",
     "electron:dev": "npm run build:desktop && electron .",
     "pack:dir": "npm run build:desktop && electron-builder --dir",
-    "dist:win": "npm run build:desktop && electron-builder --win"
+    "dist:win": "npm run build:desktop && electron-builder --win",
+    "datos:demo": "ts-node backend/src/database/cargar-catalogo-demo.ts"
   },
   "keywords": [
     "inventory",
@@ -78,6 +79,7 @@
     "files": [
       "dist/backend/**/*",
       "front-end/dist/**/*",
+      "semillas/**/*",
       "electron/**/*",
       "package.json",
       "!**/*.map"

@@ -365,6 +365,51 @@ export class SiiEnvioService {
     };
   }
 
+
+  /**
+   * Intenta el envio sin que nadie lo pida, en los dos momentos que usa el servicio: al emitir
+   * -factura, nota de credito y guia viajan de inmediato- y al cerrar la caja, cuando las boletas
+   * del dia van juntas en su propio sobre.
+   *
+   * Si falta algo para enviar, NO se arma sobre ni se toca documento alguno: los papeles quedan en
+   * la cola con lo que falta, que es su estado verdadero. Armar un sobre que no se puede enviar
+   * los sacaria de la cola y la pantalla dejaria de mostrar lo que hay pendiente.
+   *
+   * Nunca lanza: el cierre de una venta o de un turno no puede fallar porque el servicio del SII
+   * no este disponible.
+   */
+  public async intentarEnvioAutomatico(
+    tenantId: string,
+    disparador: 'emision' | 'cierre_caja'
+  ): Promise<ResultadoEnvio | null> {
+    try {
+      const faltantes = this.revisarRequisitos(tenantId);
+      if (faltantes.length > 0) {
+        logger.info('SiiEnvioService', 'El envio automatico no se intenta todavia', {
+          disparador,
+          falta: faltantes.map((f) => f.requisito).join(', ')
+        });
+        return null;
+      }
+
+      // Al emitir viaja todo lo que no es boleta; las boletas esperan al cierre del turno.
+      const esperado: TipoSobre = disparador === 'cierre_caja' ? 'EnvioBOLETA' : 'EnvioDTE';
+      const documentos = this.documentosPendientes(tenantId).filter(
+        (d) => tipoDeSobre(d.tipo_dte) === esperado && !d.folio_provisional
+      );
+
+      if (documentos.length === 0) return null;
+
+      return await this.enviar(tenantId, documentos.map((d) => d.id));
+    } catch (err) {
+      logger.warn('SiiEnvioService', 'El envio automatico fallo y no interrumpe la operacion', {
+        disparador,
+        error: err instanceof Error ? err.message : String(err)
+      });
+      return null;
+    }
+  }
+
   /** Sobre guardado, para descargarlo y subirlo a mano en el portal del SII. */
   public getSobre(
     tenantId: string,

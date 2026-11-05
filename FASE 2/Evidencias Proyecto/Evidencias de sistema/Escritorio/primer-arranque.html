@@ -39,6 +39,17 @@
       }
       button:disabled { background: #9aa6bd; cursor: default; }
       .aviso { margin-top: 14px; font-size: 13px; color: #b3261e; min-height: 18px; }
+      .casilla {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        margin: 20px 0 0;
+        font-weight: 400;
+        font-size: 13px;
+        color: #55607a;
+        line-height: 1.4;
+      }
+      .casilla input { width: auto; margin-top: 2px; }
       .pie { margin-top: 18px; font-size: 12px; color: #78839a; line-height: 1.5; }
     </style>
   </head>
@@ -58,6 +69,11 @@
 
       <label for="repetir">Repetir la clave</label>
       <input id="repetir" type="password" required minlength="8" autocomplete="new-password" />
+
+      <label class="casilla" for="demo">
+        <input id="demo" type="checkbox" checked />
+        Cargar el catalogo de demostracion (18 productos y 5 proveedores de un minimarket)
+      </label>
 
       <button type="submit" id="boton">Crear la cuenta y abrir GesTock</button>
       <div class="aviso" id="aviso"></div>
@@ -91,7 +107,8 @@
         aviso.textContent = '';
         boton.disabled = true;
         boton.textContent = 'Creando la cuenta...';
-        window.instalacion.crearAdministrador({ correo, clave });
+        const demo = document.getElementById('demo').checked;
+        window.instalacion.crearAdministrador({ correo, clave, demo });
       });
     </script>
   </body>

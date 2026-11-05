@@ -103,20 +103,30 @@ app.use('/api/v1/suppliers', supplierRoutes);
 app.use('/api/v1/dte', dteRouter);
 app.use('/api/v1/dashboard', dashboardRouter);
 
+/**
+ * Salud del servicio.
+ *
+ * El sistema es offline-first: un local sin internet esta funcionando bien, vende, emite sus
+ * documentos y guarda todo para sincronizar despues. Responder 503 porque la nube no contesta
+ * hacia que cualquier supervisor diera por caido un punto de venta que opera con normalidad, de
+ * modo que el codigo lo decide el nodo local y el estado de la nube viaja en el detalle.
+ */
 app.get('/health', async (_req: Request, res: Response): Promise<void> => {
   const pgHealthy = await defaultPgClient.healthCheck();
   const sqliteHealthy = defaultSqliteClient.healthCheck();
 
-  const isHealthy = pgHealthy && sqliteHealthy;
-  const status = isHealthy ? 200 : 503;
+  const estado = !sqliteHealthy ? 'DOWN' : pgHealthy ? 'UP' : 'DEGRADED';
 
-  res.status(status).json({
-    status: isHealthy ? 'UP' : 'DEGRADED',
+  res.status(sqliteHealthy ? 200 : 503).json({
+    status: estado,
     timestamp: new Date().toISOString(),
     services: {
       cloud_postgres: pgHealthy ? 'HEALTHY' : 'UNAVAILABLE',
       local_sqlite: sqliteHealthy ? 'HEALTHY' : 'UNAVAILABLE'
-    }
+    },
+    // DEGRADED significa que la caja opera y la nube no esta: las ventas quedan pendientes de
+    // sincronizar, que es el funcionamiento previsto y no una falla del punto de venta.
+    operativo: sqliteHealthy
   });
 });
 
