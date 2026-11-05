@@ -243,3 +243,13 @@ export interface F29Statement {
     total_impuesto_pagar_f29?: number;
   };
 }
+
+/**
+ * Transporte hacia el SII. La implementacion real exige el certificado digital del emisor: con el
+ * se firma la semilla, se obtiene el token y se sube el sobre. Mientras no exista, el sistema no
+ * dispone de transporte y lo declara en vez de simular un envio.
+ */
+export interface SiiTransport {
+  disponible(): boolean;
+  subirSobre(sobreXml: string, ambiente: string, rutEmisor: string): Promise<{ trackId: string }>;
+}

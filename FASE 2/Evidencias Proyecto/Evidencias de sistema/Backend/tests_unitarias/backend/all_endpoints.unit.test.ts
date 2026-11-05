@@ -318,7 +318,10 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (7
     test('24d. GET /api/v1/dte/envio/:id/sobre entrega el XML firmado para el portal del SII', async () => {
       const res = await requestApi('GET', `/api/v1/dte/envio/${envioId}/sobre?tenantId=${DEMO_TENANT}`);
       expect(res.status).toBe(200);
-      expect(String(res.data)).toContain('EnvioDTE');
+      // El tipo de sobre depende de lo que haya pendiente: EnvioBOLETA para boletas, EnvioDTE
+      // para el resto
+      expect(String(res.data)).toMatch(/<Envio(DTE|BOLETA) version="1.0"/);
+      expect(String(res.data)).toContain('<SetDTE ID=');
     });
 
     test('25. POST /api/v1/dte/send-email despacha DTE por correo a receptor', async () => {

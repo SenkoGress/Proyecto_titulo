@@ -2,6 +2,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { defaultSqliteClient, SqliteClient } from '../database/sqlite/client';
 import { defaultDteEmitter, DteEmitterService } from './dte-emitter.service';
 import { defaultXmlSigner, XmlSignerService } from './xml-signer.service';
+import { SiiTransport } from './types';
+import { SiiTransportHttp } from './sii-transport.http';
 import { logger } from '../utils/logger';
 
 export interface RequisitoFaltante {
@@ -19,25 +21,44 @@ export interface DocumentoPendiente {
   folio_provisional: boolean;
 }
 
+export type TipoSobre = 'EnvioDTE' | 'EnvioBOLETA';
+
+export interface SobrePreparado {
+  envioId: string;
+  tipoSobre: TipoSobre;
+  sobreXml: string;
+  documentos: number;
+}
+
+export interface EnvioDeSobre {
+  envio_id: string;
+  tipo_sobre: TipoSobre;
+  documentos: number;
+  enviado: boolean;
+  track_id?: string;
+  motivo?: string;
+}
+
 export interface ResultadoEnvio {
   enviado: boolean;
   mensaje: string;
+  /** Identificador del primer sobre, para la descarga inmediata desde la pantalla. */
   envio_id?: string;
   track_id?: string;
   documentos: number;
+  sobres: EnvioDeSobre[];
   faltantes: RequisitoFaltante[];
 }
 
 /**
- * Transporte hacia el SII. La implementacion real exige el certificado digital del emisor, que se
- * compra a un proveedor autorizado: con el se firma la semilla, se obtiene el token y se sube el
- * sobre. Mientras no exista, el sistema no dispone de transporte y lo declara en vez de simular un
- * envio, por la misma razon que el aviso de reposicion no informa correos que no salieron.
+ * Las boletas electronicas (39 y 41) viajan en un sobre EnvioBOLETA y el resto de los documentos
+ * en uno EnvioDTE: son dos formatos distintos y el servicio rechaza el sobre que los mezcla.
  */
-export interface SiiTransport {
-  disponible(): boolean;
-  subirSobre(sobreXml: string, ambiente: string, rutEmisor: string): Promise<{ trackId: string }>;
+export function tipoDeSobre(tipoDte: number): TipoSobre {
+  return tipoDte === 39 || tipoDte === 41 ? 'EnvioBOLETA' : 'EnvioDTE';
 }
+
+export { SiiTransport } from './types';
 
 export class TransporteNoConfigurado implements SiiTransport {
   public disponible(): boolean {
@@ -74,16 +95,19 @@ export class SiiEnvioService {
   public revisarRequisitos(tenantId: string): RequisitoFaltante[] {
     const faltantes: RequisitoFaltante[] = [];
 
-    const certificado = this.sqliteClient.queryOne<{ valor: string }>(
-      "SELECT valor FROM configuracion_sistema WHERE tenant_id = ? AND clave = 'sii_certificado_p12'",
+    const certificado = this.sqliteClient.queryOne<{ total: number }>(
+      `SELECT COUNT(*) as total FROM configuracion_sistema
+        WHERE tenant_id = ? AND clave IN ('sii_certificado_pem', 'sii_llave_privada_pem')
+          AND valor IS NOT NULL AND valor <> ''`,
       [tenantId]
     );
-    if (!certificado?.valor) {
+    if (!certificado || Number(certificado.total) < 2) {
       faltantes.push({
         requisito: 'Certificado digital del emisor',
         detalle:
-          'Falta cargar el certificado X.509 (.p12 o .pfx) emitido por un proveedor autorizado por ' +
-          'el SII. Sin el no se puede firmar la semilla ni obtener el token de la sesion.'
+          'Falta cargar el certificado X.509 emitido por un proveedor autorizado por el SII, como ' +
+          'certificado y llave en formato PEM. Sin el no se puede firmar la semilla ni obtener el ' +
+          'token de la sesion, que es el primer paso de cualquier envio.'
       });
     }
 
@@ -151,11 +175,7 @@ export class SiiEnvioService {
    * El sobre se prepara aunque el envio automatico no sea posible: es el archivo que el SII
    * recibe, de modo que sirve para subirlo a mano en el portal mientras el certificado no este.
    */
-  public prepararSobre(tenantId: string, dteIds?: string[]): {
-    envioId: string;
-    sobreXml: string;
-    documentos: number;
-  } {
+  public prepararSobres(tenantId: string, dteIds?: string[]): SobrePreparado[] {
     const pendientes = this.documentosPendientes(tenantId);
     const elegidos = dteIds?.length ? pendientes.filter((d) => dteIds.includes(d.id)) : pendientes;
 
@@ -163,10 +183,26 @@ export class SiiEnvioService {
       throw new Error('No hay documentos emitidos pendientes de envio');
     }
 
+    const porSobre = new Map<TipoSobre, DocumentoPendiente[]>();
+    for (const documento of elegidos) {
+      const tipo = tipoDeSobre(documento.tipo_dte);
+      porSobre.set(tipo, [...(porSobre.get(tipo) || []), documento]);
+    }
+
+    return [...porSobre.entries()].map(([tipoSobre, documentos]) =>
+      this.armarSobre(tenantId, tipoSobre, documentos)
+    );
+  }
+
+  private armarSobre(
+    tenantId: string,
+    tipoSobre: TipoSobre,
+    documentos: DocumentoPendiente[]
+  ): SobrePreparado {
     const { emisor } = this.emitter.getTenantFiscalConfig(tenantId);
     const ambiente = this.getAmbiente(tenantId);
 
-    const documentos = elegidos
+    const cuerpos = documentos
       .map((d) => {
         const fila = this.sqliteClient.queryOne<{ dte_xml_completo: string }>(
           'SELECT dte_xml_completo FROM sii_dte_emitidos WHERE id = ?',
@@ -176,7 +212,17 @@ export class SiiEnvioService {
       })
       .join('');
 
-    const setId = `SetDoc_${Date.now()}`;
+    // Un subtotal por tipo de documento: la caratula declara cuantos lleva de cada uno, y el
+    // servicio contrasta esa cuenta con el contenido.
+    const porTipo = new Map<number, number>();
+    for (const documento of documentos) {
+      porTipo.set(documento.tipo_dte, (porTipo.get(documento.tipo_dte) || 0) + 1);
+    }
+    const subtotales = [...porTipo.entries()]
+      .map(([tipo, cantidad]) => `<SubTotDTE><TpoDTE>${tipo}</TpoDTE><NroDTE>${cantidad}</NroDTE></SubTotDTE>`)
+      .join('');
+
+    const setId = `SetDoc_${Date.now()}_${tipoSobre}`;
     const caratula =
       `<Caratula version="1.0">` +
       `<RutEmisor>${emisor.rut}</RutEmisor>` +
@@ -185,30 +231,30 @@ export class SiiEnvioService {
       `<FchResol>${new Date().toISOString().substring(0, 10)}</FchResol>` +
       `<NroResol>0</NroResol>` +
       `<TmstFirmaEnv>${new Date().toISOString().substring(0, 19)}</TmstFirmaEnv>` +
-      `<SubTotDTE><TpoDTE>${elegidos[0].tipo_dte}</TpoDTE><NroDTE>${elegidos.length}</NroDTE></SubTotDTE>` +
+      subtotales +
       `</Caratula>`;
 
-    const setDte = `<SetDTE ID="${setId}">${caratula}${documentos}</SetDTE>`;
+    const setDte = `<SetDTE ID="${setId}">${caratula}${cuerpos}</SetDTE>`;
     const firma = this.signer.signDocument(setDte, setId);
     const sobreXml =
       `<?xml version="1.0" encoding="ISO-8859-1"?>` +
-      `<EnvioDTE version="1.0" xmlns="http://www.sii.cl/SiiDte">${setDte}${firma}</EnvioDTE>`;
+      `<${tipoSobre} version="1.0" xmlns="http://www.sii.cl/SiiDte">${setDte}${firma}</${tipoSobre}>`;
 
     const envioId = uuidv4();
     this.sqliteClient.execute(
-      `INSERT INTO sii_envios (id, tenant_id, ambiente, documentos, estado, sobre_xml)
-       VALUES (?, ?, ?, ?, 'PREPARADO', ?)`,
-      [envioId, tenantId, ambiente, elegidos.length, sobreXml]
+      `INSERT INTO sii_envios (id, tenant_id, ambiente, documentos, estado, sobre_xml, tipo_sobre)
+       VALUES (?, ?, ?, ?, 'PREPARADO', ?, ?)`,
+      [envioId, tenantId, ambiente, documentos.length, sobreXml, tipoSobre]
     );
 
-    for (const documento of elegidos) {
+    for (const documento of documentos) {
       this.sqliteClient.execute('UPDATE sii_dte_emitidos SET envio_id = ? WHERE id = ?', [
         envioId,
         documento.id
       ]);
     }
 
-    return { envioId, sobreXml, documentos: elegidos.length };
+    return { envioId, tipoSobre, sobreXml, documentos: documentos.length };
   }
 
   /**
@@ -218,76 +264,114 @@ export class SiiEnvioService {
    */
   public async enviar(tenantId: string, dteIds?: string[]): Promise<ResultadoEnvio> {
     const faltantes = this.revisarRequisitos(tenantId);
-    const sobre = this.prepararSobre(tenantId, dteIds);
+    const sobres = this.prepararSobres(tenantId, dteIds);
+    const documentos = sobres.reduce((suma, s) => suma + s.documentos, 0);
+    const nombres = sobres.map((s) => `${s.tipoSobre} (${s.documentos})`).join(' y ');
 
     if (faltantes.length > 0) {
       return {
         enviado: false,
         mensaje:
-          `El sobre con ${sobre.documentos} documento${sobre.documentos === 1 ? '' : 's'} quedo ` +
-          'preparado y firmado, pero no se envio: ' +
+          (sobres.length === 1
+            ? `El sobre ${nombres} quedo preparado y firmado, pero no se envio: `
+            : `Los sobres ${nombres} quedaron preparados y firmados, pero no se enviaron: `) +
           faltantes.map((f) => f.requisito.toLowerCase()).join(', ') + '.',
-        envio_id: sobre.envioId,
-        documentos: sobre.documentos,
+        envio_id: sobres[0].envioId,
+        documentos,
+        sobres: sobres.map((s) => ({
+          envio_id: s.envioId,
+          tipo_sobre: s.tipoSobre,
+          documentos: s.documentos,
+          enviado: false
+        })),
         faltantes
       };
     }
 
     const { emisor } = this.emitter.getTenantFiscalConfig(tenantId);
     const ambiente = this.getAmbiente(tenantId);
+    const resultados: EnvioDeSobre[] = [];
 
-    try {
-      const { trackId } = await this.transport.subirSobre(sobre.sobreXml, ambiente, emisor.rut);
+    for (const sobre of sobres) {
+      try {
+        const { trackId } = await this.transport.subirSobre(sobre.sobreXml, ambiente, emisor.rut);
 
-      this.sqliteClient.execute(
-        "UPDATE sii_envios SET estado = 'ENVIADO', track_id = ? WHERE id = ?",
-        [trackId, sobre.envioId]
-      );
-      this.sqliteClient.execute(
-        "UPDATE sii_dte_emitidos SET estado_sii = 'ENVIADO_SII', track_id_sii = ? WHERE envio_id = ?",
-        [trackId, sobre.envioId]
-      );
+        this.sqliteClient.execute(
+          "UPDATE sii_envios SET estado = 'ENVIADO', track_id = ? WHERE id = ?",
+          [trackId, sobre.envioId]
+        );
+        this.sqliteClient.execute(
+          "UPDATE sii_dte_emitidos SET estado_sii = 'ENVIADO_SII', track_id_sii = ? WHERE envio_id = ?",
+          [trackId, sobre.envioId]
+        );
 
-      return {
-        enviado: true,
-        mensaje: `Sobre recibido por el SII con el identificador ${trackId}.`,
-        envio_id: sobre.envioId,
-        track_id: trackId,
-        documentos: sobre.documentos,
-        faltantes: []
-      };
-    } catch (err) {
-      const detalle = err instanceof Error ? err.message : String(err);
+        resultados.push({
+          envio_id: sobre.envioId,
+          tipo_sobre: sobre.tipoSobre,
+          documentos: sobre.documentos,
+          enviado: true,
+          track_id: trackId
+        });
+      } catch (err) {
+        const detalle = err instanceof Error ? err.message : String(err);
 
-      // El sobre queda registrado como rechazado y los documentos vuelven a quedar pendientes:
-      // su estado no puede decir enviado cuando el SII no lo recibio.
-      this.sqliteClient.execute(
-        "UPDATE sii_envios SET estado = 'RECHAZADO', motivo = ? WHERE id = ?",
-        [detalle, sobre.envioId]
-      );
-      this.sqliteClient.execute('UPDATE sii_dte_emitidos SET envio_id = NULL WHERE envio_id = ?', [
-        sobre.envioId
-      ]);
+        // El sobre queda registrado como rechazado y sus documentos vuelven a quedar pendientes:
+        // su estado no puede decir enviado cuando el SII no lo recibio. Un sobre que falla no
+        // cancela los otros, por la misma razon que un fallo de la sincronizacion no cancela sus
+        // demas pasos.
+        this.sqliteClient.execute(
+          "UPDATE sii_envios SET estado = 'RECHAZADO', motivo = ? WHERE id = ?",
+          [detalle, sobre.envioId]
+        );
+        this.sqliteClient.execute('UPDATE sii_dte_emitidos SET envio_id = NULL WHERE envio_id = ?', [
+          sobre.envioId
+        ]);
 
-      logger.warn('SiiEnvioService', 'El sobre no fue aceptado por el SII', {
-        envioId: sobre.envioId,
-        error: detalle
-      });
+        logger.warn('SiiEnvioService', 'El sobre no fue aceptado por el SII', {
+          envioId: sobre.envioId,
+          tipoSobre: sobre.tipoSobre,
+          error: detalle
+        });
 
-      return {
-        enviado: false,
-        mensaje: `El SII no recibio el sobre: ${detalle}`,
-        envio_id: sobre.envioId,
-        documentos: sobre.documentos,
-        faltantes: []
-      };
+        resultados.push({
+          envio_id: sobre.envioId,
+          tipo_sobre: sobre.tipoSobre,
+          documentos: sobre.documentos,
+          enviado: false,
+          motivo: detalle
+        });
+      }
     }
+
+    const aceptados = resultados.filter((r) => r.enviado);
+    const rechazados = resultados.filter((r) => !r.enviado);
+
+    return {
+      enviado: rechazados.length === 0,
+      mensaje:
+        rechazados.length === 0
+          ? `El SII recibio ${aceptados.length === 1 ? 'el sobre' : `${aceptados.length} sobres`} ` +
+            `con ${documentos} documento${documentos === 1 ? '' : 's'}: ` +
+            aceptados.map((r) => `${r.tipo_sobre} ${r.track_id}`).join(', ') + '.'
+          : aceptados.length === 0
+            ? `El SII no recibio ${sobres.length === 1 ? 'el sobre' : 'ningun sobre'}: ${rechazados[0].motivo}`
+            : `El SII recibio ${aceptados.length} de ${sobres.length} sobres. ` +
+              `El resto sigue pendiente: ${rechazados[0].motivo}`,
+      envio_id: sobres[0].envioId,
+      track_id: aceptados[0]?.track_id,
+      documentos,
+      sobres: resultados,
+      faltantes: []
+    };
   }
 
   /** Sobre guardado, para descargarlo y subirlo a mano en el portal del SII. */
-  public getSobre(tenantId: string, envioId: string): { sobre_xml: string; estado: string } | null {
-    const fila = this.sqliteClient.queryOne<{ sobre_xml: string; estado: string }>(
-      'SELECT sobre_xml, estado FROM sii_envios WHERE id = ? AND tenant_id = ?',
+  public getSobre(
+    tenantId: string,
+    envioId: string
+  ): { sobre_xml: string; estado: string; tipo_sobre: string } | null {
+    const fila = this.sqliteClient.queryOne<{ sobre_xml: string; estado: string; tipo_sobre: string }>(
+      'SELECT sobre_xml, estado, tipo_sobre FROM sii_envios WHERE id = ? AND tenant_id = ?',
       [envioId, tenantId]
     );
     return fila || null;
@@ -295,11 +379,16 @@ export class SiiEnvioService {
 
   public listarEnvios(tenantId: string): any[] {
     return this.sqliteClient.query<any>(
-      `SELECT id, ambiente, documentos, estado, track_id, motivo, creado_at
+      `SELECT id, ambiente, tipo_sobre, documentos, estado, track_id, motivo, creado_at
          FROM sii_envios WHERE tenant_id = ? ORDER BY creado_at DESC LIMIT 50`,
       [tenantId]
     );
   }
 }
 
-export const defaultSiiEnvio = new SiiEnvioService();
+export const defaultSiiEnvio = new SiiEnvioService(
+  undefined,
+  undefined,
+  undefined,
+  new SiiTransportHttp()
+);

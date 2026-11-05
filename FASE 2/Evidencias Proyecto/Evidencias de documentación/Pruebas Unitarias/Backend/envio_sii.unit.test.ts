@@ -4,7 +4,9 @@ import { v4 as uuidv4 } from 'uuid';
 import { defaultSqliteClient } from '../../backend/src/database/sqlite/client';
 import { defaultPgClient } from '../../backend/src/database/postgres/client';
 import { initializeDatabase } from '../../backend/src/database/init-db';
-import { SiiEnvioService, SiiTransport } from '../../backend/src/dte/sii-envio.service';
+import { SiiEnvioService, tipoDeSobre } from '../../backend/src/dte/sii-envio.service';
+import { SiiTransportHttp } from '../../backend/src/dte/sii-transport.http';
+import { SiiTransport } from '../../backend/src/dte/types';
 import { defaultCafManager } from '../../backend/src/dte/caf-manager.service';
 import { TipoDTE } from '../../backend/src/dte/types';
 
@@ -38,6 +40,31 @@ describe('Pruebas Unitarias: Envio de Documentos al SII', () => {
       [id, TENANT, tipoDte, folio, `<DTE ID="F${folio}T${tipoDte}"><Documento/></DTE>`]
     );
     return id;
+  }
+
+  /** Deja cargado el certificado en los dos valores que el transporte lee. */
+  function cargarCertificado(): void {
+    const claves: [string, string][] = [
+      ['sii_certificado_pem', '-----BEGIN CERTIFICATE-----abc-----END CERTIFICATE-----'],
+      ['sii_llave_privada_pem', '-----BEGIN PRIVATE KEY-----abc-----END PRIVATE KEY-----']
+    ];
+    for (const [clave, valor] of claves) {
+      defaultSqliteClient.execute(
+        `INSERT INTO configuracion_sistema (id, tenant_id, clave, valor, descripcion, actualizado_at)
+         VALUES (?, ?, ?, ?, 'prueba', datetime('now'))
+         ON CONFLICT (tenant_id, clave) DO UPDATE SET valor = excluded.valor`,
+        [`cfg-${clave}`, TENANT, clave, valor]
+      );
+    }
+  }
+
+  function borrarCertificado(): void {
+    for (const clave of ['sii_certificado_pem', 'sii_llave_privada_pem']) {
+      defaultSqliteClient.execute(
+        'DELETE FROM configuracion_sistema WHERE tenant_id = ? AND clave = ?',
+        [TENANT, clave]
+      );
+    }
   }
 
   function limpiar(): void {
@@ -83,10 +110,11 @@ describe('Pruebas Unitarias: Envio de Documentos al SII', () => {
       emitirDocumento(5001);
       emitirDocumento(5002);
 
-      const sobre = servicio.prepararSobre(TENANT);
+      const [sobre] = servicio.prepararSobres(TENANT);
 
       expect(sobre.documentos).toBe(2);
-      expect(sobre.sobreXml).toContain('<EnvioDTE version="1.0"');
+      expect(sobre.tipoSobre).toBe('EnvioBOLETA');
+      expect(sobre.sobreXml).toContain('<EnvioBOLETA version="1.0"');
       expect(sobre.sobreXml).toContain('<Caratula version="1.0">');
       // El receptor del sobre es el SII, no el cliente de la venta
       expect(sobre.sobreXml).toContain('<RutReceptor>60803000-K</RutReceptor>');
@@ -96,21 +124,51 @@ describe('Pruebas Unitarias: Envio de Documentos al SII', () => {
 
       const guardado = servicio.getSobre(TENANT, sobre.envioId);
       expect(guardado?.estado).toBe('PREPARADO');
+      expect(guardado?.tipo_sobre).toBe('EnvioBOLETA');
       expect(guardado?.sobre_xml).toBe(sobre.sobreXml);
+    });
+
+    test('las boletas y las facturas viajan en sobres distintos', () => {
+      // El SII recibe las boletas en EnvioBOLETA y el resto en EnvioDTE: un sobre que los mezcla
+      // es un envio que el servicio rechaza.
+      const servicio = new SiiEnvioService();
+      emitirDocumento(5101, TipoDTE.BOLETA_ELECTRONICA);
+      emitirDocumento(5102, TipoDTE.FACTURA_ELECTRONICA);
+      emitirDocumento(5103, TipoDTE.NOTA_CREDITO);
+
+      const sobres = servicio.prepararSobres(TENANT);
+      const porTipo = Object.fromEntries(sobres.map((s) => [s.tipoSobre, s]));
+
+      expect(sobres).toHaveLength(2);
+      expect(porTipo.EnvioBOLETA.documentos).toBe(1);
+      expect(porTipo.EnvioDTE.documentos).toBe(2);
+      expect(porTipo.EnvioBOLETA.sobreXml).toContain('<EnvioBOLETA');
+      expect(porTipo.EnvioBOLETA.sobreXml).not.toContain('<EnvioDTE');
+      // La caratula declara un subtotal por cada tipo que lleva dentro
+      expect(porTipo.EnvioDTE.sobreXml).toContain('<TpoDTE>33</TpoDTE><NroDTE>1</NroDTE>');
+      expect(porTipo.EnvioDTE.sobreXml).toContain('<TpoDTE>61</TpoDTE><NroDTE>1</NroDTE>');
+    });
+
+    test('la clasificacion del sobre sigue el tipo de documento', () => {
+      expect(tipoDeSobre(39)).toBe('EnvioBOLETA');
+      expect(tipoDeSobre(41)).toBe('EnvioBOLETA');
+      expect(tipoDeSobre(33)).toBe('EnvioDTE');
+      expect(tipoDeSobre(52)).toBe('EnvioDTE');
+      expect(tipoDeSobre(61)).toBe('EnvioDTE');
     });
 
     test('un documento ya enviado no vuelve a viajar en otro sobre', () => {
       const servicio = new SiiEnvioService();
       emitirDocumento(5003);
 
-      servicio.prepararSobre(TENANT);
+      servicio.prepararSobres(TENANT);
 
       expect(servicio.documentosPendientes(TENANT).some((d) => d.folio === 5003)).toBe(false);
-      expect(() => servicio.prepararSobre(TENANT)).toThrow('pendientes de envio');
+      expect(() => servicio.prepararSobres(TENANT)).toThrow('pendientes de envio');
     });
 
     test('sin documentos pendientes no arma un sobre vacio', () => {
-      expect(() => new SiiEnvioService().prepararSobre(TENANT)).toThrow('pendientes de envio');
+      expect(() => new SiiEnvioService().prepararSobres(TENANT)).toThrow('pendientes de envio');
     });
   });
 
@@ -123,6 +181,7 @@ describe('Pruebas Unitarias: Envio de Documentos al SII', () => {
 
       expect(resultado.enviado).toBe(false);
       expect(resultado.mensaje).toContain('quedo preparado y firmado');
+      expect(resultado.sobres[0].enviado).toBe(false);
       expect(resultado.faltantes.length).toBeGreaterThan(0);
       expect(resultado.track_id).toBeUndefined();
 
@@ -143,12 +202,7 @@ describe('Pruebas Unitarias: Envio de Documentos al SII', () => {
       };
       const servicio = new SiiEnvioService(undefined, undefined, undefined, transporte);
       // Con transporte, certificado y folios autorizados no falta nada
-      defaultSqliteClient.execute(
-        `INSERT INTO configuracion_sistema (id, tenant_id, clave, valor, descripcion, actualizado_at)
-         VALUES (?, ?, 'sii_certificado_p12', 'certificado-de-prueba', 'prueba', datetime('now'))
-         ON CONFLICT (tenant_id, clave) DO UPDATE SET valor = excluded.valor`,
-        ['cfg-cert-prueba', TENANT]
-      );
+      cargarCertificado();
       defaultSqliteClient.execute(
         `UPDATE sii_caf SET origen = 'SII' WHERE tenant_id = ? AND tipo_dte = ?`,
         [TENANT, TipoDTE.BOLETA_ELECTRONICA]
@@ -167,10 +221,7 @@ describe('Pruebas Unitarias: Envio de Documentos al SII', () => {
       expect(fila?.estado_sii).toBe('ENVIADO_SII');
       expect(fila?.track_id_sii).toBe('1234567890');
 
-      defaultSqliteClient.execute(
-        "DELETE FROM configuracion_sistema WHERE tenant_id = ? AND clave = 'sii_certificado_p12'",
-        [TENANT]
-      );
+      borrarCertificado();
       defaultSqliteClient.execute(
         "UPDATE sii_caf SET origen = 'PROVISIONAL' WHERE tenant_id = ? AND tipo_dte = ?",
         [TENANT, TipoDTE.BOLETA_ELECTRONICA]
@@ -185,12 +236,7 @@ describe('Pruebas Unitarias: Envio de Documentos al SII', () => {
         }
       };
       const servicio = new SiiEnvioService(undefined, undefined, undefined, transporte);
-      defaultSqliteClient.execute(
-        `INSERT INTO configuracion_sistema (id, tenant_id, clave, valor, descripcion, actualizado_at)
-         VALUES (?, ?, 'sii_certificado_p12', 'certificado-de-prueba', 'prueba', datetime('now'))
-         ON CONFLICT (tenant_id, clave) DO UPDATE SET valor = excluded.valor`,
-        ['cfg-cert-prueba', TENANT]
-      );
+      cargarCertificado();
       defaultSqliteClient.execute(
         `UPDATE sii_caf SET origen = 'SII' WHERE tenant_id = ? AND tipo_dte = ?`,
         [TENANT, TipoDTE.BOLETA_ELECTRONICA]
@@ -213,14 +259,49 @@ describe('Pruebas Unitarias: Envio de Documentos al SII', () => {
       expect(envio?.estado).toBe('RECHAZADO');
       expect(envio?.motivo).toContain('no acepto el sobre');
 
-      defaultSqliteClient.execute(
-        "DELETE FROM configuracion_sistema WHERE tenant_id = ? AND clave = 'sii_certificado_p12'",
-        [TENANT]
-      );
+      borrarCertificado();
       defaultSqliteClient.execute(
         "UPDATE sii_caf SET origen = 'PROVISIONAL' WHERE tenant_id = ? AND tipo_dte = ?",
         [TENANT, TipoDTE.BOLETA_ELECTRONICA]
       );
+    });
+  });
+
+  describe('El transporte hacia el SII', () => {
+    test('sin certificado cargado no esta disponible y no intenta nada', async () => {
+      const transporte = new SiiTransportHttp();
+
+      expect(transporte.disponible()).toBe(false);
+      await expect(
+        transporte.subirSobre('<EnvioDTE/>', 'CERTIFICACION_MAULLIN', '76.123.456-0')
+      ).rejects.toThrow('certificado digital');
+    });
+
+    test('con el certificado cargado queda disponible', () => {
+      const claves = [
+        ['cfg-cert-pem', 'sii_certificado_pem', '-----BEGIN CERTIFICATE-----abc-----END CERTIFICATE-----'],
+        ['cfg-llave-pem', 'sii_llave_privada_pem', '-----BEGIN PRIVATE KEY-----abc-----END PRIVATE KEY-----']
+      ];
+      for (const [id, clave, valor] of claves) {
+        defaultSqliteClient.execute(
+          `INSERT INTO configuracion_sistema (id, tenant_id, clave, valor, descripcion, actualizado_at)
+           VALUES (?, ?, ?, ?, 'prueba', datetime('now'))
+           ON CONFLICT (tenant_id, clave) DO UPDATE SET valor = excluded.valor`,
+          [id, TENANT, clave, valor]
+        );
+      }
+
+      expect(new SiiTransportHttp().disponible()).toBe(true);
+      // Y la cola deja de declarar que falta el certificado
+      const faltan = new SiiEnvioService().revisarRequisitos(TENANT).map((f) => f.requisito);
+      expect(faltan).not.toContain('Certificado digital del emisor');
+
+      for (const clave of ['sii_certificado_pem', 'sii_llave_privada_pem']) {
+        defaultSqliteClient.execute(
+          'DELETE FROM configuracion_sistema WHERE tenant_id = ? AND clave = ?',
+          [TENANT, clave]
+        );
+      }
     });
   });
 
