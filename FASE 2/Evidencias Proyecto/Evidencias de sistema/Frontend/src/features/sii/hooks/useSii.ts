@@ -3,10 +3,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   correrCertificacion,
   emitirGuia,
+  enviarAlSii,
   generarRcof,
   obtenerF29,
   obtenerFoliosCaf,
   obtenerGuias,
+  obtenerEstadoEnvioSii,
   obtenerRcof,
 } from '@/features/sii/api/sii.api'
 import { VIGENCIA_LARGA_MS } from '@/lib/query/queryClient'
@@ -76,6 +78,27 @@ export function useCertificacion() {
     mutationFn: correrCertificacion,
     onSuccess: () => {
       clienteQuery.invalidateQueries({ queryKey: ['dte', 'caf'] })
+      clienteQuery.invalidateQueries({ queryKey: ['dte', 'lista'] })
+    },
+  })
+}
+
+// lo que falta por enviar al sii y que gestiones tiene pendientes el local
+export function useEstadoEnvioSii() {
+  return useQuery({
+    queryKey: ['dte', 'envio'],
+    queryFn: obtenerEstadoEnvioSii,
+  })
+}
+
+export function useEnviarAlSii() {
+  const clienteQuery = useQueryClient()
+
+  return useMutation({
+    mutationFn: (dteIds?: string[]) => enviarAlSii(dteIds),
+    // el envio cambia el estado de los documentos, asi que la lista tambien se refresca
+    onSettled: () => {
+      clienteQuery.invalidateQueries({ queryKey: ['dte', 'envio'] })
       clienteQuery.invalidateQueries({ queryKey: ['dte', 'lista'] })
     },
   })

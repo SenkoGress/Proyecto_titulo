@@ -18,6 +18,7 @@ import { PanelFoliosCaf } from '@/features/sii/components/compartidos/PanelFolio
 import { PanelRcof } from '@/features/sii/components/compartidos/PanelRcof'
 import { PanelGuias } from '@/features/sii/components/compartidos/PanelGuias'
 import { PanelCertificacion } from '@/features/sii/components/compartidos/PanelCertificacion'
+import { PanelEnvioSii } from '@/features/sii/components/compartidos/PanelEnvioSii'
 
 // tasa que usa el backend por defecto
 const TASA_PPM = 1
@@ -30,6 +31,7 @@ const PESTANAS = [
   'Stock de folios CAF',
   'Consumo diario RCOF',
   'Certificacion tecnica (Res. 74)',
+  'Envio al SII',
 ]
 
 // centro tributario completo, con todo lo que expone el backend de DTE
@@ -97,6 +99,8 @@ export function CentroTributarioTecnico() {
       {pestana === 5 && <PanelRcof registros={rcof.data ?? []} cargando={rcof.isPending} />}
 
       {pestana === 6 && <PanelCertificacion />}
+
+      {pestana === 7 && <PanelEnvioSii />}
     </Box>
   )
 }

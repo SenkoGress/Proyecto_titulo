@@ -10,7 +10,9 @@ import type {
   RegistroRcof,
   ReporteF29,
   RespaldoLegal,
+  EstadoEnvioSii,
   ResultadoCertificacion,
+  ResultadoEnvioSii,
 } from '@/features/sii/types'
 
 // todas las rutas de dte leen "tenantId", no tenant_id
@@ -71,4 +73,35 @@ export async function correrCertificacion() {
 export async function obtenerRespaldoLegal() {
   const { data } = await httpClient.get<RespaldoLegal>(endpoints.dte.respaldo, { params })
   return data
+}
+
+// documentos emitidos que todavia no viajaron al sii, y que falta para poder enviarlos
+export async function obtenerEstadoEnvioSii() {
+  const { data } = await httpClient.get<{ data: EstadoEnvioSii }>(endpoints.dte.envioPendientes, { params })
+  return data.data
+}
+
+// sin dte_ids van todos los pendientes
+export async function enviarAlSii(dteIds?: string[]) {
+  const { data } = await httpClient.post<{ data: ResultadoEnvioSii }>(endpoints.dte.envio, {
+    tenantId: tenantActual(),
+    ...(dteIds ? { dte_ids: dteIds } : {}),
+  })
+  return data.data
+}
+
+// el sobre firmado, para subirlo a mano en el portal del sii
+export async function descargarSobre(envioId: string, tipoSobre: string) {
+  const { data } = await httpClient.get<string>(endpoints.dte.envioSobre(envioId), {
+    params,
+    responseType: 'text',
+  })
+
+  const url = URL.createObjectURL(new Blob([data], { type: 'application/xml;charset=utf-8;' }))
+  const enlace = document.createElement('a')
+  enlace.href = url
+  enlace.download = `${tipoSobre}-${envioId.slice(0, 8)}.xml`
+  enlace.click()
+
+  URL.revokeObjectURL(url)
 }

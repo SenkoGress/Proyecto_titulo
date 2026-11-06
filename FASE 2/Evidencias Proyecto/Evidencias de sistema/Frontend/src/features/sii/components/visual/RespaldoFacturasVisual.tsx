@@ -16,11 +16,18 @@ import { TablaFacturasCompra } from '@/features/sii/components/compartidos/Tabla
 import { TablaDtesEmitidos } from '@/features/sii/components/compartidos/TablaDtesEmitidos'
 import { PanelF29 } from '@/features/sii/components/compartidos/PanelF29'
 import { PanelFoliosCaf } from '@/features/sii/components/compartidos/PanelFoliosCaf'
+import { PanelEnvioSii } from '@/features/sii/components/compartidos/PanelEnvioSii'
 
 // tasa que usa el backend por defecto
 const TASA_PPM = 1
 
-const PESTANAS = ['Facturas que me dieron', 'Boletas que emiti', 'Lo que tengo que declarar', 'Folios disponibles']
+const PESTANAS = [
+  'Facturas que me dieron',
+  'Boletas que emiti',
+  'Lo que tengo que declarar',
+  'Folios disponibles',
+  'Enviar al SII',
+]
 
 // version simple: solo lo que el dueno del local necesita para el contador
 export function RespaldoFacturasVisual() {
@@ -81,6 +88,8 @@ export function RespaldoFacturasVisual() {
       )}
 
       {pestana === 3 && <PanelFoliosCaf folios={caf.data ?? []} cargando={caf.isPending} />}
+
+      {pestana === 4 && <PanelEnvioSii />}
     </Box>
   )
 }
