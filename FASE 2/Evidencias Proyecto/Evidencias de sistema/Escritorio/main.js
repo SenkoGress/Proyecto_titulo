@@ -110,17 +110,10 @@ function asegurarAdministrador() {
       // empieza con su propia mercaderia.
       process.env.CARGAR_CATALOGO_DEMO = datos && datos.demo ? 'true' : 'false';
 
-      fs.mkdirSync(path.dirname(archivo), { recursive: true });
-      fs.writeFileSync(
-        archivo,
-        JSON.stringify(
-          { correo, creada: new Date().toISOString(), catalogo_demo: process.env.CARGAR_CATALOGO_DEMO === 'true' },
-          null,
-          2
-        ),
-        'utf8'
-      );
-
+      // La marca NO se escribe aqui: si el arranque falla, el proximo intento tiene que volver a
+      // mostrar esta ventana. Escribirla al teclear la cuenta dejaba la instalacion sin forma de
+      // reintentar, y borrar la carpeta de datos a mano no es algo que un local sepa hacer.
+      cuentaPendiente = { archivo, correo };
       creado = true;
       ventana.close();
       listo();
@@ -132,6 +125,25 @@ function asegurarAdministrador() {
 
     ventana.loadFile(path.join(__dirname, 'primer-arranque.html'));
   });
+}
+
+/**
+ * Las migraciones viajan junto al backend compilado. Si faltan, la base queda sin tablas y la
+ * aplicacion no sirve para nada: se comprueba antes de levantar, para poder decir que pasa en vez
+ * de abrir una ventana sobre un sistema vacio.
+ */
+function comprobarMigraciones() {
+  const faltantes = ['sqlite', 'postgres'].filter((motor) => {
+    const carpeta = path.join(raizAplicacion, 'dist', 'backend', 'src', 'database', motor, 'migrations');
+    return !fs.existsSync(carpeta) || !fs.readdirSync(carpeta).some((f) => f.endsWith('.sql'));
+  });
+
+  if (faltantes.length > 0) {
+    throw new Error(
+      `La instalacion esta incompleta: faltan las migraciones de ${faltantes.join(' y ')}. ` +
+        'Vuelva a instalar GesTock desde un instalador completo.'
+    );
+  }
 }
 
 function iniciarBackend() {
@@ -219,6 +231,32 @@ function construirMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(plantilla));
 }
 
+/** Cuenta tecleada en el primer inicio, a la espera de que el backend confirme que arranco. */
+let cuentaPendiente = null;
+
+/** Hasta que la ventana principal existe, quedarse sin ventanas es parte del arranque. */
+let arranqueTerminado = false;
+
+function confirmarInstalacion() {
+  if (!cuentaPendiente) return;
+
+  fs.mkdirSync(path.dirname(cuentaPendiente.archivo), { recursive: true });
+  fs.writeFileSync(
+    cuentaPendiente.archivo,
+    JSON.stringify(
+      {
+        correo: cuentaPendiente.correo,
+        creada: new Date().toISOString(),
+        catalogo_demo: process.env.CARGAR_CATALOGO_DEMO === 'true'
+      },
+      null,
+      2
+    ),
+    'utf8'
+  );
+  cuentaPendiente = null;
+}
+
 // Una sola instancia: dos ventanas abririan dos veces la misma base de datos local.
 if (!app.requestSingleInstanceLock()) {
   app.quit();
@@ -234,11 +272,12 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(async () => {
     try {
       configurarEntorno();
+      comprobarMigraciones();
       await asegurarAdministrador();
       iniciarBackend();
     } catch (error) {
       dialog.showErrorBox('GesTock no pudo iniciar', String(error && error.message ? error.message : error));
-      app.quit();
+      app.exit(1);
       return;
     }
 
@@ -250,11 +289,13 @@ if (!app.requestSingleInstanceLock()) {
         'GesTock no pudo iniciar',
         `El servicio local no respondio en el puerto ${PUERTO}. Revise si otro programa lo esta ocupando.`
       );
-      app.quit();
+      app.exit(1);
       return;
     }
 
+    confirmarInstalacion();
     crearVentana();
+    arranqueTerminado = true;
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) crearVentana();
@@ -262,6 +303,10 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.on('window-all-closed', () => {
+    // Durante el primer inicio la ventana del formulario se cierra ANTES de que exista la
+    // principal, de modo que este evento llega con cero ventanas abiertas: salir aqui mataba la
+    // aplicacion justo despues de crear la cuenta, con la base ya lista y sin mostrar nada.
+    if (!arranqueTerminado) return;
     app.quit();
   });
 }

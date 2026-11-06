@@ -6,6 +6,7 @@ import { logger } from '../../utils/logger';
 export class SqliteMigrator {
   private client: SqliteClient;
   private migrationsDir: string;
+  private alternativa: string | null = null;
 
   constructor(client: SqliteClient, customMigrationsDir?: string) {
     this.client = client;
@@ -19,7 +20,10 @@ export class SqliteMigrator {
       } else if (fs.existsSync(distDir) && fs.readdirSync(distDir).some(f => f.endsWith('.sql'))) {
         this.migrationsDir = distDir;
       } else {
+        // Ninguna de las dos existe: se conserva la del proyecto para el mensaje de
+        // error, que nombra ambas porque la causa suele ser un paquete sin los .sql.
         this.migrationsDir = srcDir;
+        this.alternativa = distDir;
       }
     }
   }
@@ -77,7 +81,10 @@ export class SqliteMigrator {
     const applied = this.getAppliedMigrations();
 
     if (!fs.existsSync(this.migrationsDir)) {
-      throw new Error(`Migrations directory not found: ${this.migrationsDir}`);
+      throw new Error(
+        `Migrations directory not found: ${this.migrationsDir}` +
+          (this.alternativa ? ` (tampoco en ${this.alternativa})` : '')
+      );
     }
 
     const files = fs

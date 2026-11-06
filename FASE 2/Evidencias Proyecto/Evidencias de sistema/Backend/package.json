@@ -4,7 +4,7 @@
   "description": "Gestock - Predictive Inventory Management System (Cloud SaaS & POS Offline-First)",
   "main": "electron/main.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node scripts/copiar-migraciones.js",
     "start": "node dist/backend/src/index.js",
     "dev": "ts-node backend/src/index.ts",
     "test": "jest --runInBand --detectOpenHandles",

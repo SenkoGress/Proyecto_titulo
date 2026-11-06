@@ -43,6 +43,40 @@ describe('Pruebas Unitarias: Empaquetado de Escritorio', () => {
       expect(paquete.build.nsis.allowToChangeInstallationDirectory).toBe(true);
     });
 
+    test('la construccion copia las migraciones junto al backend compilado', () => {
+      // tsc solo compila TypeScript: sin este paso los .sql se quedan en backend/src y el
+      // instalador sale sin esquema, de modo que una instalacion limpia arranca con una base
+      // vacia y la aplicacion no abre. Paso en el equipo del companero, no en el de desarrollo,
+      // porque alli la carpeta del proyecto existe y el migrador la encuentra.
+      expect(paquete.scripts.build).toContain('copiar-migraciones');
+      expect(fs.existsSync(path.join(RAIZ, 'scripts/copiar-migraciones.js'))).toBe(true);
+
+      const copiador = leer('scripts/copiar-migraciones.js');
+      expect(copiador).toContain("'sqlite'");
+      expect(copiador).toContain("'postgres'");
+      // Si no copia ninguna, falla la construccion en vez de producir un instalador inservible
+      expect(copiador).toContain('process.exit(1)');
+    });
+
+    test('el backend compilado lleva las migraciones de los dos motores', () => {
+      const motores = ['sqlite', 'postgres'];
+      const compilado = path.join(RAIZ, 'dist/backend/src/database');
+
+      if (!fs.existsSync(compilado)) {
+        // Sin construir no hay nada que comprobar; la orden de construccion ya quedo fijada arriba
+        return;
+      }
+
+      for (const motor of motores) {
+        const carpeta = path.join(compilado, motor, 'migrations');
+        expect(fs.existsSync(carpeta)).toBe(true);
+        const fuente = fs.readdirSync(path.join(RAIZ, 'backend/src/database', motor, 'migrations'))
+          .filter((f) => f.endsWith('.sql'));
+        const copiadas = fs.readdirSync(carpeta).filter((f) => f.endsWith('.sql'));
+        expect(copiadas.sort()).toEqual(fuente.sort());
+      }
+    });
+
     test('las ordenes de construccion compilan las dos mitades antes de empaquetar', () => {
       expect(paquete.scripts['build:desktop']).toContain('npm run build');
       expect(paquete.scripts['build:desktop']).toContain('build:frontend');
@@ -83,6 +117,38 @@ describe('Pruebas Unitarias: Empaquetado de Escritorio', () => {
       expect(principal).toContain('contextIsolation: true');
       expect(principal).toContain('nodeIntegration: false');
       expect(principal).toContain('sandbox: true');
+    });
+
+    test('comprueba el esquema antes de abrir, y lo dice si falta', () => {
+      expect(principal).toContain('comprobarMigraciones');
+      expect(principal).toContain('La instalacion esta incompleta');
+      // Un arranque fallido termina el proceso: app.quit espera a que se cierren las ventanas y
+      // dejaba ejecutables colgados que bloqueaban el siguiente intento por la instancia unica.
+      expect(principal).toContain('app.exit(1)');
+    });
+
+    test('la marca de instalacion se escribe cuando la base quedo lista, no antes', () => {
+      // Escribirla al teclear la cuenta dejaba la instalacion sin forma de reintentar: el
+      // siguiente arranque ya no mostraba la ventana, fallaba igual y se cerraba.
+      expect(principal).toContain('cuentaPendiente');
+      expect(principal).toContain('confirmarInstalacion');
+
+      const marca = principal.indexOf('confirmarInstalacion();');
+      const espera = principal.indexOf('await esperarAlBackend');
+      expect(espera).toBeGreaterThan(0);
+      expect(marca).toBeGreaterThan(espera);
+    });
+
+    test('quedarse sin ventanas durante el arranque no cierra la aplicacion', () => {
+      // En el primer inicio la ventana del formulario se cierra antes de que exista la
+      // principal: salir ahi mataba la aplicacion con la cuenta ya creada y la base lista, sin
+      // mostrar nada. Es lo que se vio al instalar, y ninguna prueba podia notarlo.
+      expect(principal).toContain('arranqueTerminado');
+
+      const guarda = principal.indexOf('if (!arranqueTerminado) return;');
+      const cierre = principal.indexOf("app.on('window-all-closed'");
+      expect(cierre).toBeGreaterThan(0);
+      expect(guarda).toBeGreaterThan(cierre);
     });
 
     test('una sola instancia, porque dos abririan la misma base local', () => {
