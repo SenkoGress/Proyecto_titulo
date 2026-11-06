@@ -61,6 +61,9 @@ export const endpoints = {
     guias: `${API_V1}/dte/guias`,
     guiasEmitir: `${API_V1}/dte/guias/emitir`,
     certificacion: `${API_V1}/dte/certification/run-set`,
+    envioPendientes: `${API_V1}/dte/envio/pendientes`,
+    envio: `${API_V1}/dte/envio`,
+    envioSobre: (id: string) => `${API_V1}/dte/envio/${id}/sobre`,
     respaldo: `${API_V1}/dte/backup/export`,
   },
   invoices: {

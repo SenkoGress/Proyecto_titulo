@@ -148,3 +148,55 @@ export type RespaldoLegal = {
   }
   datos: Record<string, unknown>
 }
+
+// lo que el local tiene pendiente de gestionar para poder enviar
+export type FaltaParaEnviar = {
+  requisito: string
+  detalle: string
+}
+
+// documento emitido que todavia no viajo al sii
+export type DocumentoPorEnviar = {
+  id: string
+  tipo_dte: number
+  folio: number
+  fecha_emision: string
+  monto_total: number
+  folio_provisional: boolean
+}
+
+export type EnvioReciente = {
+  id: string
+  estado: string
+}
+
+// GET /dte/envio/pendientes
+export type EstadoEnvioSii = {
+  ambiente: string
+  pendientes_count: number
+  provisionales_count: number
+  // decide si el boton va habilitado
+  puede_enviar: boolean
+  faltantes: FaltaParaEnviar[]
+  documentos: DocumentoPorEnviar[]
+  envios_recientes: EnvioReciente[]
+}
+
+// las boletas viajan en EnvioBOLETA y el resto en EnvioDTE, asi que una misma
+// operacion puede producir dos sobres
+export type SobreEnviado = {
+  envio_id: string
+  tipo_sobre: string
+  documentos: number
+  enviado: boolean
+  track_id?: string
+}
+
+// POST /dte/envio
+export type ResultadoEnvioSii = {
+  enviado: boolean
+  mensaje: string
+  documentos: number
+  sobres: SobreEnviado[]
+  faltantes: FaltaParaEnviar[]
+}
