@@ -3,7 +3,7 @@ import type { RolUsuario } from '@/features/auth/types'
 
 // pantallas que solo ve el admin: margenes, compras y tributario
 // configuracion no esta aca: el cajero entra, pero solo a la parte de apariencia
-const SOLO_ADMIN = ['/dashboard', '/facturas', '/proveedores', '/reabastecimiento', '/sii']
+const SOLO_ADMIN = ['/dashboard', '/facturas', '/proveedores', '/reabastecimiento', '/sii', '/mercado']
 
 export function esRutaDeAdmin(ruta: string): boolean {
   return SOLO_ADMIN.includes(ruta)

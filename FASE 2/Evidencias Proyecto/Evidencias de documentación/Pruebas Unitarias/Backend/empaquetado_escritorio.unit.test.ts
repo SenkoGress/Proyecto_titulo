@@ -113,6 +113,31 @@ describe('Pruebas Unitarias: Empaquetado de Escritorio', () => {
       expect(formulario).toContain('type="password"');
     });
 
+    test('la instalacion incompleta vuelve a pedir la cuenta, aunque quede la marca', () => {
+      // Una marca escrita por una instalacion anterior hacia saltar el formulario sobre una base
+      // sin usuarios: la aplicacion abria en un login donde no habia con quien entrar, y el local
+      // no tiene como saber que debe borrar una carpeta. Manda la tabla, no el archivo.
+      expect(principal).toContain('hayAdministrador');
+      expect(principal).toContain("SELECT 1 AS hay FROM usuarios WHERE rol = 'admin' LIMIT 1");
+      expect(principal).toContain('if (hayAdministrador()) return Promise.resolve();');
+      expect(principal).not.toContain('if (fs.existsSync(archivo)) return Promise.resolve();');
+    });
+
+    test('el visor del mercado no recibe nada de la aplicacion y solo abre sus dos sitios', () => {
+      // La pantalla muestra el sitio del proveedor dentro de la aplicacion: la etiqueta queda
+      // habilitada, pero el sitio externo no recibe puente, ni Node, ni nuestra sesion, y no
+      // puede navegar fuera de los dominios que la pantalla consulta.
+      expect(principal).toContain('webviewTag: true');
+      expect(principal).toContain("will-attach-webview");
+      expect(principal).toContain('delete preferencias.preload');
+      expect(principal).toContain("preferencias.partition = 'persist:mercado'");
+      expect(principal).toContain('sitioPermitido');
+      expect(principal).toContain("'mercadolibre.cl'");
+      expect(principal).toContain("'aliexpress.com'");
+      // Y lo que se abre desde dentro sale al navegador del sistema
+      expect(principal).toContain("contenido.on('will-navigate'");
+    });
+
     test('la ventana corre aislada del sistema, como un navegador', () => {
       expect(principal).toContain('contextIsolation: true');
       expect(principal).toContain('nodeIntegration: false');

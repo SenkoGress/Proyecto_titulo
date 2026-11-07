@@ -19,6 +19,22 @@ const { app, BrowserWindow, Menu, shell, dialog, ipcMain } = require('electron')
 app.setName('GesTock');
 
 const PUERTO = Number(process.env.PORT) || 3000;
+
+/** Sitios que la pantalla de mercado puede mostrar dentro de la aplicacion. */
+const SITIOS_MERCADO = ['mercadolibre.cl', 'aliexpress.com'];
+
+function sitioPermitido(url) {
+  try {
+    const host = new URL(url).hostname;
+    return SITIOS_MERCADO.some((dominio) => host === dominio || host.endsWith('.' + dominio));
+  } catch {
+    return false;
+  }
+}
+
+function logger(mensaje, detalle) {
+  console.warn(`[GesTock] ${mensaje}${detalle ? ': ' + detalle : ''}`);
+}
 // Dentro del paquete, el codigo vive en un archivo asar que Electron lee como si fuera una
 // carpeta. La base de datos y los documentos NO van ahi: son de solo lectura y cambian con el uso.
 const raizAplicacion = app.getAppPath();
@@ -74,9 +90,36 @@ function claveDeSesion(carpetaBase) {
  * de las cuentas. En el archivo de instalacion queda solo el correo y la fecha, para saber que el
  * paso ya ocurrio.
  */
+/**
+ * Si la base tiene un administrador, la instalacion esta completa.
+ *
+ * Antes la decision salia del archivo instalacion.json, y una marca escrita por una instalacion
+ * anterior hacia saltar el formulario sobre una base sin usuarios: la aplicacion abria en un login
+ * donde no habia con quien entrar, y el local no tiene como saber que debe borrar una carpeta. El
+ * archivo pasa a ser el registro de cuando se instalo; quien manda es la tabla.
+ */
+function hayAdministrador() {
+  const base = process.env.SQLITE_DB_PATH;
+  if (!base || !fs.existsSync(base)) return false;
+
+  let db = null;
+  try {
+    const { DatabaseSync } = require('node:sqlite');
+    db = new DatabaseSync(base, { readOnly: true });
+    return Boolean(db.prepare("SELECT 1 AS hay FROM usuarios WHERE rol = 'admin' LIMIT 1").get());
+  } catch {
+    // Sin tabla de usuarios la instalacion quedo a medias, que cuenta como sin administrador
+    return false;
+  } finally {
+    try {
+      if (db) db.close();
+    } catch {}
+  }
+}
+
 function asegurarAdministrador() {
   const archivo = path.join(app.getPath('userData'), 'datos', 'instalacion.json');
-  if (fs.existsSync(archivo)) return Promise.resolve();
+  if (hayAdministrador()) return Promise.resolve();
 
   return new Promise((listo, fallo) => {
     const ventana = new BrowserWindow({
@@ -186,7 +229,25 @@ function crearVentana() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true
+      sandbox: true,
+      // La pantalla de mercado muestra el sitio del proveedor dentro de la aplicacion. Se habilita
+      // la etiqueta, y abajo se acota lo que puede hacer: sin acceso a nada nuestro y solo esos
+      // dos dominios.
+      webviewTag: true
+    }
+  });
+
+  ventana.webContents.on('will-attach-webview', (evento, preferencias, parametros) => {
+    // El sitio externo no recibe nada de la aplicacion: ni puente, ni Node, ni nuestra sesion.
+    delete preferencias.preload;
+    preferencias.nodeIntegration = false;
+    preferencias.contextIsolation = true;
+    preferencias.sandbox = true;
+    preferencias.partition = 'persist:mercado';
+
+    if (!sitioPermitido(parametros.src)) {
+      logger('Visor del mercado: direccion no permitida', parametros.src);
+      evento.preventDefault();
     }
   });
 
@@ -267,6 +328,21 @@ if (!app.requestSingleInstanceLock()) {
       if (ventana.isMinimized()) ventana.restore();
       ventana.focus();
     }
+  });
+
+  app.on('web-contents-created', (_evento, contenido) => {
+    if (contenido.getType() !== 'webview') return;
+
+    contenido.setWindowOpenHandler(({ url }) => {
+      shell.openExternal(url);
+      return { action: 'deny' };
+    });
+
+    contenido.on('will-navigate', (evento, url) => {
+      if (sitioPermitido(url)) return;
+      logger('Visor del mercado: navegacion bloqueada', url);
+      evento.preventDefault();
+    });
   });
 
   app.whenReady().then(async () => {

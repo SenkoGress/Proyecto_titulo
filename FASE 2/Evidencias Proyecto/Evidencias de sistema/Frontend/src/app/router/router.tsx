@@ -10,6 +10,7 @@ import {
   DashboardPage,
   IngresoFacturasPage,
   InventarioPage,
+  MercadoPage,
   NotFoundPage,
   NotificacionesPage,
   ProveedoresPage,
@@ -45,6 +46,7 @@ export const router = createBrowserRouter([
               { path: 'proveedores', element: <ProveedoresPage /> }, // directorio de proveedores
               { path: 'reabastecimiento', element: <ReabastecimientoPage /> }, // ordenes sugeridas
               { path: 'sii', element: <SiiPage /> }, // respaldo tributario y f29
+              { path: 'mercado', element: <MercadoPage /> }, // precios de referencia del mercado
             ],
           },
 

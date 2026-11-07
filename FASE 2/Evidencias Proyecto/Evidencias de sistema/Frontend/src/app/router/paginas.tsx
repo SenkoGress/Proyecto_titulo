@@ -52,6 +52,10 @@ export const ConfiguracionPage = lazy(() =>
   })),
 )
 
+export const MercadoPage = lazy(() =>
+  import('@/features/mercado/pages/MercadoPage').then((m) => ({ default: m.MercadoPage })),
+)
+
 export const NotFoundPage = lazy(() =>
   import('@/shared/pages/NotFoundPage').then((m) => ({ default: m.NotFoundPage })),
 )

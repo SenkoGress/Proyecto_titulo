@@ -22,6 +22,7 @@ import SavingsIcon from '@mui/icons-material/Savings'
 import NotificationsIcon from '@mui/icons-material/Notifications'
 import AutorenewIcon from '@mui/icons-material/Autorenew'
 import GavelIcon from '@mui/icons-material/Gavel'
+import StorefrontIcon from '@mui/icons-material/Storefront'
 import SettingsIcon from '@mui/icons-material/Settings'
 import LogoutIcon from '@mui/icons-material/Logout'
 import { obtenerColoresMenu } from '@/app/theme/theme'
@@ -53,6 +54,7 @@ const opcionesVisual: Opcion[] = [
   { to: '/caja/cierre', label: 'Cierre de Caja', icono: <SavingsIcon />, lista: true },
   { to: '/ventas', label: 'Historial de Ventas', icono: <ReceiptLongIcon />, lista: true },
   { to: '/sii', label: 'Respaldo de Facturas', icono: <GavelIcon />, lista: true },
+  { to: '/mercado', label: 'Precios de Mercado', icono: <StorefrontIcon />, lista: true },
   { to: '/configuracion', label: 'Configuración', icono: <SettingsIcon />, lista: true },
 ]
 
@@ -68,6 +70,7 @@ const opcionesTecnico: Opcion[] = [
   { to: '/caja/cierre', label: 'Cierre de Caja', icono: <SavingsIcon />, lista: true },
   { to: '/ventas', label: 'Registro de Ventas', icono: <ReceiptLongIcon />, lista: true },
   { to: '/sii', label: 'Respaldo Facturas y SII', icono: <GavelIcon />, lista: true },
+  { to: '/mercado', label: 'Precios de Mercado', icono: <StorefrontIcon />, lista: true },
   { to: '/configuracion', label: 'Configuración', icono: <SettingsIcon />, lista: true },
 ]
 
