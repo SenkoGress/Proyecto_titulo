@@ -21,7 +21,9 @@
     "electron:dev": "npm run build:desktop && electron .",
     "pack:dir": "npm run build:desktop && electron-builder --dir",
     "dist:win": "npm run build:desktop && electron-builder --win",
-    "datos:demo": "ts-node backend/src/database/cargar-catalogo-demo.ts"
+    "datos:demo": "ts-node backend/src/database/cargar-catalogo-demo.ts",
+    "app:reparar": "node scripts/reparar-instalacion.js",
+    "app:actualizar": "npm run dist:win && node scripts/reparar-instalacion.js"
   },
   "keywords": [
     "inventory",

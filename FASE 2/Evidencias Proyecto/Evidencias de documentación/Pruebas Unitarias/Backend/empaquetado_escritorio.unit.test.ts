@@ -77,6 +77,22 @@ describe('Pruebas Unitarias: Empaquetado de Escritorio', () => {
       }
     });
 
+    test('hay una orden para aplicar el instalador sobre la instalacion existente', () => {
+      // Construir el instalador no actualiza la aplicacion del usuario: son dos pasos, y el
+      // segundo es el que cuenta. Reinstalar encima conserva la carpeta de datos del local.
+      expect(paquete.scripts['app:reparar']).toContain('reparar-instalacion');
+      expect(paquete.scripts['app:actualizar']).toContain('dist:win');
+      expect(paquete.scripts['app:actualizar']).toContain('reparar-instalacion');
+
+      const reparador = leer('scripts/reparar-instalacion.js');
+      // Cierra la aplicacion primero: abierta, el instalador no puede reemplazar su ejecutable
+      expect(reparador).toContain('taskkill');
+      expect(reparador).toContain("'/S'");
+      // Y comprueba que el programa quedo instalado, en vez de dar por buena la salida
+      expect(reparador).toContain('No se encontro ningun instalador');
+      expect(reparador).toContain('no dejo el programa en');
+    });
+
     test('las ordenes de construccion compilan las dos mitades antes de empaquetar', () => {
       expect(paquete.scripts['build:desktop']).toContain('npm run build');
       expect(paquete.scripts['build:desktop']).toContain('build:frontend');
