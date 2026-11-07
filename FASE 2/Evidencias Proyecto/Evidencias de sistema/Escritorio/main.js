@@ -23,6 +23,24 @@ const PUERTO = Number(process.env.PORT) || 3000;
 /** Sitios que la pantalla de mercado puede mostrar dentro de la aplicacion. */
 const SITIOS_MERCADO = ['mercadolibre.cl', 'aliexpress.com'];
 
+/**
+ * Las paginas de identificacion salen al navegador aunque sean del mismo sitio: la clave de un
+ * servicio externo no se teclea dentro de la caja, y el visor esta para consultar precios.
+ */
+function esInicioDeSesion(url) {
+  try {
+    const direccion = new URL(url);
+    const host = direccion.hostname;
+    const ruta = direccion.pathname.toLowerCase();
+    return (
+      /^(accounts|auth|login|myaccount)\./.test(host) ||
+      /\/(jms|login|signin|sign-in|registration|register|signup|sign-up|user)/.test(ruta)
+    );
+  } catch {
+    return false;
+  }
+}
+
 function sitioPermitido(url) {
   try {
     const host = new URL(url).hostname;
@@ -245,7 +263,7 @@ function crearVentana() {
     preferencias.sandbox = true;
     preferencias.partition = 'persist:mercado';
 
-    if (!sitioPermitido(parametros.src)) {
+    if (!sitioPermitido(parametros.src) || esInicioDeSesion(parametros.src)) {
       logger('Visor del mercado: direccion no permitida', parametros.src);
       evento.preventDefault();
     }
@@ -333,16 +351,29 @@ if (!app.requestSingleInstanceLock()) {
   app.on('web-contents-created', (_evento, contenido) => {
     if (contenido.getType() !== 'webview') return;
 
+    // Sin esto el sitio ve un navegador desconocido -la firma trae Electron y el nombre de la
+    // aplicacion- y responde con su muro de "ingresa a tu cuenta" en lugar del listado. Se quitan
+    // esas dos marcas y queda la firma del Chromium que de verdad estamos usando.
+    contenido.setUserAgent(contenido.getUserAgent().replace(/ (Electron|GesTock)\/[\d.]+/g, ''));
+
     contenido.setWindowOpenHandler(({ url }) => {
       shell.openExternal(url);
       return { action: 'deny' };
     });
 
-    contenido.on('will-navigate', (evento, url) => {
-      if (sitioPermitido(url)) return;
-      logger('Visor del mercado: navegacion bloqueada', url);
+    // Lo que lleva fuera de los dos sitios sale al navegador del sistema. Antes solo se
+    // bloqueaba, de modo que pulsar "ingresar" no hacia nada: el usuario no tenia forma de saber
+    // que la aplicacion habia decidido no seguir. Y una sesion del mercado no se inicia aqui
+    // dentro: las credenciales de un servicio externo no se teclean en la caja.
+    const fueraDeSitio = (evento, url) => {
+      if (sitioPermitido(url) && !esInicioDeSesion(url)) return;
       evento.preventDefault();
-    });
+      logger('Visor del mercado: se abre fuera', url);
+      shell.openExternal(url);
+    };
+
+    contenido.on('will-navigate', fueraDeSitio);
+    contenido.on('will-redirect', fueraDeSitio);
   });
 
   app.whenReady().then(async () => {

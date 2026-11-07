@@ -136,6 +136,31 @@ describe('Pruebas Unitarias: Empaquetado de Escritorio', () => {
       expect(principal).toContain("'aliexpress.com'");
       // Y lo que se abre desde dentro sale al navegador del sistema
       expect(principal).toContain("contenido.on('will-navigate'");
+      expect(principal).toContain("contenido.on('will-redirect'");
+    });
+
+    test('lo que lleva fuera del sitio se abre en el navegador, no se traga', () => {
+      // Antes solo se bloqueaba: pulsar "ingresar" en el sitio no hacia nada y el usuario no
+      // tenia como saber que la aplicacion habia decidido no seguir.
+      const bloque = principal.slice(principal.indexOf('const fueraDeSitio'));
+      expect(bloque).toContain('evento.preventDefault()');
+      expect(bloque.slice(0, bloque.indexOf('};'))).toContain('shell.openExternal(url)');
+    });
+
+    test('la identificacion del sitio sale al navegador, aunque sea el mismo dominio', () => {
+      // La clave de un servicio externo no se teclea dentro de la caja, y el visor esta para
+      // consultar precios. Ademas, el inicio de sesion del mercado vive en rutas del propio
+      // dominio, de modo que la lista de dominios no alcanzaba para desviarlo.
+      expect(principal).toContain('esInicioDeSesion');
+      expect(principal).toContain('sitioPermitido(url) && !esInicioDeSesion(url)');
+      expect(principal).toContain('esInicioDeSesion(parametros.src)');
+    });
+
+    test('el visor se presenta como el Chromium que es, sin las marcas de la aplicacion', () => {
+      // Con la firma de Electron y el nombre de la aplicacion, el sitio responde con su muro de
+      // "ingresa a tu cuenta" en lugar del listado.
+      expect(principal).toContain('setUserAgent');
+      expect(principal).toContain('(Electron|GesTock)');
     });
 
     test('la ventana corre aislada del sistema, como un navegador', () => {
