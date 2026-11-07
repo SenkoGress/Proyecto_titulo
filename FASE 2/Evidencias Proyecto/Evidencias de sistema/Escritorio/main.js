@@ -357,6 +357,13 @@ if (!app.requestSingleInstanceLock()) {
     contenido.setUserAgent(contenido.getUserAgent().replace(/ (Electron|GesTock)\/[\d.]+/g, ''));
 
     contenido.setWindowOpenHandler(({ url }) => {
+      // El sitio pide abrir ventanas para sus pixeles de medicion -doubleclick, snapchat-, y
+      // abrirlas significaba que al usuario de la caja se le abriera el navegador solo, de a dos
+      // y de a cuatro. Afuera sale unicamente lo que pertenece a los dos mercados.
+      if (!sitioPermitido(url)) {
+        logger('Visor del mercado: ventana descartada', url);
+        return { action: 'deny' };
+      }
       shell.openExternal(url);
       return { action: 'deny' };
     });
@@ -368,6 +375,15 @@ if (!app.requestSingleInstanceLock()) {
     const fueraDeSitio = (evento, url) => {
       if (sitioPermitido(url) && !esInicioDeSesion(url)) return;
       evento.preventDefault();
+
+      // Lo de terceros se descarta: los pixeles de medicion del sitio entran por aqui, en el
+      // marco principal, y mandarlos al navegador abria ventanas en blanco que nadie pidio. Se
+      // pierde que un enlace a un sitio de afuera abra algo, que en una caja no hace falta.
+      if (!sitioPermitido(url)) {
+        logger('Visor del mercado: navegacion descartada', url);
+        return;
+      }
+
       logger('Visor del mercado: se abre fuera', url);
       shell.openExternal(url);
     };

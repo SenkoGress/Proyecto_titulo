@@ -139,12 +139,29 @@ describe('Pruebas Unitarias: Empaquetado de Escritorio', () => {
       expect(principal).toContain("contenido.on('will-redirect'");
     });
 
-    test('lo que lleva fuera del sitio se abre en el navegador, no se traga', () => {
-      // Antes solo se bloqueaba: pulsar "ingresar" en el sitio no hacia nada y el usuario no
-      // tenia como saber que la aplicacion habia decidido no seguir.
-      const bloque = principal.slice(principal.indexOf('const fueraDeSitio'));
+    test('lo del propio mercado se abre en el navegador; lo de terceros se descarta', () => {
+      // Dos reglas que se corrigieron una a la otra: bloquear sin mas dejaba clics muertos, y
+      // mandarlo todo afuera abria el navegador solo, porque los pixeles de medicion del sitio
+      // -doubleclick, snapchat- entran por el marco principal.
+      const bloque = principal.slice(
+        principal.indexOf('const fueraDeSitio'),
+        principal.indexOf('contenido.on(')
+      );
       expect(bloque).toContain('evento.preventDefault()');
-      expect(bloque.slice(0, bloque.indexOf('};'))).toContain('shell.openExternal(url)');
+      expect(bloque).toContain('navegacion descartada');
+      expect(bloque).toContain('shell.openExternal(url)');
+      // El descarte va ANTES de abrir: si no, el pixel sale igual
+      expect(bloque.indexOf('navegacion descartada')).toBeLessThan(bloque.indexOf('shell.openExternal(url)'));
+    });
+
+    test('la ventana que pide el sitio tambien se filtra', () => {
+      // El de la ventana principal es otro: aqui interesa el del visor
+      const bloque = principal.slice(
+        principal.indexOf('contenido.setWindowOpenHandler'),
+        principal.indexOf('const fueraDeSitio')
+      );
+      expect(bloque).toContain('ventana descartada');
+      expect(bloque.indexOf('ventana descartada')).toBeLessThan(bloque.indexOf('shell.openExternal(url)'));
     });
 
     test('la identificacion del sitio sale al navegador, aunque sea el mismo dominio', () => {

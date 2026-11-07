@@ -54,7 +54,7 @@ const opcionesVisual: Opcion[] = [
   { to: '/caja/cierre', label: 'Cierre de Caja', icono: <SavingsIcon />, lista: true },
   { to: '/ventas', label: 'Historial de Ventas', icono: <ReceiptLongIcon />, lista: true },
   { to: '/sii', label: 'Respaldo de Facturas', icono: <GavelIcon />, lista: true },
-  { to: '/mercado', label: 'Precios de Mercado', icono: <StorefrontIcon />, lista: true },
+  { to: '/mercado', label: 'Tendencias de Mercado', icono: <StorefrontIcon />, lista: true },
   { to: '/configuracion', label: 'Configuración', icono: <SettingsIcon />, lista: true },
 ]
 
@@ -70,7 +70,7 @@ const opcionesTecnico: Opcion[] = [
   { to: '/caja/cierre', label: 'Cierre de Caja', icono: <SavingsIcon />, lista: true },
   { to: '/ventas', label: 'Registro de Ventas', icono: <ReceiptLongIcon />, lista: true },
   { to: '/sii', label: 'Respaldo Facturas y SII', icono: <GavelIcon />, lista: true },
-  { to: '/mercado', label: 'Precios de Mercado', icono: <StorefrontIcon />, lista: true },
+  { to: '/mercado', label: 'Tendencias de Mercado', icono: <StorefrontIcon />, lista: true },
   { to: '/configuracion', label: 'Configuración', icono: <SettingsIcon />, lista: true },
 ]
 

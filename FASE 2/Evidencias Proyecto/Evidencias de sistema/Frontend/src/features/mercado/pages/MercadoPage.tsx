@@ -7,6 +7,8 @@ import TextField from '@mui/material/TextField'
 import MenuItem from '@mui/material/MenuItem'
 import Button from '@mui/material/Button'
 import Alert from '@mui/material/Alert'
+import Tab from '@mui/material/Tab'
+import Tabs from '@mui/material/Tabs'
 import ToggleButton from '@mui/material/ToggleButton'
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import OpenInNewOutlined from '@mui/icons-material/OpenInNewOutlined'
@@ -14,76 +16,120 @@ import { Migas } from '@/shared/components/ui/Migas'
 import { useInventario } from '@/features/inventario/hooks/useInventario'
 import {
   SITIOS,
+  VISTAS,
   hayVisorIncrustado,
+  pideCuenta,
   terminoDeBusqueda,
   urlDeBusqueda,
+  urlDeVista,
 } from '@/features/mercado/utils/busquedaMercado'
-import type { SitioMercado } from '@/features/mercado/utils/busquedaMercado'
+import type { SitioMercado, VistaMercado } from '@/features/mercado/utils/busquedaMercado'
 
-// consultar a cuanto se vende un producto afuera, sin salir del sistema
+// mirar que se esta vendiendo afuera, y de paso a cuanto, sin salir del sistema
 export function MercadoPage() {
   const inventario = useInventario()
-  const [sitio, setSitio] = useState<SitioMercado>('mercadolibre')
+  const [pestana, setPestana] = useState(0)
+  const [vista, setVista] = useState<VistaMercado>('tendencias')
+  const [sitio, setSitio] = useState<SitioMercado>('aliexpress')
   const [termino, setTermino] = useState('')
 
   const incrustado = useMemo(() => hayVisorIncrustado(), [])
-  const url = urlDeBusqueda(sitio, termino)
+  const buscando = pestana === 1
+  const url = buscando ? urlDeBusqueda(sitio, termino) : urlDeVista(vista)
+  const descripcion = VISTAS.find((v) => v.id === vista)!.descripcion
 
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', gap: 2 }}>
       <Box>
-        <Migas rutas={['Compras', 'Precios de mercado']} />
+        <Migas rutas={['Compras', 'Tendencias del mercado']} />
         <Typography variant="h1" sx={{ mb: 0.5 }}>
-          Precios de mercado
+          Tendencias del mercado
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          Consulta a cuanto se vende un producto afuera. GesTock no calcula ni compara estos precios:
+          Mira que se esta vendiendo afuera y a cuanto. GesTock no calcula ni compara estos precios:
           muestra el sitio tal cual, para que decidas tu.
         </Typography>
       </Box>
 
+      <Tabs value={pestana} onChange={(_, valor: number) => setPestana(valor)}>
+        <Tab label="Que se vende" />
+        <Tab label="Buscar un producto" />
+      </Tabs>
+
       <Paper variant="outlined" sx={{ p: 2, display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
-        <TextField
-          select
-          size="small"
-          label="Producto del catalogo"
-          value=""
-          onChange={(evento) => setTermino(evento.target.value)}
-          sx={{ minWidth: 260 }}
-        >
-          {(inventario.data ?? []).map((producto) => (
-            <MenuItem key={producto.id} value={producto.nombre}>
-              {producto.nombre}
-            </MenuItem>
-          ))}
-        </TextField>
+        {buscando ? (
+          <>
+            <TextField
+              select
+              size="small"
+              label="Producto del catalogo"
+              value=""
+              onChange={(evento) => setTermino(evento.target.value)}
+              sx={{ minWidth: 260 }}
+            >
+              {(inventario.data ?? []).map((producto) => (
+                <MenuItem key={producto.id} value={producto.nombre}>
+                  {producto.nombre}
+                </MenuItem>
+              ))}
+            </TextField>
 
-        <TextField
-          size="small"
-          label="O escribe que buscar"
-          value={termino}
-          onChange={(evento) => setTermino(evento.target.value)}
-          sx={{ flexGrow: 1, minWidth: 220 }}
-        />
+            <TextField
+              size="small"
+              label="O escribe que buscar"
+              value={termino}
+              onChange={(evento) => setTermino(evento.target.value)}
+              sx={{ flexGrow: 1, minWidth: 220 }}
+            />
 
-        <ToggleButtonGroup
-          value={sitio}
-          exclusive
-          size="small"
-          onChange={(_, valor: SitioMercado | null) => valor && setSitio(valor)}
-        >
-          {SITIOS.map((opcion) => (
-            <ToggleButton key={opcion.id} value={opcion.id}>
-              {opcion.nombre}
-            </ToggleButton>
-          ))}
-        </ToggleButtonGroup>
+            <ToggleButtonGroup
+              value={sitio}
+              exclusive
+              size="small"
+              onChange={(_, valor: SitioMercado | null) => valor && setSitio(valor)}
+            >
+              {SITIOS.map((opcion) => (
+                <ToggleButton key={opcion.id} value={opcion.id}>
+                  {opcion.nombre}
+                </ToggleButton>
+              ))}
+            </ToggleButtonGroup>
+          </>
+        ) : (
+          <ToggleButtonGroup
+            value={vista}
+            exclusive
+            size="small"
+            onChange={(_, valor: VistaMercado | null) => valor && setVista(valor)}
+          >
+            {VISTAS.map((opcion) => (
+              <ToggleButton key={opcion.id} value={opcion.id}>
+                {opcion.nombre}
+              </ToggleButton>
+            ))}
+          </ToggleButtonGroup>
+        )}
       </Paper>
 
-      {termino && (
+      {buscando ? (
+        <>
+          {termino && (
+            <Typography variant="caption" color="text.secondary">
+              Buscando "{terminoDeBusqueda(termino)}". Se quitan el envase y el formato de caja, que
+              no se usan para buscar en el mercado.
+            </Typography>
+          )}
+          {pideCuenta(sitio) && (
+            <Alert severity="warning">
+              Mercado Libre pide iniciar sesion para ver el listado de un producto. Las dos vistas de
+              la pestaña anterior si se ven sin cuenta.
+            </Alert>
+          )}
+        </>
+      ) : (
         <Typography variant="caption" color="text.secondary">
-          Buscando "{terminoDeBusqueda(termino)}". Se quitan el envase y el formato de caja, que no se
-          usan para buscar en el mercado.
+          {descripcion} Para ver el listado de uno de estos productos, Mercado Libre pide iniciar
+          sesion.
         </Typography>
       )}
 
