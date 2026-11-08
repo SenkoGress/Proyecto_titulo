@@ -23,7 +23,7 @@ Está orientada al comercio minorista independiente chileno (minimarkets, almace
 | **Persistencia Dual** | PostgreSQL 16+ (Cloud SaaS) & SQLite 3 (Edge POS) | Modelo dual de 29 tablas persistentes con integridad referencial estricta y banderas `is_dirty` para sincronización. |
 | **Inteligencia Artificial** | Google Gemini AI Studio API (Flash / Vision) | Extracción OCR estructurada de facturas de compra y normalización de catálogos. |
 | **Pasarelas de Pago** | Sandbox Transbank Webpay Plus, Mercado Pago, SumUp | Simulación de cobros con tarjeta y prevención de doble tributación (Res. Exenta N° 176). |
-| **Testing Automatizado** | Jest 29, `ts-jest`, `pg-mem` | Batería de **403 pruebas automatizadas** en el servidor (316 unitarias en 22 suites, medidas el 07-11-2026, y 87 de integración en 16 suites, última corrida el 07-10-2026), más 117 comprobaciones de extremo a extremo y 7 escenarios de rendimiento con percentiles. |
+| **Testing Automatizado** | Jest 29, `ts-jest`, `pg-mem` | Batería de **403 pruebas automatizadas** en el servidor (316 unitarias en 22 suites, medidas el 07-11-2026, y 87 de integración en 16 suites, medidas el mismo día), más 117 comprobaciones de extremo a extremo y 7 escenarios de rendimiento con percentiles. |
 | **DevOps & Despliegue** | Docker, Docker Compose, Git / GitHub | Empaquetado en contenedores y control de versiones centralizado. |
 
 ---
