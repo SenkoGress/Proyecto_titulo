@@ -2,7 +2,6 @@
 import Box from '@mui/material/Box'
 import Paper from '@mui/material/Paper'
 import Typography from '@mui/material/Typography'
-import Divider from '@mui/material/Divider'
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday'
 import { useReloj } from '@/shared/hooks/useReloj'
 import { BotonSincronizar } from '@/shared/components/layout/BotonSincronizar'
@@ -36,10 +35,8 @@ export function BarraSuperior() {
         </Typography>
       </Box>
 
-      <Divider orientation="vertical" flexItem />
-
-      {/* clima de hoy */}
-      <IndicadorClima />
+      {/* el clima trae su propio separador: sin clima no se dibuja ninguno de los dos */}
+      <IndicadorClima conSeparador />
 
       <Box sx={{ flexGrow: 1 }} />
 

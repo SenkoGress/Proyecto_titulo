@@ -1,5 +1,6 @@
 // src/shared/components/layout/IndicadorClima.tsx
 import Box from '@mui/material/Box'
+import Divider from '@mui/material/Divider'
 import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
 import WbSunnyIcon from '@mui/icons-material/WbSunny'
@@ -31,10 +32,13 @@ const COLORES = {
 type Props = {
   // en modo tecnico va mas apretado y sin el aviso al lado
   compacto?: boolean
+  // el separador se dibuja aca y no en la barra: puesto en la barra queda una linea vertical
+  // suelta cada vez que no hay clima que mostrar
+  conSeparador?: boolean
 }
 
 // clima de hoy junto al reloj
-export function IndicadorClima({ compacto = false }: Props) {
+export function IndicadorClima({ compacto = false, conSeparador = false }: Props) {
   const { data: clima } = useClima()
 
   // sin comuna configurada o sin internet no se muestra nada
@@ -45,45 +49,50 @@ export function IndicadorClima({ compacto = false }: Props) {
   const aviso = avisoDelDia(clima)
 
   return (
-    <Tooltip
-      title={
-        <Box>
-          <Typography variant="caption" sx={{ display: 'block', fontWeight: 700 }}>
-            {texto} en {clima.lugar}
+    <>
+      {conSeparador && <Divider orientation="vertical" flexItem />}
+
+      <Tooltip
+        title={
+          <Box>
+            <Typography variant="caption" sx={{ display: 'block', fontWeight: 700 }}>
+              {texto} en {clima.lugar}
+            </Typography>
+            <Typography variant="caption" sx={{ display: 'block' }}>
+              Maxima {clima.maxima}° y minima {clima.minima}°
+            </Typography>
+            <Typography variant="caption" sx={{ display: 'block' }}>
+              Probabilidad de lluvia {clima.probabilidadLluvia}%
+            </Typography>
+            {aviso && (
+              <Typography variant="caption" sx={{ display: 'block', mt: 0.5 }}>
+                {aviso.detalle}
+              </Typography>
+            )}
+            <Typography variant="caption" sx={{ display: 'block', mt: 0.5, opacity: 0.7 }}>
+              Medido a las{' '}
+              {clima.medidoA.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}
+            </Typography>
+          </Box>
+        }
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, cursor: 'help' }}>
+          <Icono fontSize="small" sx={{ color: aviso ? COLORES[aviso.tono] : 'text.disabled' }} />
+          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+            {clima.temperatura}°
           </Typography>
-          <Typography variant="caption" sx={{ display: 'block' }}>
-            Maxima {clima.maxima}° y minima {clima.minima}°
-          </Typography>
-          <Typography variant="caption" sx={{ display: 'block' }}>
-            Probabilidad de lluvia {clima.probabilidadLluvia}%
-          </Typography>
-          {aviso && (
-            <Typography variant="caption" sx={{ display: 'block', mt: 0.5 }}>
-              {aviso.detalle}
+
+          {/* el aviso va a la vista: la caja es pantalla tactil y ahi no hay tooltip */}
+          {aviso && !compacto && (
+            <Typography
+              variant="body2"
+              sx={{ color: COLORES[aviso.tono], display: { xs: 'none', md: 'block' } }}
+            >
+              {aviso.corto}
             </Typography>
           )}
-          <Typography variant="caption" sx={{ display: 'block', mt: 0.5, opacity: 0.7 }}>
-            Medido a las {clima.medidoA.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}
-          </Typography>
         </Box>
-      }
-    >
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, cursor: 'help' }}>
-        <Icono fontSize="small" sx={{ color: aviso ? COLORES[aviso.tono] : 'text.disabled' }} />
-        <Typography variant="body2" sx={{ fontWeight: 600 }}>
-          {clima.temperatura}°
-        </Typography>
-
-        {/* el aviso va a la vista: la caja es pantalla tactil y ahi no hay tooltip */}
-        {aviso && !compacto && (
-          <Typography
-            variant="body2"
-            sx={{ color: COLORES[aviso.tono], display: { xs: 'none', md: 'block' } }}
-          >
-            {aviso.corto}
-          </Typography>
-        )}
-      </Box>
-    </Tooltip>
+      </Tooltip>
+    </>
   )
 }
