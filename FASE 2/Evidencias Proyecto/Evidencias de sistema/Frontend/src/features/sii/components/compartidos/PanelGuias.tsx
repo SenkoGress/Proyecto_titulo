@@ -15,6 +15,7 @@ import Skeleton from '@mui/material/Skeleton'
 import AddOutlined from '@mui/icons-material/AddOutlined'
 import { formatoClp } from '@/shared/utils/formatoClp'
 import { formatFecha } from '@/shared/utils/formatFecha'
+import { etiquetaEstadoGuia } from '@/shared/utils/etiquetasEstado'
 import { DialogoEmitirGuia } from '@/features/sii/components/compartidos/DialogoEmitirGuia'
 import type { GuiaDespacho } from '@/features/sii/types'
 
@@ -51,7 +52,8 @@ export function PanelGuias({ guias, cargando }: Props) {
       <Paper variant="outlined">
         <Table size="small">
           <TableHead>
-            <TableRow>
+            {/* sin esto los titulos se parten en dos lineas y la tabla se lee mal */}
+            <TableRow sx={{ '& th': { whiteSpace: 'nowrap' } }}>
               <TableCell align="right">Folio</TableCell>
               <TableCell>Fecha</TableCell>
               <TableCell>Destinatario</TableCell>
@@ -123,7 +125,13 @@ export function PanelGuias({ guias, cargando }: Props) {
                 </TableCell>
 
                 <TableCell>
-                  <Chip label={guia.estado} size="small" color="success" variant="outlined" sx={{ fontSize: 10 }} />
+                  <Chip
+                    label={etiquetaEstadoGuia(guia.estado).texto}
+                    color={etiquetaEstadoGuia(guia.estado).tono}
+                    size="small"
+                    variant="outlined"
+                    sx={{ whiteSpace: 'nowrap' }}
+                  />
                 </TableCell>
               </TableRow>
             ))}

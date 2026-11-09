@@ -1,5 +1,6 @@
 // src/features/ventas/utils/filtrosVentas.ts
 import { parsearFechaBackend } from '@/shared/utils/fechaBackend'
+import { noSubio } from '@/features/ventas/utils/sincronizacionVenta'
 import type { FilaVenta } from '@/features/ventas/utils/filaVenta'
 
 export type TipoMovimiento = 'todos' | 'ventas' | 'devoluciones'
@@ -38,11 +39,14 @@ export function filtrarVentas(
   busqueda: string,
   tipo: TipoMovimiento,
   rango: RangoFecha,
+  soloSinSubir = false,
 ): FilaVenta[] {
   return ventas.filter((venta) => {
     const coincideTipo =
       tipo === 'todos' || (tipo === 'devoluciones' ? venta.esDevolucion : !venta.esDevolucion)
 
-    return coincideTipo && dentroDelRango(venta, rango) && coincideTexto(venta, busqueda)
+    const coincideNube = !soloSinSubir || noSubio(venta)
+
+    return coincideTipo && coincideNube && dentroDelRango(venta, rango) && coincideTexto(venta, busqueda)
   })
 }

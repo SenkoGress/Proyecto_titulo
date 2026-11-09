@@ -9,6 +9,7 @@ import Chip from '@mui/material/Chip'
 import ReceiptOutlined from '@mui/icons-material/ReceiptOutlined'
 import BusinessOutlined from '@mui/icons-material/BusinessOutlined'
 import EditOutlined from '@mui/icons-material/EditOutlined'
+import { Ayuda } from '@/shared/components/ui/Ayuda'
 import { useCarritoStore } from '@/features/pos/stores/carritoStore'
 import { DialogoReceptorFactura } from '@/features/pos/components/compartidos/DialogoReceptorFactura'
 import type { TipoComprobante } from '@/features/pos/types'
@@ -30,6 +31,13 @@ export function SelectorComprobante() {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+      <Box sx={{ display: 'flex', gap: 0.75, alignItems: 'center' }}>
+        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
+          QUE SE LE ENTREGA
+        </Typography>
+        <Ayuda texto="Boleta para el cliente comun. Factura solo si el cliente es una empresa y la pide: hay que escribir su RUT, giro y direccion." />
+      </Box>
+
       <ToggleButtonGroup value={tipo} exclusive size="small" fullWidth onChange={(_, valor) => elegir(valor)}>
         <ToggleButton value="BOLETA">
           <ReceiptOutlined fontSize="small" sx={{ mr: 0.75 }} />

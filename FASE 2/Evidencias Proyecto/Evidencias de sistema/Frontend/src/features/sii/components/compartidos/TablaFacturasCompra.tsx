@@ -13,6 +13,7 @@ import Skeleton from '@mui/material/Skeleton'
 import Tooltip from '@mui/material/Tooltip'
 import { formatoClp } from '@/shared/utils/formatoClp'
 import { formatFechaSola } from '@/shared/utils/formatFecha'
+import { etiquetaEstadoFactura, etiquetaMetodoIngreso } from '@/shared/utils/etiquetasEstado'
 import { BotonDocumentoFactura } from '@/features/invoices/components/compartidos/BotonDocumentoFactura'
 import type { FacturaRegistrada } from '@/features/invoices/types'
 
@@ -31,7 +32,8 @@ export function TablaFacturasCompra({ facturas, cargando, tecnico }: Props) {
       <TableContainer>
         <Table size="small">
           <TableHead>
-            <TableRow>
+            {/* sin esto los titulos se parten en dos lineas y la tabla se lee mal */}
+            <TableRow sx={{ '& th': { whiteSpace: 'nowrap' } }}>
               <TableCell>N° folio</TableCell>
               <TableCell>RUT proveedor</TableCell>
               <TableCell>Razon social</TableCell>
@@ -62,7 +64,9 @@ export function TablaFacturasCompra({ facturas, cargando, tecnico }: Props) {
                   {factura.numero_factura}
                 </TableCell>
 
-                <TableCell sx={{ fontFamily: 'monospace' }}>{factura.rut_proveedor}</TableCell>
+                <TableCell sx={{ fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+                  {factura.rut_proveedor}
+                </TableCell>
 
                 <TableCell sx={{ fontWeight: 600 }}>{factura.proveedor_nombre ?? 'Sin proveedor'}</TableCell>
 
@@ -80,18 +84,26 @@ export function TablaFacturasCompra({ facturas, cargando, tecnico }: Props) {
 
                 {tecnico && (
                   <TableCell>
-                    <Chip
-                      label={factura.metodo_ingreso}
-                      size="small"
-                      variant="outlined"
-                      sx={{ fontFamily: 'monospace', fontSize: 10 }}
-                    />
+                    <Tooltip title={etiquetaMetodoIngreso(factura.metodo_ingreso).codigo}>
+                      <Chip
+                        label={etiquetaMetodoIngreso(factura.metodo_ingreso).texto}
+                        color={etiquetaMetodoIngreso(factura.metodo_ingreso).tono}
+                        size="small"
+                        variant="outlined"
+                        sx={{ whiteSpace: 'nowrap' }}
+                      />
+                    </Tooltip>
                   </TableCell>
                 )}
 
                 <TableCell>
-                  <Tooltip title="Estado con que el backend guarda la factura en factura_ingresos">
-                    <Chip label={factura.estado} size="small" color="success" sx={{ fontWeight: 700 }} />
+                  <Tooltip title={`Estado en factura_ingresos: ${etiquetaEstadoFactura(factura.estado).codigo}`}>
+                    <Chip
+                      label={etiquetaEstadoFactura(factura.estado).texto}
+                      color={etiquetaEstadoFactura(factura.estado).tono}
+                      size="small"
+                      sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}
+                    />
                   </Tooltip>
                 </TableCell>
 

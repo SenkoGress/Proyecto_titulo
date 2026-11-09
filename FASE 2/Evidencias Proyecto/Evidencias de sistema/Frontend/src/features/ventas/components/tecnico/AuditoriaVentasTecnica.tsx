@@ -2,12 +2,15 @@
 import { useMemo, useState } from 'react'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
+import Alert from '@mui/material/Alert'
+import Button from '@mui/material/Button'
 import { ErrorBox } from '@/shared/components/ui/ErrorBox'
 import { useDtesEmitidos, useTransacciones } from '@/features/ventas/hooks/useVentas'
 import { armarFilasVenta } from '@/features/ventas/utils/filaVenta'
 import { filtrarVentas } from '@/features/ventas/utils/filtrosVentas'
 import { resumirVentas } from '@/features/ventas/utils/resumenVentas'
 import { exportarVentasCsv } from '@/features/ventas/utils/exportarVentasCsv'
+import { avisoVentasSinSubir, contarSinSubir } from '@/features/ventas/utils/sincronizacionVenta'
 import { BarraHerramientasVentas } from '@/features/ventas/components/compartidos/BarraHerramientasVentas'
 import { TarjetasResumenVentas } from '@/features/ventas/components/compartidos/TarjetasResumenVentas'
 import { DialogoTicketVenta } from '@/features/ventas/components/compartidos/DialogoTicketVenta'
@@ -25,6 +28,7 @@ export function AuditoriaVentasTecnica() {
   const [busqueda, setBusqueda] = useState('')
   const [tipo, setTipo] = useState<TipoMovimiento>('todos')
   const [rango, setRango] = useState<RangoFecha>('todo')
+  const [soloSinSubir, setSoloSinSubir] = useState(false)
 
   const [viendoTicket, setViendoTicket] = useState<FilaVenta | null>(null)
   const [devolviendo, setDevolviendo] = useState<FilaVenta | null>(null)
@@ -34,8 +38,20 @@ export function AuditoriaVentasTecnica() {
     [transacciones.data, dtes.data],
   )
 
-  const visibles = useMemo(() => filtrarVentas(filas, busqueda, tipo, rango), [filas, busqueda, tipo, rango])
+  const visibles = useMemo(
+    () => filtrarVentas(filas, busqueda, tipo, rango, soloSinSubir),
+    [filas, busqueda, tipo, rango, soloSinSubir],
+  )
   const resumen = useMemo(() => resumirVentas(visibles), [visibles])
+
+  // se cuenta sobre el historial completo, no sobre lo filtrado
+  const sinSubir = useMemo(() => contarSinSubir(filas), [filas])
+
+  // pedir las que no subieron sin abrir el rango dejaria la tabla vacia
+  const verSinSubir = (valor: boolean) => {
+    setSoloSinSubir(valor)
+    if (valor) setRango('todo')
+  }
 
   if (transacciones.isError) return <ErrorBox error={transacciones.error} />
 
@@ -43,10 +59,26 @@ export function AuditoriaVentasTecnica() {
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
       <TarjetasResumenVentas resumen={resumen} tecnico />
 
+      {sinSubir > 0 && (
+        <Alert
+          severity="warning"
+          action={
+            <Button color="inherit" size="small" onClick={() => verSinSubir(true)}>
+              Ver cuales
+            </Button>
+          }
+        >
+          {avisoVentasSinSubir(sinSubir)}
+        </Alert>
+      )}
+
       <BarraHerramientasVentas
         busqueda={busqueda}
         tipo={tipo}
         rango={rango}
+        soloSinSubir={soloSinSubir}
+        sinSubir={sinSubir}
+        onSoloSinSubir={verSinSubir}
         actualizando={transacciones.isFetching}
         onBuscar={setBusqueda}
         onTipo={setTipo}

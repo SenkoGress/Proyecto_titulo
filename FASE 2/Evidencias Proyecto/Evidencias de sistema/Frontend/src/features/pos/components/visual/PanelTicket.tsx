@@ -14,6 +14,7 @@ import { obtenerMensajeError } from '@/lib/api/apiError'
 import { useCarritoStore } from '@/features/pos/stores/carritoStore'
 import { useTotalesCarrito } from '@/features/pos/hooks/useTotalesCarrito'
 import { LineaTicket } from '@/features/pos/components/visual/LineaTicket'
+import { Ayuda } from '@/shared/components/ui/Ayuda'
 import { SelectorMetodoPago } from '@/features/pos/components/visual/SelectorMetodoPago'
 import { CalculadoraVuelto } from '@/features/pos/components/visual/CalculadoraVuelto'
 import { VerificacionEdad } from '@/features/pos/components/compartidos/VerificacionEdad'
@@ -132,7 +133,8 @@ export function PanelTicket({ onCobrar, cobrando, errorCobro }: Props) {
         >
           <Box>
             <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
-              TOTAL A PAGAR
+              TOTAL A PAGAR{' '}
+              <Ayuda texto="Lo que se le cobra al cliente. En efectivo se redondea a la decena mas cercana, como obliga la Ley 20.956; con tarjeta se cobra el monto exacto." />
             </Typography>
             <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary' }}>
               Total en pesos chilenos

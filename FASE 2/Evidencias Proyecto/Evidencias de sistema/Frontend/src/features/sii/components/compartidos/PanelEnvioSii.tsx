@@ -4,6 +4,7 @@ import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Button from '@mui/material/Button'
 import Chip from '@mui/material/Chip'
+import Tooltip from '@mui/material/Tooltip'
 import Alert from '@mui/material/Alert'
 import AlertTitle from '@mui/material/AlertTitle'
 import Skeleton from '@mui/material/Skeleton'
@@ -12,6 +13,7 @@ import DownloadOutlined from '@mui/icons-material/DownloadOutlined'
 import { descargarSobre } from '@/features/sii/api/sii.api'
 import { useEnviarAlSii, useEstadoEnvioSii } from '@/features/sii/hooks/useSii'
 import { avisoFoliosProvisionales, envioSalioCompleto } from '@/features/sii/utils/envioSii'
+import { etiquetaAmbienteSii } from '@/shared/utils/etiquetasEstado'
 
 // lo que el local tiene emitido y todavia no llega al sii
 export function PanelEnvioSii() {
@@ -42,7 +44,15 @@ export function PanelEnvioSii() {
             </Typography>
           </Box>
 
-          <Chip label={ambiente} size="small" variant="outlined" sx={{ fontSize: 10, fontWeight: 700 }} />
+          <Tooltip title={etiquetaAmbienteSii(ambiente).codigo}>
+            <Chip
+              label={etiquetaAmbienteSii(ambiente).texto}
+              color={etiquetaAmbienteSii(ambiente).tono}
+              size="small"
+              variant="outlined"
+              sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}
+            />
+          </Tooltip>
 
           <Button
             variant="contained"

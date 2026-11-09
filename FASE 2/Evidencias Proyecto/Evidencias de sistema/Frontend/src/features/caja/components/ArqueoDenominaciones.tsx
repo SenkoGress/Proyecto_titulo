@@ -23,16 +23,21 @@ function FilaDenominacion({ valor }: { valor: number }) {
         <Typography variant="caption" color="text.secondary">
           Cant:
         </Typography>
+        {/* el ancho va en la raiz y no encoge: con el ancho solo en el input interno, un monto
+            largo apretaba el campo hasta tapar el numero escrito */}
         <TextField
           size="small"
           value={cantidad}
           onChange={(evento) => fijarCantidad(valor, Number(evento.target.value.replace(/\D/g, '')) || 0)}
-          slotProps={{ htmlInput: { inputMode: 'numeric', style: { textAlign: 'center', width: 50 } } }}
+          sx={{ width: 64, flexShrink: 0 }}
+          slotProps={{ htmlInput: { inputMode: 'numeric', style: { textAlign: 'center' } } }}
         />
-        <Typography variant="caption" sx={{ flexGrow: 1, textAlign: 'right', fontWeight: 600 }}>
-          {formatoClp(valor * cantidad)}
-        </Typography>
       </Box>
+
+      {/* el monto va en su propia linea: en la misma competia por el ancho con el campo */}
+      <Typography variant="caption" sx={{ display: 'block', textAlign: 'right', fontWeight: 600, mt: 0.5 }}>
+        {formatoClp(valor * cantidad)}
+      </Typography>
     </Paper>
   )
 }
@@ -65,7 +70,7 @@ export function ArqueoDenominaciones() {
       <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
         BILLETES
       </Typography>
-      <Box sx={{ display: 'grid', gap: 1, gridTemplateColumns: 'repeat(auto-fill, minmax(115px, 1fr))' }}>
+      <Box sx={{ display: 'grid', gap: 1, gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))' }}>
         {billetes.map((d) => (
           <FilaDenominacion key={d.valor} valor={d.valor} />
         ))}
@@ -74,7 +79,7 @@ export function ArqueoDenominaciones() {
       <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
         MONEDAS
       </Typography>
-      <Box sx={{ display: 'grid', gap: 1, gridTemplateColumns: 'repeat(auto-fill, minmax(115px, 1fr))' }}>
+      <Box sx={{ display: 'grid', gap: 1, gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))' }}>
         {monedas.map((d) => (
           <FilaDenominacion key={d.valor} valor={d.valor} />
         ))}

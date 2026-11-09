@@ -9,11 +9,13 @@ import TableRow from '@mui/material/TableRow'
 import TableCell from '@mui/material/TableCell'
 import TableContainer from '@mui/material/TableContainer'
 import Chip from '@mui/material/Chip'
+import Tooltip from '@mui/material/Tooltip'
 import Button from '@mui/material/Button'
 import Skeleton from '@mui/material/Skeleton'
 import DownloadOutlined from '@mui/icons-material/DownloadOutlined'
 import { formatoClp } from '@/shared/utils/formatoClp'
 import { formatFecha } from '@/shared/utils/formatFecha'
+import { etiquetaEstadoSii } from '@/shared/utils/etiquetasEstado'
 import { nombreDocumentoDte } from '@/features/dte/utils/nombreDte'
 import { descargarXmlDte } from '@/features/dte/api/dte.api'
 import type { DteEmitido } from '@/features/ventas/types'
@@ -53,7 +55,8 @@ export function TablaDtesEmitidos({ dtes, cargando, tecnico }: Props) {
       <TableContainer sx={{ maxHeight: 460 }}>
         <Table size="small" stickyHeader>
           <TableHead>
-            <TableRow>
+            {/* sin esto los titulos se parten en dos lineas y la tabla se lee mal */}
+            <TableRow sx={{ '& th': { whiteSpace: 'nowrap' } }}>
               <TableCell>Documento</TableCell>
               <TableCell align="right">Folio</TableCell>
               <TableCell>Fecha emision</TableCell>
@@ -95,7 +98,9 @@ export function TablaDtesEmitidos({ dtes, cargando, tecnico }: Props) {
 
                 <TableCell>{formatFecha(dte.fecha_emision)}</TableCell>
 
-                <TableCell sx={{ fontFamily: 'monospace' }}>{dte.rut_receptor ?? '66.666.666-6'}</TableCell>
+                <TableCell sx={{ fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+                  {dte.rut_receptor ?? '66.666.666-6'}
+                </TableCell>
 
                 <TableCell align="right">{formatoClp(dte.monto_neto)}</TableCell>
 
@@ -106,7 +111,15 @@ export function TablaDtesEmitidos({ dtes, cargando, tecnico }: Props) {
                 </TableCell>
 
                 <TableCell>
-                  <Chip label={dte.estado_sii} size="small" variant="outlined" sx={{ fontSize: 10 }} />
+                  <Tooltip title={etiquetaEstadoSii(dte.estado_sii).codigo}>
+                    <Chip
+                      label={etiquetaEstadoSii(dte.estado_sii).texto}
+                      color={etiquetaEstadoSii(dte.estado_sii).tono}
+                      size="small"
+                      variant="outlined"
+                      sx={{ whiteSpace: 'nowrap' }}
+                    />
+                  </Tooltip>
                 </TableCell>
 
                 {tecnico && (
@@ -124,7 +137,7 @@ export function TablaDtesEmitidos({ dtes, cargando, tecnico }: Props) {
 
       <Box sx={{ p: 1.5 }}>
         <Typography variant="caption" color="text.secondary">
-          Los documentos se firman y timbran localmente con folios CAF. El estado EMITIDO_LOCAL significa que
+          Los documentos se firman y timbran localmente con folios CAF. "Emitido en el local" significa que
           todavia no se envian al SII: el backend no tiene esa conexion.
         </Typography>
       </Box>

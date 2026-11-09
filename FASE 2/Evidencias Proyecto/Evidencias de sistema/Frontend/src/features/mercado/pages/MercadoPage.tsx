@@ -12,6 +12,7 @@ import Tabs from '@mui/material/Tabs'
 import ToggleButton from '@mui/material/ToggleButton'
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import OpenInNewOutlined from '@mui/icons-material/OpenInNewOutlined'
+import { Ayuda } from '@/shared/components/ui/Ayuda'
 import { Migas } from '@/shared/components/ui/Migas'
 import { useInventario } from '@/features/inventario/hooks/useInventario'
 import {
@@ -82,32 +83,38 @@ export function MercadoPage() {
               sx={{ flexGrow: 1, minWidth: 220 }}
             />
 
+            <Box sx={{ display: 'flex', gap: 0.75, alignItems: 'center' }}>
+              <ToggleButtonGroup
+                value={sitio}
+                exclusive
+                size="small"
+                onChange={(_, valor: SitioMercado | null) => valor && setSitio(valor)}
+              >
+                {SITIOS.map((opcion) => (
+                  <ToggleButton key={opcion.id} value={opcion.id}>
+                    {opcion.nombre}
+                  </ToggleButton>
+                ))}
+              </ToggleButtonGroup>
+              <Ayuda texto="Donde se busca el producto. AliExpress contesta sin pedir cuenta; Mercado Libre pide iniciar sesion para ver el listado." />
+            </Box>
+          </>
+        ) : (
+          <Box sx={{ display: 'flex', gap: 0.75, alignItems: 'center' }}>
             <ToggleButtonGroup
-              value={sitio}
+              value={vista}
               exclusive
               size="small"
-              onChange={(_, valor: SitioMercado | null) => valor && setSitio(valor)}
+              onChange={(_, valor: VistaMercado | null) => valor && setVista(valor)}
             >
-              {SITIOS.map((opcion) => (
+              {VISTAS.map((opcion) => (
                 <ToggleButton key={opcion.id} value={opcion.id}>
                   {opcion.nombre}
                 </ToggleButton>
               ))}
             </ToggleButtonGroup>
-          </>
-        ) : (
-          <ToggleButtonGroup
-            value={vista}
-            exclusive
-            size="small"
-            onChange={(_, valor: VistaMercado | null) => valor && setVista(valor)}
-          >
-            {VISTAS.map((opcion) => (
-              <ToggleButton key={opcion.id} value={opcion.id}>
-                {opcion.nombre}
-              </ToggleButton>
-            ))}
-          </ToggleButtonGroup>
+            <Ayuda texto="Las dos paginas de Mercado Libre que se dejan ver sin cuenta: lo que mas se busca en el pais y lo que mas se vende." />
+          </Box>
         )}
       </Paper>
 

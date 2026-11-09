@@ -17,10 +17,11 @@ import CloseOutlined from '@mui/icons-material/CloseOutlined'
 import PrintOutlined from '@mui/icons-material/PrintOutlined'
 import DownloadOutlined from '@mui/icons-material/DownloadOutlined'
 import SendOutlined from '@mui/icons-material/SendOutlined'
-import { formatoClp } from '@/shared/utils/formatoClp'
+import { etiquetaDocumentoVenta } from '@/shared/utils/etiquetasEstado'
 import { useComprobante, useConfigDte, useEnviarComprobante } from '@/features/dte/hooks/useConfigDte'
 import { descargarXmlDte } from '@/features/dte/api/dte.api'
 import { TicketImpreso } from '@/features/pos/components/compartidos/TicketImpreso'
+import { VoucherImpreso } from '@/features/pos/components/compartidos/VoucherImpreso'
 import { imprimirTicket } from '@/features/pos/utils/imprimirTicket'
 import type { VentaRegistrada } from '@/features/pos/types'
 
@@ -44,6 +45,9 @@ export function DialogoComprobante({ venta, ajusteRedondeo, onCerrar }: Props) {
 
   const [correo, setCorreo] = useState('')
   const [errorXml, setErrorXml] = useState<string | null>(null)
+
+  // con tarjeta en modelo B no hay dte, pero el voucher tambien se imprime
+  const hayQueImprimir = Boolean(comprobante.data) || !dteId
 
   const descargarXml = async () => {
     if (!dteId) return
@@ -80,7 +84,7 @@ export function DialogoComprobante({ venta, ajusteRedondeo, onCerrar }: Props) {
         {venta.dte && !venta.dte.esTributarioDte && (
           <Alert severity="info" sx={{ mb: 2 }}>
             <Typography variant="body2" sx={{ fontWeight: 600 }}>
-              {venta.dte.tipoDocumento}
+              {etiquetaDocumentoVenta(venta.dte.tipoDocumento).texto}
             </Typography>
             {venta.dte.mensajeLegal}
           </Alert>
@@ -107,17 +111,8 @@ export function DialogoComprobante({ venta, ajusteRedondeo, onCerrar }: Props) {
           />
         )}
 
-        {/* sin dte tributario igual se muestra el monto cobrado */}
-        {!dteId && (
-          <Box sx={{ textAlign: 'center', py: 2 }}>
-            <Typography variant="h4" sx={{ fontWeight: 700 }}>
-              {formatoClp(venta.total)}
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Folio interno {venta.folio} · {venta.unidades} articulo(s)
-            </Typography>
-          </Box>
-        )}
+        {/* sin dte tributario el cliente igual se lleva algo en la mano */}
+        {!dteId && <VoucherImpreso venta={venta} emisor={configDte.data?.emisor} />}
 
         {errorXml && (
           <Alert severity="error" sx={{ mt: 2 }}>
@@ -165,13 +160,9 @@ export function DialogoComprobante({ venta, ajusteRedondeo, onCerrar }: Props) {
       </DialogContent>
 
       <DialogActions sx={{ px: 3, py: 2, gap: 1, flexWrap: 'wrap' }}>
-        <Tooltip title={comprobante.data ? '' : 'No hay comprobante que imprimir'}>
+        <Tooltip title={hayQueImprimir ? '' : 'No hay comprobante que imprimir'}>
           <span>
-            <Button
-              startIcon={<PrintOutlined />}
-              onClick={imprimirTicket}
-              disabled={!comprobante.data}
-            >
+            <Button startIcon={<PrintOutlined />} onClick={imprimirTicket} disabled={!hayQueImprimir}>
               Imprimir ticket (80mm)
             </Button>
           </span>

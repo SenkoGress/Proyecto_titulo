@@ -9,16 +9,20 @@ import CircularProgress from '@mui/material/CircularProgress'
 import SearchOutlined from '@mui/icons-material/SearchOutlined'
 import RefreshOutlined from '@mui/icons-material/RefreshOutlined'
 import FileDownloadOutlined from '@mui/icons-material/FileDownloadOutlined'
+import CloudOffOutlined from '@mui/icons-material/CloudOffOutlined'
 import type { RangoFecha, TipoMovimiento } from '@/features/ventas/utils/filtrosVentas'
 
 type Props = {
   busqueda: string
   tipo: TipoMovimiento
   rango: RangoFecha
+  soloSinSubir: boolean
+  sinSubir: number
   actualizando: boolean
   onBuscar: (texto: string) => void
   onTipo: (tipo: TipoMovimiento) => void
   onRango: (rango: RangoFecha) => void
+  onSoloSinSubir: (valor: boolean) => void
   onActualizar: () => void
   onExportar: () => void
 }
@@ -40,10 +44,13 @@ export function BarraHerramientasVentas({
   busqueda,
   tipo,
   rango,
+  soloSinSubir,
+  sinSubir,
   actualizando,
   onBuscar,
   onTipo,
   onRango,
+  onSoloSinSubir,
   onActualizar,
   onExportar,
 }: Props) {
@@ -90,6 +97,17 @@ export function BarraHerramientasVentas({
           />
         ))}
       </Box>
+
+      {/* el unico lugar donde se pueden ver las ventas que no llegaron a la nube */}
+      {sinSubir > 0 && (
+        <Chip
+          icon={<CloudOffOutlined />}
+          label={`Sin subir (${sinSubir})`}
+          color={soloSinSubir ? 'warning' : 'default'}
+          variant={soloSinSubir ? 'filled' : 'outlined'}
+          onClick={() => onSoloSinSubir(!soloSinSubir)}
+        />
+      )}
 
       <Box sx={{ flexGrow: 1 }} />
 

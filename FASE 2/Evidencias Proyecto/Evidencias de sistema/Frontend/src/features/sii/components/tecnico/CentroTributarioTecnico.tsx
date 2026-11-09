@@ -23,14 +23,15 @@ import { PanelEnvioSii } from '@/features/sii/components/compartidos/PanelEnvioS
 // tasa que usa el backend por defecto
 const TASA_PPM = 1
 
+// con los nombres largos las ocho no entran y las de los extremos quedan cortadas por la mitad
 const PESTANAS = [
-  'Facturas compra (F29)',
-  'Boletas y DTEs emitidos',
+  'Facturas de compra',
+  'Documentos emitidos',
   'Pre-liquidacion F29',
-  'Guias de despacho (52)',
-  'Stock de folios CAF',
-  'Consumo diario RCOF',
-  'Certificacion tecnica (Res. 74)',
+  'Guias (52)',
+  'Folios CAF',
+  'Consumo RCOF',
+  'Certificacion (74)',
   'Envio al SII',
 ]
 
@@ -69,7 +70,7 @@ export function CentroTributarioTecnico() {
 
       <Tabs value={pestana} onChange={(_, valor) => setPestana(valor)} variant="scrollable" scrollButtons="auto">
         {PESTANAS.map((titulo) => (
-          <Tab key={titulo} label={titulo} sx={{ fontWeight: 600 }} />
+          <Tab key={titulo} label={titulo} sx={{ fontWeight: 600, px: 1.5, minWidth: 'auto' }} />
         ))}
       </Tabs>
 

@@ -9,8 +9,12 @@ import TextField from '@mui/material/TextField'
 import Button from '@mui/material/Button'
 import Alert from '@mui/material/Alert'
 import Typography from '@mui/material/Typography'
-import { formatearRut, validarRut } from '@/shared/utils/rut'
-import { useActualizarProveedor, useCrearProveedor } from '@/features/proveedores/hooks/useProveedores'
+import { formatearRut, limpiarRut, validarRut } from '@/shared/utils/rut'
+import {
+  useActualizarProveedor,
+  useCrearProveedor,
+  useProveedores,
+} from '@/features/proveedores/hooks/useProveedores'
 import type { FichaProveedor } from '@/features/proveedores/utils/fichaProveedor'
 
 type Props = {
@@ -48,13 +52,24 @@ export function DialogoProveedor({ editando, onCerrar }: Props) {
   const [form, setForm] = useState(() => valoresIniciales(editando))
   const crear = useCrearProveedor()
   const actualizar = useActualizarProveedor()
+  const proveedores = useProveedores()
 
   const cambiar = (campo: keyof typeof FORM_VACIO, valor: string) =>
     setForm((anterior) => ({ ...anterior, [campo]: valor }))
 
   const rutValido = validarRut(form.rut_proveedor)
   const nombreValido = form.nombre_proveedores.trim().length > 0
-  const puedeGuardar = nombreValido && (editando ? true : rutValido)
+
+  // el backend guarda con ON CONFLICT (tenant_id, rut_proveedor) DO UPDATE: dar de alta un rut que
+  // ya existe no crea otro proveedor, pisa el que estaba y nadie se entera
+  const repetido =
+    editando || !rutValido
+      ? undefined
+      : (proveedores.data ?? []).find(
+          (otro) => limpiarRut(otro.rut_proveedor) === limpiarRut(form.rut_proveedor),
+        )
+
+  const puedeGuardar = nombreValido && (editando ? true : rutValido && !repetido)
   const guardando = crear.isPending || actualizar.isPending
   const error = crear.error ?? actualizar.error
 
@@ -92,13 +107,20 @@ export function DialogoProveedor({ editando, onCerrar }: Props) {
 
       <DialogContent dividers>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 0.5 }}>
+          {repetido && (
+            <Alert severity="warning">
+              Ya tienes un proveedor con este RUT: <strong>{repetido.nombre_proveedores}</strong>. Si lo guardas
+              asi, se reemplazan sus datos. Cierra esta ventana y usa el boton de editar de ese proveedor.
+            </Alert>
+          )}
+
           <TextField
             label="RUT del proveedor"
             value={form.rut_proveedor}
             onChange={(evento) => cambiar('rut_proveedor', evento.target.value)}
             onBlur={() => form.rut_proveedor && cambiar('rut_proveedor', formatearRut(form.rut_proveedor))}
             disabled={Boolean(editando)} // el rut es la clave unica, no se puede cambiar
-            error={form.rut_proveedor.length > 0 && !rutValido}
+            error={(form.rut_proveedor.length > 0 && !rutValido) || Boolean(repetido)}
             helperText={
               editando
                 ? 'El RUT identifica al proveedor y no se puede modificar'

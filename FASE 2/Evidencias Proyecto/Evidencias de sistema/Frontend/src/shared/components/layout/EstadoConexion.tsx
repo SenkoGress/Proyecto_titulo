@@ -7,7 +7,7 @@ import { obtenerColoresMenu } from '@/app/theme/theme'
 import { useModoTema } from '@/shared/stores/temaStore'
 import { useEstadoPos } from '@/features/pos/hooks/usePos'
 import { useEsModoTecnico } from '@/shared/stores/modoVistaStore'
-import { formatFecha } from '@/shared/utils/formatFecha'
+import { formatFecha, haceCuanto } from '@/shared/utils/formatFecha'
 import type { EstadoPos } from '@/features/pos/types'
 
 // texto y color por estado
@@ -50,16 +50,23 @@ export function EstadoConexion() {
         {data ? data.device_id : 'Terminal local'}
       </Typography>
 
-      {/* detalle modo tecnico */}
-      {esModoTecnico && data && (
+      {/* la fecha de la ultima subida vivia solo en el tooltip del modo tecnico: en modo visual no
+          habia forma de saber desde cuando no se sube nada */}
+      {data && (
         <Tooltip title={`Ultima subida a la nube: ${formatFecha(data.last_synced_at)}`}>
           <Typography
             variant="caption"
             sx={{ color: coloresMenu.textoApagado, display: 'block', cursor: 'help' }}
           >
-            {data.pending_dirty_count} ventas por subir
+            Se subio {haceCuanto(data.last_synced_at)}
           </Typography>
         </Tooltip>
+      )}
+
+      {esModoTecnico && data && (
+        <Typography variant="caption" sx={{ color: coloresMenu.textoApagado, display: 'block' }}>
+          {data.pending_dirty_count} ventas por subir
+        </Typography>
       )}
     </Box>
   )

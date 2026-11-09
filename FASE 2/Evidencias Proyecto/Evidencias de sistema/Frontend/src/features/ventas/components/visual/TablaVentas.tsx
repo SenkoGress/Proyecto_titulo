@@ -15,9 +15,11 @@ import Tooltip from '@mui/material/Tooltip'
 import Skeleton from '@mui/material/Skeleton'
 import ReceiptLongOutlined from '@mui/icons-material/ReceiptLongOutlined'
 import AssignmentReturnOutlined from '@mui/icons-material/AssignmentReturnOutlined'
+import CloudOffOutlined from '@mui/icons-material/CloudOffOutlined'
 import { formatoClp } from '@/shared/utils/formatoClp'
 import { formatFecha } from '@/shared/utils/formatFecha'
 import { detalleProductos } from '@/features/ventas/utils/filaVenta'
+import { estadoEnLaNube, noSubio } from '@/features/ventas/utils/sincronizacionVenta'
 import type { FilaVenta } from '@/features/ventas/utils/filaVenta'
 
 type Props = {
@@ -82,6 +84,20 @@ export function TablaVentas({
                   <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'text.secondary' }}>
                     {venta.folio}
                   </Typography>
+
+                  {/* la marca solo aparece cuando falta: si todo subio, no ensucia la tabla */}
+                  {noSubio(venta) && (
+                    <Tooltip title={estadoEnLaNube(venta).detalle}>
+                      <Chip
+                        icon={<CloudOffOutlined />}
+                        label={estadoEnLaNube(venta).texto}
+                        color={estadoEnLaNube(venta).tono}
+                        size="small"
+                        variant="outlined"
+                        sx={{ display: 'flex', width: 'fit-content', mt: 0.5 }}
+                      />
+                    </Tooltip>
+                  )}
                 </TableCell>
 
                 <TableCell sx={{ maxWidth: 320 }}>

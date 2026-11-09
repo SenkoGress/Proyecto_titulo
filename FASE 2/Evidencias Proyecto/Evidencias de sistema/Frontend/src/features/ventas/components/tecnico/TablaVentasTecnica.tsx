@@ -11,6 +11,7 @@ import { formatoClp } from '@/shared/utils/formatoClp'
 import { formatFecha } from '@/shared/utils/formatFecha'
 import { nombreCortoDte, nombreDocumentoDte } from '@/features/dte/utils/nombreDte'
 import { detalleProductos } from '@/features/ventas/utils/filaVenta'
+import { estadoEnLaNube } from '@/features/ventas/utils/sincronizacionVenta'
 import type { FilaVenta } from '@/features/ventas/utils/filaVenta'
 
 type Props = {
@@ -20,10 +21,6 @@ type Props = {
   onDevolver: (venta: FilaVenta) => void
 }
 
-// el backend marca PENDING mientras la venta no sube a la nube
-function ColorSync(estado: string): 'success' | 'warning' {
-  return estado === 'SYNCED' ? 'success' : 'warning'
-}
 
 function armarColumnas(
   onVerTicket: (venta: FilaVenta) => void,
@@ -98,13 +95,15 @@ function armarColumnas(
           <Typography variant="caption" sx={{ fontWeight: 700, color: 'success.main' }}>
             {parametros.row.estado}
           </Typography>
-          <Chip
-            label={parametros.row.sync_status}
-            size="small"
-            color={ColorSync(parametros.row.sync_status)}
-            variant="outlined"
-            sx={{ height: 18, fontSize: 10 }}
-          />
+          <Tooltip title={`${estadoEnLaNube(parametros.row).detalle} (${parametros.row.sync_status})`}>
+            <Chip
+              label={estadoEnLaNube(parametros.row).texto}
+              size="small"
+              color={estadoEnLaNube(parametros.row).tono}
+              variant="outlined"
+              sx={{ height: 18, fontSize: 10 }}
+            />
+          </Tooltip>
         </Box>
       ),
     },
