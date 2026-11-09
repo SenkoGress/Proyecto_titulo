@@ -18,6 +18,7 @@ export function BotonSincronizar() {
 
   const documentos = resultado?.invoice_document_backup
   const detenidas = resultado?.stopped_sales_count ?? 0
+  const falloLaBajada = resultado?.catalog_pull_error
 
   // el servidor da por exitosa una subida parcial, y ni una venta detenida ni un documento que
   // perdio su archivo se arreglan solos: ninguno es una buena noticia para el dueño
@@ -26,6 +27,7 @@ export function BotonSincronizar() {
     resultado?.success === false ||
     resultado?.partial === true ||
     detenidas > 0 ||
+    Boolean(falloLaBajada) ||
     documentosNecesitanAtencion(documentos)
 
   return (
@@ -52,6 +54,8 @@ export function BotonSincronizar() {
           {sincronizar.isError ? resumenSincronizacion(sincronizar.error) : resultado?.message}
           {avisoVentasDetenidas(detenidas)}
           {avisoDocumentos(documentos)}
+          {/* las ventas pueden haber subido y el catalogo no: son dos viajes distintos */}
+          {falloLaBajada && ' Los precios y productos nuevos no se pudieron bajar desde la nube.'}
         </Alert>
       </Snackbar>
     </>

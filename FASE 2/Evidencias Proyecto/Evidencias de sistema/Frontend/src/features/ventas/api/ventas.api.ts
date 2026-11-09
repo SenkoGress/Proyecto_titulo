@@ -24,6 +24,15 @@ export async function obtenerDtesEmitidos() {
   return data.data
 }
 
+// devuelve a la cola una venta que agoto sus intentos. No toca la venta, solo la vuelve a ofrecer
+export async function reintentarVenta(ventaId: string) {
+  const { data } = await httpClient.post<{ success: boolean; message: string }>(
+    endpoints.pos.reintentarVenta(ventaId),
+    { tenant_id: tenantActual() },
+  )
+  return data
+}
+
 // devuelve una venta: repone el stock y emite nota de credito (dte 61)
 export async function registrarDevolucion(variables: {
   ventaId: string

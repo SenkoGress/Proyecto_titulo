@@ -10,6 +10,7 @@ export const endpoints = {
     registro: `${API_V1}/auth/register`,
     perfil: `${API_V1}/auth/me`,
     usuarios: `${API_V1}/auth/users`,
+    usuario: (id: string) => `${API_V1}/auth/users/${id}`,
     clave: `${API_V1}/auth/password`,
   },
   sistema: {
@@ -32,6 +33,7 @@ export const endpoints = {
     stockProducto: (id: string) => `${API_V1}/pos/products/${id}/stock`,
     mermas: `${API_V1}/pos/mermas`,
     historialProducto: (id: string) => `${API_V1}/pos/products/${id}/history`,
+    reintentarVenta: (id: string) => `${API_V1}/pos/transactions/${id}/reintentar-sincronizacion`,
   },
   replenishment: {
     sugerir: `${API_V1}/replenishment/suggest`,

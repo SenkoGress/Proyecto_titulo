@@ -21,6 +21,9 @@ export type Transaccion = {
   unidades: number
   estado: string
   sync_status: string
+  sync_attempts: number
+  // 1 cuando agoto los intentos: no vuelve a subir sola, hay que reintentarla a mano
+  sync_detenida: number
   observaciones: string | null
   cajero_nombre: string
   medio_pago_nombre: string

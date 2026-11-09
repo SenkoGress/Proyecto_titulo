@@ -12,6 +12,7 @@ import { formatFecha } from '@/shared/utils/formatFecha'
 import { nombreCortoDte, nombreDocumentoDte } from '@/features/dte/utils/nombreDte'
 import { detalleProductos } from '@/features/ventas/utils/filaVenta'
 import { estadoEnLaNube } from '@/features/ventas/utils/sincronizacionVenta'
+import { BotonReintentarVenta } from '@/features/ventas/components/compartidos/BotonReintentarVenta'
 import type { FilaVenta } from '@/features/ventas/utils/filaVenta'
 
 type Props = {
@@ -89,13 +90,15 @@ function armarColumnas(
     {
       field: 'estado',
       headerName: 'Estado',
-      width: 120,
+      width: 190,
       renderCell: (parametros) => (
         <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center', flexWrap: 'wrap', py: 1 }}>
           <Typography variant="caption" sx={{ fontWeight: 700, color: 'success.main' }}>
             {parametros.row.estado}
           </Typography>
-          <Tooltip title={`${estadoEnLaNube(parametros.row).detalle} (${parametros.row.sync_status})`}>
+          <Tooltip
+            title={`${estadoEnLaNube(parametros.row).detalle} (${parametros.row.sync_status}, ${parametros.row.sync_attempts} intentos)`}
+          >
             <Chip
               label={estadoEnLaNube(parametros.row).texto}
               size="small"
@@ -104,6 +107,8 @@ function armarColumnas(
               sx={{ height: 18, fontSize: 10 }}
             />
           </Tooltip>
+
+          <BotonReintentarVenta venta={parametros.row} compacto />
         </Box>
       ),
     },

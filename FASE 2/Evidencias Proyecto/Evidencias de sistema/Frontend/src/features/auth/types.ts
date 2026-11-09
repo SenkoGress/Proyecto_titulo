@@ -9,6 +9,24 @@ export type Usuario = {
   nombre: string
   email: string
   rol: RolUsuario
+  // 0 = dado de baja: no puede entrar, pero conserva sus ventas y cierres
+  activo?: number
+}
+
+// todos los campos son opcionales: se manda solo lo que cambia
+export type CambioDeUsuario = {
+  nombre?: string
+  email?: string
+  rol?: RolUsuario
+  password?: string
+  activo?: boolean
+}
+
+// el backend elimina al que no tiene historial y desactiva al que si lo tiene
+export type RespuestaBaja = {
+  success: boolean
+  message: string
+  desactivado: boolean
 }
 
 export type Credenciales = {

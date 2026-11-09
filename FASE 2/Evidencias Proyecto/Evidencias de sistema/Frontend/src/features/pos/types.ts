@@ -137,6 +137,8 @@ export type ResultadoSync = {
   // agotaron los intentos: no se reintentan solas
   stopped_sales_count?: number
   catalog_backup?: { productos_nuevos: number; proveedores_nuevos: number }
+  // la bajada del catalogo fallo: antes se tragaba como aviso y la pantalla decia que salio bien
+  catalog_pull_error?: string | null
   pending_dirty_count?: number
   invoice_queue?: { procesadas: number; fallidas: number; pendientes: number }
   invoice_document_backup?: RespaldoDocumentos

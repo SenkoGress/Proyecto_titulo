@@ -20,6 +20,7 @@ import { formatoClp } from '@/shared/utils/formatoClp'
 import { formatFecha } from '@/shared/utils/formatFecha'
 import { detalleProductos } from '@/features/ventas/utils/filaVenta'
 import { estadoEnLaNube, noSubio } from '@/features/ventas/utils/sincronizacionVenta'
+import { BotonReintentarVenta } from '@/features/ventas/components/compartidos/BotonReintentarVenta'
 import type { FilaVenta } from '@/features/ventas/utils/filaVenta'
 
 type Props = {
@@ -87,16 +88,18 @@ export function TablaVentas({
 
                   {/* la marca solo aparece cuando falta: si todo subio, no ensucia la tabla */}
                   {noSubio(venta) && (
-                    <Tooltip title={estadoEnLaNube(venta).detalle}>
-                      <Chip
-                        icon={<CloudOffOutlined />}
-                        label={estadoEnLaNube(venta).texto}
-                        color={estadoEnLaNube(venta).tono}
-                        size="small"
-                        variant="outlined"
-                        sx={{ display: 'flex', width: 'fit-content', mt: 0.5 }}
-                      />
-                    </Tooltip>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 0.5, mt: 0.5 }}>
+                      <Tooltip title={estadoEnLaNube(venta).detalle}>
+                        <Chip
+                          icon={<CloudOffOutlined />}
+                          label={estadoEnLaNube(venta).texto}
+                          color={estadoEnLaNube(venta).tono}
+                          size="small"
+                          variant="outlined"
+                        />
+                      </Tooltip>
+                      <BotonReintentarVenta venta={venta} compacto />
+                    </Box>
                   )}
                 </TableCell>
 

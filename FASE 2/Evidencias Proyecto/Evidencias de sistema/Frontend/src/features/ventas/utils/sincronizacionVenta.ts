@@ -1,16 +1,21 @@
 // src/features/ventas/utils/sincronizacionVenta.ts
 import type { FilaVenta } from '@/features/ventas/utils/filaVenta'
 
-// GET /pos/transactions trae sync_status, pero no sync_attempts: desde el frontend se sabe que la
-// venta no esta en la nube, no si todavia le quedan intentos o si ya se detuvo. El conteo exacto
-// de detenidas lo da el aviso de sincronizar (stopped_sales_count)
-
 export function noSubio(venta: FilaVenta): boolean {
   return (venta.sync_status ?? '').toUpperCase() !== 'SYNCED'
 }
 
+// el backend manda sync_detenida ya calculada para no copiar aca el tope de intentos
+export function estaDetenida(venta: FilaVenta): boolean {
+  return Number(venta.sync_detenida) === 1
+}
+
 export function contarSinSubir(ventas: FilaVenta[]): number {
   return ventas.filter(noSubio).length
+}
+
+export function contarDetenidas(ventas: FilaVenta[]): number {
+  return ventas.filter(estaDetenida).length
 }
 
 export type EstadoNube = {
@@ -26,11 +31,19 @@ export function estadoEnLaNube(venta: FilaVenta): EstadoNube {
     return { texto: 'En la nube', tono: 'success', detalle: 'La venta esta respaldada en la nube' }
   }
 
+  if (estaDetenida(venta)) {
+    return {
+      texto: 'Detenida',
+      tono: 'error',
+      detalle: `Agoto sus ${venta.sync_attempts} intentos y ya no se reintenta sola. Sigue guardada en el equipo`,
+    }
+  }
+
   if (estado === 'FAILED') {
     return {
       texto: 'No subio',
       tono: 'error',
-      detalle: 'La nube rechazo esta venta. Sigue guardada en el equipo y puede necesitar revision',
+      detalle: 'La nube rechazo esta venta. Lo vuelve a intentar en la proxima sincronizacion',
     }
   }
 

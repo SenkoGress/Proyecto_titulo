@@ -4,6 +4,7 @@ import {
   obtenerDtesEmitidos,
   obtenerTransacciones,
   registrarDevolucion,
+  reintentarVenta,
 } from '@/features/ventas/api/ventas.api'
 import { INTERVALO_REFRESCO_MS, VIGENCIA_LARGA_MS } from '@/lib/query/queryClient'
 
@@ -22,6 +23,19 @@ export function useDtesEmitidos() {
     queryKey: ['dte', 'lista'],
     queryFn: obtenerDtesEmitidos,
     staleTime: VIGENCIA_LARGA_MS,
+  })
+}
+
+// la venta vuelve a la cola, pero no sube hasta la proxima sincronizacion
+export function useReintentarVenta() {
+  const clienteQuery = useQueryClient()
+
+  return useMutation({
+    mutationFn: reintentarVenta,
+    onSuccess: () => {
+      clienteQuery.invalidateQueries({ queryKey: ['pos', 'transacciones'] })
+      clienteQuery.invalidateQueries({ queryKey: ['pos', 'estado'] })
+    },
   })
 }
 

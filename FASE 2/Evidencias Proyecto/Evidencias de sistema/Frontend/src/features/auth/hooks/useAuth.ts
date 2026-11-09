@@ -1,6 +1,13 @@
 // src/features/auth/hooks/useAuth.ts
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { cambiarClave, crearUsuario, iniciarSesion, obtenerUsuarios } from '@/features/auth/api/auth.api'
+import {
+  cambiarClave,
+  crearUsuario,
+  darDeBajaUsuario,
+  editarUsuario,
+  iniciarSesion,
+  obtenerUsuarios,
+} from '@/features/auth/api/auth.api'
 import { useSesionStore } from '@/features/auth/stores/sesionStore'
 
 export function useIniciarSesion() {
@@ -25,6 +32,24 @@ export function useCrearUsuario() {
 
   return useMutation({
     mutationFn: crearUsuario,
+    onSuccess: () => clienteQuery.invalidateQueries({ queryKey: ['auth', 'usuarios'] }),
+  })
+}
+
+export function useEditarUsuario() {
+  const clienteQuery = useQueryClient()
+
+  return useMutation({
+    mutationFn: editarUsuario,
+    onSuccess: () => clienteQuery.invalidateQueries({ queryKey: ['auth', 'usuarios'] }),
+  })
+}
+
+export function useDarDeBajaUsuario() {
+  const clienteQuery = useQueryClient()
+
+  return useMutation({
+    mutationFn: darDeBajaUsuario,
     onSuccess: () => clienteQuery.invalidateQueries({ queryKey: ['auth', 'usuarios'] }),
   })
 }

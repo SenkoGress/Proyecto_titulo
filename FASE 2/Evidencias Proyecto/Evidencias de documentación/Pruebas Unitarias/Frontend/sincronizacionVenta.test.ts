@@ -2,14 +2,16 @@
 import { describe, expect, it } from 'vitest'
 import {
   avisoVentasSinSubir,
+  contarDetenidas,
   contarSinSubir,
+  estaDetenida,
   estadoEnLaNube,
   noSubio,
 } from '@/features/ventas/utils/sincronizacionVenta'
 import type { FilaVenta } from '@/features/ventas/utils/filaVenta'
 
-function venta(sync_status: string): FilaVenta {
-  return { sync_status } as FilaVenta
+function venta(sync_status: string, sync_detenida = 0, sync_attempts = 0): FilaVenta {
+  return { sync_status, sync_detenida, sync_attempts } as FilaVenta
 }
 
 describe('noSubio', () => {
@@ -46,6 +48,28 @@ describe('estadoEnLaNube', () => {
 
   it('la respaldada queda en verde', () => {
     expect(estadoEnLaNube(venta('SYNCED')).tono).toBe('success')
+  })
+
+  // la que fallo pero aun reintenta no es lo mismo que la que se rindio
+  it('la detenida se nombra distinto de la que todavia reintenta', () => {
+    expect(estadoEnLaNube(venta('FAILED', 1, 5)).texto).toBe('Detenida')
+    expect(estadoEnLaNube(venta('FAILED', 0, 2)).texto).toBe('No subio')
+  })
+
+  it('la detenida dice cuantos intentos gasto', () => {
+    expect(estadoEnLaNube(venta('FAILED', 1, 5)).detalle).toContain('5 intentos')
+  })
+})
+
+describe('estaDetenida', () => {
+  it('solo cuenta la que el backend marco como detenida', () => {
+    expect(estaDetenida(venta('FAILED', 1))).toBe(true)
+    expect(estaDetenida(venta('FAILED', 0))).toBe(false)
+    expect(estaDetenida(venta('SYNCED'))).toBe(false)
+  })
+
+  it('cuenta las detenidas de una lista', () => {
+    expect(contarDetenidas([venta('FAILED', 1), venta('FAILED', 0), venta('SYNCED')])).toBe(1)
   })
 })
 
