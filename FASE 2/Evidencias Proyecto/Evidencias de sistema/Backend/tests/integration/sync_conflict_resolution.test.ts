@@ -136,4 +136,103 @@ describe('Conflict Resolution Policies (Net Stock Delta & Catalog Primacy)', () 
     expect(Number(localUpdated?.precio_compra)).toBe(600);
     expect(localUpdated?.nombre).toBe('Bebida Cola 1.5L Zero Azúcar');
   });
+
+  test('3. Una venta de un producto que la nube conoce con otro id y el mismo SKU sube contra el id de la nube', async () => {
+    const ids = createFixtureIds();
+    const tenant = sampleTenant(ids.tenantId);
+    const user = sampleUsuario(ids.usuarioCajeroId, ids.tenantId, 'cajero');
+    const idLocal = ids.productoId;
+    const idNube = createFixtureIds().productoId;
+    const sku = `SKU-FACTURA-${idLocal.slice(0, 8)}`;
+
+    await pgClient.query(`INSERT INTO tenants (id, nombre, estado) VALUES ($1, $2, $3)`, [tenant.id, tenant.nombre, tenant.estado]);
+    await pgClient.query(`INSERT INTO usuarios (id, tenant_id, nombre, email, password_hash, rol) VALUES ($1, $2, $3, $4, $5, $6)`, [user.id, user.tenant_id, user.nombre, user.email, user.password_hash, user.rol]);
+    await pgClient.query(
+      `INSERT INTO productos (id, tenant_id, sku, nombre, stock_actual, precio_compra, precio_venta)
+       VALUES ($1, $2, $3, 'Crema de leche', 20.0, 500, 1000)`,
+      [idNube, ids.tenantId, sku]
+    );
+
+    sqliteClient.execute('INSERT INTO tenants (id, nombre, estado) VALUES (?, ?, ?)', [tenant.id, tenant.nombre, tenant.estado]);
+    sqliteClient.execute('INSERT INTO usuarios (id, tenant_id, nombre, email, password_hash, rol) VALUES (?, ?, ?, ?, ?, ?)', [user.id, user.tenant_id, user.nombre, user.email, user.password_hash, user.rol]);
+    sqliteClient.execute(
+      `INSERT INTO productos (id, tenant_id, sku, nombre, stock_actual, precio_compra, precio_venta)
+       VALUES (?, ?, ?, 'Crema de leche', 20.0, 500, 1000)`,
+      [idLocal, ids.tenantId, sku]
+    );
+    const saleId = createFixtureIds().ventaId;
+    sqliteClient.execute(
+      `INSERT INTO transacciones_venta (id, tenant_id, usuario_id, folio_local_sqlite, total, unidades, estado, is_dirty, sync_status)
+       VALUES (?, ?, ?, 'FOLIO-MISMO-SKU', 2000.0, 2.0, 'COMPLETADA', 1, 'PENDING')`,
+      [saleId, ids.tenantId, ids.usuarioCajeroId]
+    );
+    sqliteClient.execute(
+      `INSERT INTO detalle_venta (id, venta_id, producto_id, cantidad, precio_unitario, subtotal)
+       VALUES (?, ?, ?, 2.0, 1000.0, 2000.0)`,
+      [createFixtureIds().detalleVentaId, saleId, idLocal]
+    );
+
+    const pushResult = await posEngine.syncPush(ids.tenantId, (payload) => cloudReceiver.ingestPushBatch(payload));
+
+    expect(pushResult.success).toBe(true);
+    expect(pushResult.synced_ids).toContain(saleId);
+    const detalle = await pgClient.query<{ producto_id: string }>('SELECT producto_id FROM detalle_venta WHERE venta_id = $1', [saleId]);
+    expect(detalle.rows[0].producto_id).toBe(idNube);
+    const stock = await pgClient.query<{ stock_actual: string }>('SELECT stock_actual FROM productos WHERE id = $1', [idNube]);
+    expect(Number(stock.rows[0].stock_actual)).toBe(18.0);
+    const duplicados = await pgClient.query('SELECT id FROM productos WHERE tenant_id = $1 AND sku = $2', [ids.tenantId, sku]);
+    expect(duplicados.rows.length).toBe(1);
+  });
+
+  test('4. La bajada reconoce por SKU el producto que el terminal tiene con otro id, sin deshacer el resto', async () => {
+    const ids = createFixtureIds();
+    const tenant = sampleTenant(ids.tenantId);
+    const idLocal = ids.productoId;
+    const idNube = createFixtureIds().productoId;
+    const idNuevo = createFixtureIds().productoId;
+    const sku = `SKU-DEMO-${idLocal.slice(0, 8)}`;
+
+    sqliteClient.execute('INSERT INTO tenants (id, nombre, estado) VALUES (?, ?, ?)', [tenant.id, tenant.nombre, tenant.estado]);
+    sqliteClient.execute(
+      `INSERT INTO productos (id, tenant_id, sku, nombre, stock_actual, precio_compra, precio_venta)
+       VALUES (?, ?, ?, 'Crema de leche', 10.0, 500, 1000)`,
+      [idLocal, ids.tenantId, sku]
+    );
+    await pgClient.query(`INSERT INTO tenants (id, nombre, estado) VALUES ($1, $2, $3)`, [tenant.id, tenant.nombre, tenant.estado]);
+    await pgClient.query(
+      `INSERT INTO productos (id, tenant_id, sku, nombre, stock_actual, precio_compra, precio_venta)
+       VALUES ($1, $2, $3, 'Crema de leche 200 cc', 10.0, 550, 1190),
+              ($4, $2, $5, 'Producto nuevo de la nube', 5.0, 300, 700)`,
+      [idNube, ids.tenantId, sku, idNuevo, `SKU-NUEVO-${idNuevo.slice(0, 8)}`]
+    );
+
+    const updatedCount = await posEngine.syncPullCatalog(ids.tenantId, (req) =>
+      cloudReceiver.getPullUpdates(req.tenant_id, req.last_pull_timestamp)
+    );
+
+    expect(updatedCount).toBe(2);
+    const locales = sqliteClient.query<Producto>('SELECT id, nombre, precio_venta FROM productos WHERE tenant_id = ? ORDER BY nombre', [ids.tenantId]);
+    expect(locales.map((p) => p.id)).toEqual([idLocal, idNuevo]);
+    expect(locales[0].nombre).toBe('Crema de leche 200 cc');
+    expect(Number(locales[0].precio_venta)).toBe(1190);
+  });
+
+  test('5. Reintentar una venta detenida la devuelve a la cola con los intentos en cero', () => {
+    const ids = createFixtureIds();
+    const tenant = sampleTenant(ids.tenantId);
+    const user = sampleUsuario(ids.usuarioCajeroId, ids.tenantId, 'cajero');
+    sqliteClient.execute('INSERT INTO tenants (id, nombre, estado) VALUES (?, ?, ?)', [tenant.id, tenant.nombre, tenant.estado]);
+    sqliteClient.execute('INSERT INTO usuarios (id, tenant_id, nombre, email, password_hash, rol) VALUES (?, ?, ?, ?, ?, ?)', [user.id, user.tenant_id, user.nombre, user.email, user.password_hash, user.rol]);
+    sqliteClient.execute(
+      `INSERT INTO transacciones_venta (id, tenant_id, usuario_id, folio_local_sqlite, total, unidades, estado, is_dirty, sync_status, sync_attempts)
+       VALUES (?, ?, ?, 'FOLIO-DETENIDA', 1000.0, 1.0, 'COMPLETADA', 0, 'FAILED', 5)`,
+      [ids.ventaId, ids.tenantId, ids.usuarioCajeroId]
+    );
+    expect(posEngine.contarVentasDetenidas(ids.tenantId)).toBe(1);
+
+    expect(posEngine.reintentarVenta(ids.tenantId, ids.ventaId)).toBe(true);
+    expect(posEngine.contarVentasDetenidas(ids.tenantId)).toBe(0);
+    expect(posEngine.getPendingDirtySales(ids.tenantId).map((i) => i.sale.id)).toContain(ids.ventaId);
+    expect(posEngine.reintentarVenta(ids.tenantId, 'no-existe')).toBe(false);
+  });
 });

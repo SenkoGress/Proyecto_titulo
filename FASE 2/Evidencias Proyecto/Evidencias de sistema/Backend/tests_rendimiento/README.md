@@ -10,7 +10,7 @@ npm run test:rendimiento # en otra: la carga
 ## Qué mide y qué no
 
 Cada escenario declara el requisito no funcional al que responde y su desempeño de referencia
-(`docs/ARQUITECTURA_SISTEMA.md`, sección 3.1). Se informa p50, p95, p99, máximo y operaciones por
+(documento de arquitectura, `docs/arquitectura_sistema.docx`, sección 3.1). Se informa p50, p95, p99, máximo y operaciones por
 segundo, y el p95 se compara con la referencia.
 
 Lo que se assertea es distinto de lo que se mide. Un umbral de milisegundos dentro de una prueba
@@ -26,13 +26,25 @@ caché, no el sistema en régimen.
 ## La venta transaccional
 
 El escenario de `POST /pos/checkout` registra ventas reales y descuenta existencias, así que está
-apagado por omisión. Para medirlo, contra una base desechable:
+apagado por omisión. Para medirlo, contra una copia desechable de la base, en PowerShell:
 
-```bash
-cp data/gestock_local_pos.sqlite /tmp/rendimiento.sqlite
-SQLITE_DB_PATH=/tmp/rendimiento.sqlite npm run dev
-GESTOCK_REND_ESCRITURA=true npm run test:rendimiento
+```powershell
+# Detener el backend antes de copiar. La base trabaja en modo WAL: el .sqlite solo no lleva las
+# escrituras recientes, que viven en -wal y -shm hasta el siguiente punto de control.
+$copia = Join-Path $env:TEMP 'rendimiento'
+New-Item -ItemType Directory -Force $copia | Out-Null
+Copy-Item data\gestock_local_pos.sqlite* $copia
+
+# Consola 1: el backend sobre la copia
+$env:SQLITE_DB_PATH = Join-Path $copia 'gestock_local_pos.sqlite'; npm run dev
+
+# Consola 2: la carga con el escenario de venta
+$env:GESTOCK_REND_ESCRITURA = 'true'; npm run test:rendimiento
 ```
+
+Las latencias de venta se informan dos veces: la que mide el cliente, que incluye el viaje HTTP, y
+la que declara el propio servidor (`En servidor`). El límite de RNF-REND-01 se compara con la
+segunda.
 
 ## Variables
 

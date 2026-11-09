@@ -230,6 +230,20 @@ export class PosSyncEngineService {
     });
   }
 
+  /**
+   * Devuelve a la cola una venta que la nube rechazo, con los intentos en cero. No toca la venta:
+   * solo la vuelve a ofrecer en la proxima sincronizacion. Falso si no existe o ya subio.
+   */
+  public reintentarVenta(tenantId: string, ventaId: string): boolean {
+    const res = this.sqlite.execute(
+      `UPDATE transacciones_venta
+       SET sync_attempts = 0, sync_status = 'PENDING', is_dirty = 1
+       WHERE id = ? AND tenant_id = ? AND sync_status = 'FAILED'`,
+      [ventaId, tenantId]
+    );
+    return res.changes > 0;
+  }
+
   /** Ventas que agotaron los intentos y ya no se reintentan. */
   public contarVentasDetenidas(tenantId: string): number {
     try {
@@ -299,9 +313,12 @@ export class PosSyncEngineService {
 
       this.sqlite.withTransaction(() => {
         for (const cloudProd of response.products) {
+          // Mismo SKU con otro id es el mismo producto: insertarlo chocaria con UNIQUE(tenant_id, sku)
+          // y desharia la bajada completa. Se actualiza el local conservando su id.
           const localProd = this.sqlite.queryOne<Producto>(
-            'SELECT * FROM productos WHERE id = ? AND tenant_id = ?',
-            [cloudProd.id, tenantId]
+            `SELECT * FROM productos WHERE tenant_id = ? AND (id = ? OR sku = ?)
+             ORDER BY (id = ?) DESC LIMIT 1`,
+            [tenantId, cloudProd.id, cloudProd.sku, cloudProd.id]
           );
 
           if (localProd) {
@@ -317,7 +334,7 @@ export class PosSyncEngineService {
                 reconciled.precio_venta,
                 reconciled.nombre,
                 reconciled.activo ? 1 : 0,
-                cloudProd.id,
+                localProd.id,
                 tenantId
               ]
             );

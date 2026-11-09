@@ -1,6 +1,6 @@
 erDiagram
     %% Vista general del modelo de datos de GesTock
-    %% 29 entidades y 45 relaciones. El detalle de atributos esta en el diagrama completo.
+    %% 30 entidades y 46 relaciones. El detalle de atributos esta en el diagrama completo.
 
     CIERRES_CAJA ||--|{ CAJA_MOVIMIENTOS : "sesion_caja_id"
     METODOS_PAGO ||--o{ TRANSACCIONES_VENTA : "metodo_pago_id"
@@ -37,6 +37,7 @@ erDiagram
     TENANTS ||--|{ PURCHASE_ORDERS : "tenant_id"
     TENANTS ||--|{ SII_CAF : "tenant_id"
     TENANTS ||--|{ SII_DTE_EMITIDOS : "tenant_id"
+    TENANTS ||--|{ SII_ENVIOS : "tenant_id"
     TENANTS ||--|{ SII_RCOF_REGISTROS : "tenant_id"
     TENANTS ||--|{ TRANSACCIONES_VENTA : "tenant_id"
     TENANTS ||--|{ USUARIOS : "tenant_id"

@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { defaultPgClient } from '../database/postgres/client';
 import { defaultSqliteClient, SqliteClient } from '../database/sqlite/client';
 import { defaultPaymentDispatcher } from '../payments/payment-dispatcher.service';
-import { defaultPosSyncEngine } from '../sync/pos-sync-engine.service';
+import { defaultPosSyncEngine, TOPE_REINTENTOS_VENTA } from '../sync/pos-sync-engine.service';
 import { aplicarRedondeoChileno } from '../utils/pricing';
 import { logger } from '../utils/logger';
 import { defaultLotesService } from '../inventory/lotes.service';
@@ -920,13 +920,15 @@ router.post('/sync', async (req: Request, res: Response): Promise<void> => {
     }
 
     // 3. Traer actualizaciones de catálogo desde la nube (Pull)
+    // Su fallo no detiene el resto, pero se informa: tragarlo dejaba decir "sincronizado" con un
+    // catalogo que no habia bajado.
     let catalogUpdatedCount = 0;
+    let catalogPullError: string | null = null;
     try {
       catalogUpdatedCount = await defaultPosSyncEngine.syncPullCatalog(tenantId);
     } catch (pullErr) {
-      logger.warn('PosRoutes', 'Catalog pull encountered warning during sync', {
-        error: pullErr instanceof Error ? pullErr.message : String(pullErr)
-      });
+      catalogPullError = pullErr instanceof Error ? pullErr.message : String(pullErr);
+      logger.error('PosRoutes', 'La bajada del catálogo falló durante la sincronización', { error: catalogPullError });
     }
 
     // 4. Reintentar las facturas que quedaron sin digitalizar por falta de conexión (RF-43)
@@ -968,15 +970,16 @@ router.post('/sync', async (req: Request, res: Response): Promise<void> => {
 
     const detenidas = defaultPosSyncEngine.contarVentasDetenidas(tenantId);
 
+    const contar = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`;
     const partes = [
       result.synced_ids.length > 0
-        ? `${result.synced_ids.length} ventas respaldadas en la nube`
+        ? `${contar(result.synced_ids.length, 'venta respaldada', 'ventas respaldadas')} en la nube`
         : 'ventas ya sincronizadas',
       respaldoCatalogo.productos_nuevos > 0
-        ? `${respaldoCatalogo.productos_nuevos} productos respaldados en la nube`
+        ? `${contar(respaldoCatalogo.productos_nuevos, 'producto respaldado', 'productos respaldados')} en la nube`
         : null,
-      colaFacturas.procesadas > 0 ? `${colaFacturas.procesadas} facturas digitalizadas desde la cola` : null,
-      respaldoNube.respaldados > 0 ? `${respaldoNube.respaldados} documentos respaldados en la nube` : null
+      colaFacturas.procesadas > 0 ? `${contar(colaFacturas.procesadas, 'factura digitalizada', 'facturas digitalizadas')} desde la cola` : null,
+      respaldoNube.respaldados > 0 ? `${contar(respaldoNube.respaldados, 'documento respaldado', 'documentos respaldados')} en la nube` : null
     ].filter(Boolean);
 
     // El parcial es un exito con cuentas, no un fracaso: hay ventas arriba. Solo cuando no
@@ -988,15 +991,19 @@ router.post('/sync', async (req: Request, res: Response): Promise<void> => {
         ? `Subieron ${result.synced_ids.length} de ${result.synced_ids.length + result.failed_ids.length} ventas. ` +
           `El resto sigue guardado en el equipo y se sube al sincronizar de nuevo.`
         : `Sincronización completada: ${partes.join(' y ')}.`;
+    const mensajeFinal = catalogPullError
+      ? `${mensaje} El catálogo no pudo bajar desde la nube: ${catalogPullError}`
+      : mensaje;
 
     res.status(fracasoTotal ? 500 : 200).json({
       success: !fracasoTotal,
       partial: !fracasoTotal && result.failed_ids.length > 0,
-      message: mensaje,
+      message: mensajeFinal,
       synced_sales_count: result.synced_ids.length,
       failed_sales_count: result.failed_ids.length,
       stopped_sales_count: detenidas,
       catalog_updated_count: catalogUpdatedCount,
+      catalog_pull_error: catalogPullError,
       catalog_backup: respaldoCatalogo,
       pending_dirty_count: dirtyCountResult?.count || 0,
       invoice_queue: colaFacturas,
@@ -1122,6 +1129,24 @@ router.get('/vencimientos', (req: Request, res: Response): void => {
 });
 
 /**
+ * POST /api/v1/pos/transactions/:id/reintentar-sincronizacion
+ * Devuelve a la cola de subida una venta rechazada o detenida, con sus intentos en cero
+ */
+router.post('/transactions/:id/reintentar-sincronizacion', (req: Request, res: Response): void => {
+  const tenantId = (req.body?.tenant_id as string) || (req.query.tenant_id as string) || '00000000-0000-0000-0000-000000000001';
+  try {
+    if (!defaultPosSyncEngine.reintentarVenta(tenantId, String(req.params.id))) {
+      res.status(404).json({ success: false, message: 'No hay una venta rechazada con ese identificador' });
+      return;
+    }
+    res.json({ success: true, message: 'La venta vuelve a subir en la próxima sincronización' });
+  } catch (error) {
+    logger.error('PosRoutes', 'No se pudo reintentar la venta', error);
+    res.status(500).json({ success: false, message: 'No se pudo reintentar la venta' });
+  }
+});
+
+/**
  * GET /api/v1/pos/transactions
  * Registro visual de transacciones de venta con fecha, hora, cajero, tipo de pago y detalle de ítems
  */
@@ -1132,6 +1157,8 @@ router.get('/transactions', (req: Request, res: Response): void => {
     const sales = sqlite.query<any>(
       `SELECT v.id, v.folio_local_sqlite as folio, v.fecha, v.total, v.unidades, v.estado, 
               v.sync_status, v.observaciones, v.es_devolucion, v.referencia_venta_id,
+              COALESCE(v.sync_attempts, 0) as sync_attempts,
+              (v.sync_status = 'FAILED' AND COALESCE(v.sync_attempts, 0) >= ?) as sync_detenida,
               v.rut_cliente, v.tipo_documento_tributario, v.monto_ila,
               u.nombre as cajero_nombre,
               mp.nombre as medio_pago_nombre, mp.pasarela as medio_pago_tipo
@@ -1140,7 +1167,7 @@ router.get('/transactions', (req: Request, res: Response): void => {
        LEFT JOIN metodos_pago mp ON v.metodo_pago_id = mp.id
        WHERE v.tenant_id = ?
        ORDER BY v.fecha DESC LIMIT 100`,
-      [tenantId]
+      [TOPE_REINTENTOS_VENTA, tenantId]
     );
 
     const salesWithDetails = sales.map(sale => {

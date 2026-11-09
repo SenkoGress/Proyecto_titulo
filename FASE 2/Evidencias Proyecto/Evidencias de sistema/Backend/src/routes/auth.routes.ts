@@ -17,6 +17,7 @@ interface UserRow {
   email: string;
   password_hash: string;
   rol: 'admin' | 'cajero';
+  activo?: number | boolean;
 }
 
 /**
@@ -37,7 +38,7 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
     let user: UserRow | null | undefined = null;
     try {
       user = defaultSqliteClient.queryOne<UserRow>(
-        'SELECT id, tenant_id, nombre, email, password_hash, rol FROM usuarios WHERE tenant_id = ? AND LOWER(email) = LOWER(?)',
+        'SELECT id, tenant_id, nombre, email, password_hash, rol, activo FROM usuarios WHERE tenant_id = ? AND LOWER(email) = LOWER(?)',
         [tenant, email.trim()]
       );
     } catch (err) {
@@ -50,7 +51,7 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
         const pgOnline = await defaultPgClient.healthCheck();
         if (pgOnline) {
           const pgRes = await defaultPgClient.query<UserRow>(
-            'SELECT id, tenant_id, nombre, email, password_hash, rol FROM usuarios WHERE tenant_id = $1 AND LOWER(email) = LOWER($2)',
+            'SELECT id, tenant_id, nombre, email, password_hash, rol, activo FROM usuarios WHERE tenant_id = $1 AND LOWER(email) = LOWER($2)',
             [tenant, email.trim()]
           );
           if (pgRes.rows.length > 0) {
@@ -72,6 +73,10 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
     const match = bcrypt.compareSync(password, user.password_hash);
     if (!match) {
       res.status(401).json({ success: false, message: 'El correo o la clave no son correctos' });
+      return;
+    }
+    if (!estaActivo(user)) {
+      res.status(403).json({ success: false, message: 'Esta cuenta fue desactivada por el administrador' });
       return;
     }
 
@@ -238,7 +243,7 @@ router.get('/users', async (req: Request, res: Response): Promise<void> => {
     let users: any[] = [];
     try {
       users = defaultSqliteClient.query<Omit<UserRow, 'password_hash'> & { created_at?: string; updated_at?: string }>(
-        'SELECT id, tenant_id, nombre, email, rol, created_at, updated_at FROM usuarios WHERE tenant_id = ? ORDER BY created_at DESC, nombre ASC',
+        'SELECT id, tenant_id, nombre, email, rol, activo, created_at, updated_at FROM usuarios WHERE tenant_id = ? ORDER BY created_at DESC, nombre ASC',
         [tenant]
       );
     } catch (err) {
@@ -250,7 +255,7 @@ router.get('/users', async (req: Request, res: Response): Promise<void> => {
         const pgOnline = await defaultPgClient.healthCheck();
         if (pgOnline) {
           const pgRes = await defaultPgClient.query<Omit<UserRow, 'password_hash'> & { created_at?: string; updated_at?: string }>(
-            'SELECT id, tenant_id, nombre, email, rol, created_at, updated_at FROM usuarios WHERE tenant_id = $1 ORDER BY created_at DESC, nombre ASC',
+            'SELECT id, tenant_id, nombre, email, rol, activo, created_at, updated_at FROM usuarios WHERE tenant_id = $1 ORDER BY created_at DESC, nombre ASC',
             [tenant]
           );
           users = pgRes.rows;
@@ -347,6 +352,197 @@ router.put('/password', async (req: Request, res: Response): Promise<void> => {
   } catch (error) {
     logger.error('AuthRoute', 'Error en cambio de contraseña', error);
     res.status(500).json({ success: false, message: 'Error interno en cambio de contraseña' });
+  }
+});
+
+/** Las filas anteriores a la migracion 020 no traen la columna y cuentan como activas. */
+function estaActivo(user: { activo?: number | boolean | null }): boolean {
+  return user.activo === undefined || user.activo === null || Boolean(user.activo);
+}
+
+/** Un usuario con ventas o cierres de caja se desactiva: borrarlo perderia registro tributario. */
+function tieneHistorialLocal(usuarioId: string): boolean {
+  return Boolean(defaultSqliteClient.queryOne(
+    `SELECT 1 FROM transacciones_venta WHERE usuario_id = ?
+     UNION ALL SELECT 1 FROM cierres_caja WHERE usuario_id = ? LIMIT 1`,
+    [usuarioId, usuarioId]
+  ));
+}
+
+/** Administradores activos del comercio sin contar al usuario indicado. */
+function otrosAdminsActivos(tenantId: string, usuarioId: string): number {
+  const fila = defaultSqliteClient.queryOne<{ total: number }>(
+    "SELECT COUNT(*) AS total FROM usuarios WHERE tenant_id = ? AND rol = 'admin' AND activo = 1 AND id <> ?",
+    [tenantId, usuarioId]
+  );
+  return Number(fila?.total) || 0;
+}
+
+function exigirAdmin(req: Request, res: Response, accion: string): any | null {
+  const auth = extractAndVerifyToken(req);
+  if (!auth.valid) {
+    res.status(auth.status).json({ success: false, message: auth.message });
+    return null;
+  }
+  if (auth.user?.rol !== 'admin') {
+    res.status(403).json({ success: false, message: `Acceso denegado: solo administradores pueden ${accion}` });
+    return null;
+  }
+  return auth.user;
+}
+
+/**
+ * PUT /api/v1/auth/users/:id
+ * Edita nombre, correo, rol, estado o clave de un usuario del propio comercio. Requiere administrador.
+ * No permite dejar al comercio sin un administrador activo.
+ */
+router.put('/users/:id', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const admin = exigirAdmin(req, res, 'editar usuarios');
+    if (!admin) return;
+
+    const tenant = admin.tenant_id as string;
+    const id = String(req.params.id);
+    const actual = defaultSqliteClient.queryOne<UserRow>(
+      'SELECT id, tenant_id, nombre, email, password_hash, rol, activo FROM usuarios WHERE id = ? AND tenant_id = ?',
+      [id, tenant]
+    );
+    if (!actual) {
+      res.status(404).json({ success: false, message: 'El usuario no existe en este comercio' });
+      return;
+    }
+
+    const { nombre, email, rol, password, activo } = req.body || {};
+    if (password !== undefined && (typeof password !== 'string' || password.length < MIN_PASSWORD_LENGTH)) {
+      res.status(400).json({ success: false, message: `La contraseña debe tener al menos ${MIN_PASSWORD_LENGTH} caracteres` });
+      return;
+    }
+    if (nombre !== undefined && (typeof nombre !== 'string' || !nombre.trim())) {
+      res.status(400).json({ success: false, message: 'El nombre no puede quedar vacío' });
+      return;
+    }
+    if (email !== undefined && (typeof email !== 'string' || !email.trim())) {
+      res.status(400).json({ success: false, message: 'El correo no puede quedar vacío' });
+      return;
+    }
+
+    const nuevo = {
+      nombre: nombre !== undefined ? nombre.trim() : actual.nombre,
+      email: email !== undefined ? email.trim().toLowerCase() : actual.email,
+      rol: rol === undefined ? actual.rol : (rol === 'admin' ? 'admin' : 'cajero'),
+      activo: activo === undefined ? estaActivo(actual) : Boolean(activo),
+      password_hash: password !== undefined ? bcrypt.hashSync(password, 10) : actual.password_hash
+    };
+
+    const dejaDeSerAdmin = actual.rol === 'admin' && estaActivo(actual) && (nuevo.rol !== 'admin' || !nuevo.activo);
+    if (dejaDeSerAdmin && otrosAdminsActivos(tenant, id) === 0) {
+      res.status(409).json({ success: false, message: 'El comercio no puede quedar sin un administrador activo' });
+      return;
+    }
+
+    const duplicado = defaultSqliteClient.queryOne<{ id: string }>(
+      'SELECT id FROM usuarios WHERE tenant_id = ? AND LOWER(email) = LOWER(?) AND id <> ?',
+      [tenant, nuevo.email, id]
+    );
+    if (duplicado) {
+      res.status(409).json({ success: false, message: 'Ya existe otro usuario con ese correo en este comercio' });
+      return;
+    }
+
+    defaultSqliteClient.execute(
+      `UPDATE usuarios SET nombre = ?, email = ?, rol = ?, activo = ?, password_hash = ?, updated_at = datetime('now')
+       WHERE id = ? AND tenant_id = ?`,
+      [nuevo.nombre, nuevo.email, nuevo.rol, nuevo.activo ? 1 : 0, nuevo.password_hash, id, tenant]
+    );
+
+    try {
+      if (await defaultPgClient.healthCheck()) {
+        await defaultPgClient.query(
+          `UPDATE usuarios SET nombre = $1, email = $2, rol = $3, activo = $4, password_hash = $5, updated_at = NOW()
+           WHERE id = $6 AND tenant_id = $7`,
+          [nuevo.nombre, nuevo.email, nuevo.rol, nuevo.activo, nuevo.password_hash, id, tenant]
+        );
+      }
+    } catch (err) {
+      logger.warn('AuthRoute', 'No se pudo replicar la edición del usuario en PostgreSQL', { error: String(err) });
+    }
+
+    const usuario = { id, tenant_id: tenant, nombre: nuevo.nombre, email: nuevo.email, rol: nuevo.rol, activo: nuevo.activo };
+    res.status(200).json({ success: true, data: { usuario }, usuario });
+  } catch (error) {
+    logger.error('AuthRoute', 'Error editando usuario', error);
+    res.status(500).json({ success: false, message: 'Error interno editando usuario' });
+  }
+});
+
+/**
+ * DELETE /api/v1/auth/users/:id
+ * Elimina un usuario del propio comercio. Si tiene ventas o cierres de caja lo desactiva en su
+ * lugar, porque esos registros deben conservar a su autor. Requiere administrador.
+ */
+router.delete('/users/:id', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const admin = exigirAdmin(req, res, 'eliminar usuarios');
+    if (!admin) return;
+
+    const tenant = admin.tenant_id as string;
+    const id = String(req.params.id);
+    if (id === admin.id) {
+      res.status(409).json({ success: false, message: 'No puedes eliminar tu propia cuenta' });
+      return;
+    }
+    const actual = defaultSqliteClient.queryOne<UserRow>(
+      'SELECT id, rol, activo FROM usuarios WHERE id = ? AND tenant_id = ?',
+      [id, tenant]
+    );
+    if (!actual) {
+      res.status(404).json({ success: false, message: 'El usuario no existe en este comercio' });
+      return;
+    }
+    if (actual.rol === 'admin' && estaActivo(actual) && otrosAdminsActivos(tenant, id) === 0) {
+      res.status(409).json({ success: false, message: 'El comercio no puede quedar sin un administrador activo' });
+      return;
+    }
+
+    const desactivado = tieneHistorialLocal(id);
+    if (desactivado) {
+      defaultSqliteClient.execute(
+        "UPDATE usuarios SET activo = 0, updated_at = datetime('now') WHERE id = ? AND tenant_id = ?",
+        [id, tenant]
+      );
+    } else {
+      defaultSqliteClient.execute('DELETE FROM usuarios WHERE id = ? AND tenant_id = ?', [id, tenant]);
+    }
+
+    // La nube decide por su propio historial: puede tener ventas de este usuario hechas en otra caja
+    try {
+      if (await defaultPgClient.healthCheck()) {
+        const historial = await defaultPgClient.query(
+          `SELECT 1 FROM transacciones_venta WHERE usuario_id = $1
+           UNION ALL SELECT 1 FROM cierres_caja WHERE usuario_id = $1 LIMIT 1`,
+          [id]
+        );
+        await defaultPgClient.query(
+          historial.rows.length > 0
+            ? 'UPDATE usuarios SET activo = false, updated_at = NOW() WHERE id = $1 AND tenant_id = $2'
+            : 'DELETE FROM usuarios WHERE id = $1 AND tenant_id = $2',
+          [id, tenant]
+        );
+      }
+    } catch (err) {
+      logger.warn('AuthRoute', 'No se pudo replicar la baja del usuario en PostgreSQL', { error: String(err) });
+    }
+
+    res.status(200).json({
+      success: true,
+      desactivado,
+      message: desactivado
+        ? 'El usuario tiene ventas o cierres registrados: quedó desactivado y ya no puede entrar'
+        : 'Usuario eliminado'
+    });
+  } catch (error) {
+    logger.error('AuthRoute', 'Error eliminando usuario', error);
+    res.status(500).json({ success: false, message: 'Error interno eliminando usuario' });
   }
 });
 

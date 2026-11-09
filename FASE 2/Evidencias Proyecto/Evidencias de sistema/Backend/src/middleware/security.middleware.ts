@@ -3,6 +3,18 @@ import cors from 'cors';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { logger } from '../utils/logger';
 import { getJwtSecret } from '../config/auth.config';
+import { defaultSqliteClient } from '../database/sqlite/client';
+
+/** Cuenta desactivada en el terminal. Si no se puede consultar, no se bloquea por ello. */
+function cuentaDesactivada(usuarioId: unknown): boolean {
+  if (typeof usuarioId !== 'string') return false;
+  try {
+    const fila = defaultSqliteClient.queryOne<{ activo: number }>('SELECT activo FROM usuarios WHERE id = ?', [usuarioId]);
+    return fila !== undefined && fila !== null && Number(fila.activo) === 0;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Configuracion de CORS (Cross-Origin Resource Sharing)
@@ -200,6 +212,11 @@ export const rbacAuthMiddleware = (req: Request, res: Response, next: NextFuncti
         success: false,
         message: 'Token inválido o expirado'
       });
+      return;
+    }
+    // Un token emitido antes de desactivar la cuenta sigue firmado: la baja vale desde ya, no en 24 h
+    if (cuentaDesactivada(decodedUser?.id)) {
+      res.status(401).json({ success: false, message: 'Esta cuenta fue desactivada por el administrador' });
       return;
     }
   } else if (enforceAuth) {

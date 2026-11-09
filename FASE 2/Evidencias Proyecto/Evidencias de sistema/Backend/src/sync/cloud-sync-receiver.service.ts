@@ -12,6 +12,26 @@ import {
   SyncPushResponse
 } from './types';
 
+/**
+ * Id con que la nube conoce una fila que el terminal envia: la misma por id o, si entro por otro
+ * camino, la que comparte su clave natural. Sin coincidencia devuelve el id enviado.
+ */
+async function idEnNube(
+  db: { query: (sql: string, params?: unknown[]) => Promise<{ rows: Array<{ id: string }> }> },
+  tabla: 'productos' | 'proveedores',
+  clave: 'sku' | 'rut_proveedor',
+  tenantId: string,
+  id: string,
+  valor: string | null
+): Promise<string> {
+  const res = await db.query(
+    `SELECT id FROM ${tabla} WHERE tenant_id = $1 AND (id = $2 OR ${clave} = $3)
+     ORDER BY (id = $2) DESC LIMIT 1`,
+    [tenantId, id, valor]
+  );
+  return res.rows[0]?.id ?? id;
+}
+
 export class CloudSyncReceiverService {
   private pgClient: PostgresClient;
 
@@ -104,28 +124,35 @@ export class CloudSyncReceiverService {
               ]
             );
 
+            // El terminal y la nube pueden tener el mismo proveedor (por RUT) o el mismo producto
+            // (por SKU) con distinto id: uno entro por factura y el otro lo sembro el catalogo. Se
+            // reconocen por cualquiera de sus claves unicas y se usa el id que tiene la nube.
             // El proveedor va antes que el producto: el producto lo referencia
+            const proveedorEnNube = new Map<string, string>();
             for (const proveedor of proveedores || []) {
               await client.query(
                 `INSERT INTO proveedores
                  (id, tenant_id, rut_proveedor, nombre_proveedores, email, origen_creacion)
                  VALUES ($1, $2, $3, $4, $5, 'SINCRONIZACION')
-                 ON CONFLICT (id) DO NOTHING`,
+                 ON CONFLICT DO NOTHING`,
                 [proveedor.id, payload.tenant_id, proveedor.rut_proveedor,
                  proveedor.nombre_proveedores, proveedor.email]
               );
+              proveedorEnNube.set(proveedor.id, await idEnNube(client, 'proveedores', 'rut_proveedor',
+                payload.tenant_id, proveedor.id, proveedor.rut_proveedor));
             }
 
             // Registrar primero los productos que la nube no conoce: un producto creado en el
             // terminal y nunca replicado impedia sincronizar la venta que lo referenciaba, y esa
             // venta quedaba atascada sin forma de avanzar desde la caja.
+            const productoEnNube = new Map<string, string>();
             for (const producto of productos || []) {
               await client.query(
                 `INSERT INTO productos
                  (id, tenant_id, proveedor_id, sku, codigo_barra, nombre, stock_actual,
                   stock_minimo, precio_compra, precio_venta, activo, origen_creacion)
                  VALUES ($1, $2, $8, $3, $4, $5, 0, 0, $6, $7, true, 'SINCRONIZACION')
-                 ON CONFLICT (id) DO NOTHING`,
+                 ON CONFLICT DO NOTHING`,
                 [
                   producto.id,
                   payload.tenant_id,
@@ -134,13 +161,16 @@ export class CloudSyncReceiverService {
                   producto.nombre,
                   producto.precio_compra,
                   producto.precio_venta,
-                  producto.proveedor_id
+                  (producto.proveedor_id && proveedorEnNube.get(producto.proveedor_id)) || producto.proveedor_id
                 ]
               );
+              productoEnNube.set(producto.id, await idEnNube(client, 'productos', 'sku',
+                payload.tenant_id, producto.id, producto.sku));
             }
 
             // 3. Procesar detalles e implementar Resolución de Conflicto de Stock por Delta Neto
             for (const detail of details) {
+              const productoId = productoEnNube.get(detail.producto_id) ?? detail.producto_id;
               await client.query(
                 `INSERT INTO detalle_venta (id, venta_id, producto_id, cantidad, precio_unitario, subtotal)
                  VALUES ($1, $2, $3, $4, $5, $6)
@@ -148,7 +178,7 @@ export class CloudSyncReceiverService {
                 [
                   detail.id || uuidv4(),
                   sale.id,
-                  detail.producto_id,
+                  productoId,
                   detail.cantidad,
                   detail.precio_unitario,
                   detail.subtotal
@@ -161,7 +191,7 @@ export class CloudSyncReceiverService {
                  FROM productos 
                  WHERE id = $1 AND tenant_id = $2 
                  FOR UPDATE`,
-                [detail.producto_id, payload.tenant_id]
+                [productoId, payload.tenant_id]
               );
 
               if (prodResult.rows.length > 0) {
@@ -175,7 +205,7 @@ export class CloudSyncReceiverService {
                   `UPDATE productos 
                    SET stock_actual = $1, updated_at = now() 
                    WHERE id = $2 AND tenant_id = $3`,
-                  [newCloudStock, detail.producto_id, payload.tenant_id]
+                  [newCloudStock, productoId, payload.tenant_id]
                 );
 
                 // Registrar auditoría en historial_stock
@@ -186,7 +216,7 @@ export class CloudSyncReceiverService {
                   [
                     uuidv4(),
                     payload.tenant_id,
-                    detail.producto_id,
+                    productoId,
                     currentCloudStock,
                     newCloudStock,
                     delta,
@@ -197,7 +227,7 @@ export class CloudSyncReceiverService {
                 // El descuento por lote se acumula y se aplica una vez confirmada la venta:
                 // la contabilidad de lotes no puede hacer fracasar la sincronizacion
                 consumosDeLote.push({
-                  productoId: detail.producto_id,
+                  productoId: productoId,
                   cantidad: Math.abs(delta)
                 });
 
@@ -209,7 +239,7 @@ export class CloudSyncReceiverService {
                   [
                     uuidv4(),
                     payload.tenant_id,
-                    detail.producto_id,
+                    productoId,
                     movTipoId,
                     Math.abs(delta),
                     currentCloudStock,
@@ -289,15 +319,18 @@ export class CloudSyncReceiverService {
 
     try {
       // El proveedor va antes que el producto, que lo referencia por clave foranea
+      const proveedorEnNube = new Map<string, string>();
       for (const proveedor of proveedores) {
         const res = await this.pgClient.query(
           `INSERT INTO proveedores
            (id, tenant_id, rut_proveedor, nombre_proveedores, email, origen_creacion)
            VALUES ($1, $2, $3, $4, $5, 'SINCRONIZACION')
-           ON CONFLICT (id) DO NOTHING`,
+           ON CONFLICT DO NOTHING`,
           [proveedor.id, tenantId, proveedor.rut_proveedor, proveedor.nombre_proveedores, proveedor.email]
         );
         proveedoresNuevos += res.rowCount || 0;
+        proveedorEnNube.set(proveedor.id, await idEnNube(this.pgClient, 'proveedores', 'rut_proveedor',
+          tenantId, proveedor.id, proveedor.rut_proveedor));
       }
 
       for (const producto of productos) {
@@ -306,11 +339,11 @@ export class CloudSyncReceiverService {
            (id, tenant_id, proveedor_id, sku, codigo_barra, nombre, stock_actual,
             stock_minimo, precio_compra, precio_venta, activo, origen_creacion)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, true, 'SINCRONIZACION')
-           ON CONFLICT (id) DO NOTHING`,
+           ON CONFLICT DO NOTHING`,
           [
             producto.id,
             tenantId,
-            producto.proveedor_id,
+            (producto.proveedor_id && proveedorEnNube.get(producto.proveedor_id)) || producto.proveedor_id,
             producto.sku,
             producto.codigo_barra,
             producto.nombre,

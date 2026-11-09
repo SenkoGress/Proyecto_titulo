@@ -1,7 +1,7 @@
 erDiagram
     %% Diagrama entidad-relacion de GesTock
-    %% Generado desde el esquema real de la base de datos en la nube.
-    %% 29 entidades y 45 relaciones por clave foranea.
+    %% Corresponde al esquema real de la base de datos en la nube, migraciones 001 a 020.
+    %% 30 entidades y 46 relaciones por clave foranea.
 
     _MIGRATIONS {
         int id PK
@@ -213,6 +213,17 @@ erDiagram
         int folio
         timestamp fecha_emision
         varchar rut_emisor
+        uuid envio_id
+    }
+
+    SII_ENVIOS {
+        uuid id PK
+        uuid tenant_id FK
+        varchar ambiente
+        varchar tipo_sobre
+        varchar estado
+        varchar track_id
+        timestamp creado_at
     }
 
     SII_RCOF_REGISTROS {
@@ -248,6 +259,7 @@ erDiagram
         varchar nombre
         varchar email
         varchar rol
+        boolean activo
     }
 
     %% Relaciones
@@ -286,6 +298,7 @@ erDiagram
     TENANTS ||--|{ PURCHASE_ORDERS : "tenant_id"
     TENANTS ||--|{ SII_CAF : "tenant_id"
     TENANTS ||--|{ SII_DTE_EMITIDOS : "tenant_id"
+    TENANTS ||--|{ SII_ENVIOS : "tenant_id"
     TENANTS ||--|{ SII_RCOF_REGISTROS : "tenant_id"
     TENANTS ||--|{ TRANSACCIONES_VENTA : "tenant_id"
     TENANTS ||--|{ USUARIOS : "tenant_id"

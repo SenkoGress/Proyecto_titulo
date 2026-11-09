@@ -1,6 +1,7 @@
 import http from 'http';
 import app from '../../src/index';
 import { initializeDatabase } from '../../src/database/init-db';
+import { defaultSqliteClient } from '../../src/database/sqlite/client';
 
 describe('Auth Endpoints & RBAC (RF-01, RF-02, RF-03, RNF-SEG-01, RNF-SEG-02)', () => {
   const tenantId = '00000000-0000-0000-0000-000000000001';
@@ -428,6 +429,99 @@ describe('Auth Endpoints & RBAC (RF-01, RF-02, RF-03, RNF-SEG-01, RNF-SEG-02)', 
 
       const loginAnterior = await postJson('/api/v1/auth/login', { tenant_id: tenantId, email, password: claveInicial });
       expect(loginAnterior.status).toBe(401);
+    });
+  });
+
+  describe('PUT y DELETE /api/v1/auth/users/:id (editar y dar de baja al personal)', () => {
+    const sufijo = Date.now();
+    let adminToken: string;
+    let adminId: string;
+
+    async function registrar(nombre: string, email: string) {
+      const res = await postJson(
+        '/api/v1/auth/register',
+        { tenant_id: tenantId, nombre, email, password: 'ClaveTurno2026', rol: 'cajero' },
+        { Authorization: `Bearer ${adminToken}` }
+      );
+      return res.data.usuario.id as string;
+    }
+
+    beforeAll(async () => {
+      const login = await postJson('/api/v1/auth/login', { tenant_id: tenantId, email: 'admin@gestock.cl', password: 'admin123' });
+      adminToken = login.data.token;
+      adminId = login.data.usuario.id;
+    });
+
+    it('rechaza con 403 la edicion pedida por un cajero', async () => {
+      const email = `cajero.edita.${sufijo}@gestock.cl`;
+      const id = await registrar('Cajero Que Edita', email);
+      const login = await postJson('/api/v1/auth/login', { tenant_id: tenantId, email, password: 'ClaveTurno2026' });
+      const res = await postJson(`/api/v1/auth/users/${id}`, { nombre: 'Otro' }, { Authorization: `Bearer ${login.data.token}` }, 'PUT');
+      expect(res.status).toBe(403);
+    });
+
+    // Corre antes de que otra prueba promueva a un segundo administrador
+    it('no deja al comercio sin administrador activo', async () => {
+      const res = await postJson(`/api/v1/auth/users/${adminId}`, { rol: 'cajero' }, { Authorization: `Bearer ${adminToken}` }, 'PUT');
+      expect(res.status).toBe(409);
+    });
+
+    it('edita nombre y rol, y rechaza un correo que ya usa otro usuario', async () => {
+      const id = await registrar('Nombre Inicial', `edicion.${sufijo}@gestock.cl`);
+      const res = await postJson(
+        `/api/v1/auth/users/${id}`,
+        { nombre: 'Nombre Corregido', rol: 'admin' },
+        { Authorization: `Bearer ${adminToken}` },
+        'PUT'
+      );
+      expect(res.status).toBe(200);
+      expect(res.data.usuario).toMatchObject({ nombre: 'Nombre Corregido', rol: 'admin', activo: true });
+
+      const choque = await postJson(
+        `/api/v1/auth/users/${id}`,
+        { email: 'admin@gestock.cl' },
+        { Authorization: `Bearer ${adminToken}` },
+        'PUT'
+      );
+      expect(choque.status).toBe(409);
+    });
+
+    it('no permite eliminarse a si mismo', async () => {
+      const res = await postJson(`/api/v1/auth/users/${adminId}`, {}, { Authorization: `Bearer ${adminToken}` }, 'DELETE');
+      expect(res.status).toBe(409);
+    });
+
+    it('elimina al usuario sin historial: deja de poder entrar', async () => {
+      const email = `sin.historial.${sufijo}@gestock.cl`;
+      const id = await registrar('Sin Historial', email);
+      const res = await postJson(`/api/v1/auth/users/${id}`, {}, { Authorization: `Bearer ${adminToken}` }, 'DELETE');
+      expect(res.status).toBe(200);
+      expect(res.data.desactivado).toBe(false);
+      expect(defaultSqliteClient.queryOne('SELECT id FROM usuarios WHERE id = ?', [id])).toBeFalsy();
+      const login = await postJson('/api/v1/auth/login', { tenant_id: tenantId, email, password: 'ClaveTurno2026' });
+      expect(login.status).toBe(401);
+    });
+
+    it('desactiva al usuario con ventas: conserva la venta y corta la sesion abierta', async () => {
+      const email = `con.ventas.${sufijo}@gestock.cl`;
+      const id = await registrar('Con Ventas', email);
+      const sesion = await postJson('/api/v1/auth/login', { tenant_id: tenantId, email, password: 'ClaveTurno2026' });
+      const ventaId = `venta-baja-${sufijo}`;
+      defaultSqliteClient.execute(
+        `INSERT INTO transacciones_venta (id, tenant_id, usuario_id, folio_local_sqlite, total, unidades, estado, is_dirty, sync_status)
+         VALUES (?, ?, ?, 'FOLIO-BAJA', 1000, 1, 'COMPLETADA', 0, 'SYNCED')`,
+        [ventaId, tenantId, id]
+      );
+
+      const res = await postJson(`/api/v1/auth/users/${id}`, {}, { Authorization: `Bearer ${adminToken}` }, 'DELETE');
+      expect(res.status).toBe(200);
+      expect(res.data.desactivado).toBe(true);
+      expect(defaultSqliteClient.queryOne('SELECT id FROM transacciones_venta WHERE id = ?', [ventaId])).toBeTruthy();
+
+      const login = await postJson('/api/v1/auth/login', { tenant_id: tenantId, email, password: 'ClaveTurno2026' });
+      expect(login.status).toBe(403);
+      const tokenViejo = await getJson('/api/v1/pos/products', { Authorization: `Bearer ${sesion.data.token}` });
+      expect(tokenViejo.status).toBe(401);
     });
   });
 });

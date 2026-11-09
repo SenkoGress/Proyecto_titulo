@@ -17,7 +17,7 @@ const rsaKey = crypto.generateKeyPairSync('rsa', {
   privateKeyEncoding: { type: 'pkcs1', format: 'pem' }
 });
 
-describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (72/72)', () => {
+describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (75/75)', () => {
   let server: http.Server;
   let baseUrl: string;
   let dteId = 'demo-dte-01';
@@ -720,6 +720,7 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (7
     const claveInicial = 'ClaveVerificacion2026';
     const claveRotada = 'ClaveRotada2026';
     let adminToken = '';
+    let idCajero = '';
 
     test('65. POST /api/v1/auth/login emite un JWT firmado y perfil sin hash', async () => {
       const res = await requestApi('POST', '/api/v1/auth/login', {
@@ -767,6 +768,7 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (7
       expect(res.data.data.usuario.rol).toBe('cajero');
       expect(res.data.data.usuario.tenant_id).toBe(DEMO_TENANT);
       expect(res.data.token).toBeUndefined();
+      idCajero = res.data.data.usuario.id;
     });
 
     test('69. PUT /api/v1/auth/password rota la clave y revoca la anterior', async () => {
@@ -796,6 +798,33 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (7
         password: claveInicial
       });
       expect(conAnterior.status).toBe(401);
+    });
+
+    test('70. PUT /api/v1/auth/users/:id corrige el nombre del cajero', async () => {
+      const res = await requestApi('PUT', `/api/v1/auth/users/${idCajero}`, {
+        nombre: 'Cajero Corregido'
+      }, { Authorization: `Bearer ${adminToken}` });
+
+      expect(res.status).toBe(200);
+      expect(res.data.usuario.nombre).toBe('Cajero Corregido');
+    });
+
+    test('71. DELETE /api/v1/auth/users/:id elimina al cajero sin historial', async () => {
+      const res = await requestApi('DELETE', `/api/v1/auth/users/${idCajero}`, undefined, {
+        Authorization: `Bearer ${adminToken}`
+      });
+
+      expect(res.status).toBe(200);
+      expect(res.data.desactivado).toBe(false);
+    });
+
+    test('72. POST /api/v1/pos/transactions/:id/reintentar-sincronizacion responde 404 si no hay venta rechazada', async () => {
+      const res = await requestApi('POST', '/api/v1/pos/transactions/no-existe/reintentar-sincronizacion', {
+        tenant_id: DEMO_TENANT
+      }, { Authorization: `Bearer ${adminToken}` });
+
+      expect(res.status).toBe(404);
+      expect(res.data.success).toBe(false);
     });
   });
 });
