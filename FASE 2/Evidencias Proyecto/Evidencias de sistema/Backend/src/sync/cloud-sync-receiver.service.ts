@@ -396,10 +396,17 @@ export class CloudSyncReceiverService {
       query += ' ORDER BY updated_at ASC';
 
       const result = await this.pgClient.query<Producto>(query, params);
+      const idsProveedor = Array.from(new Set(result.rows.map((p) => p.proveedor_id).filter(Boolean)));
+      const proveedores = idsProveedor.length === 0 ? [] : (await this.pgClient.query<ProveedorReferenciado>(
+        `SELECT id, rut_proveedor, nombre_proveedores, email FROM proveedores
+         WHERE tenant_id = $1 AND id IN (${idsProveedor.map((_, i) => `$${i + 2}`).join(', ')})`,
+        [tenantId, ...idsProveedor]
+      )).rows;
 
       return {
         success: true,
         products: result.rows,
+        proveedores,
         server_timestamp: new Date().toISOString()
       };
     } catch (error) {

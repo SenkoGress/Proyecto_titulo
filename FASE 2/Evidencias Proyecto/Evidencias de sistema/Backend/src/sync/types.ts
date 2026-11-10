@@ -51,6 +51,8 @@ export interface SyncPullRequest {
 export interface SyncPullResponse {
   success: boolean;
   products: Producto[];
+  /** Proveedores que referencian los productos: sin ellos la clave foranea del terminal falla. */
+  proveedores?: ProveedorReferenciado[];
   server_timestamp: string;
 }
 

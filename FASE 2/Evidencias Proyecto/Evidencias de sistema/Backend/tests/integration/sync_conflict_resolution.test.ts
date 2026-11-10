@@ -235,4 +235,46 @@ describe('Conflict Resolution Policies (Net Stock Delta & Catalog Primacy)', () 
     expect(posEngine.getPendingDirtySales(ids.tenantId).map((i) => i.sale.id)).toContain(ids.ventaId);
     expect(posEngine.reintentarVenta(ids.tenantId, 'no-existe')).toBe(false);
   });
+
+  test('6. La bajada trae el proveedor del producto nuevo y lo reconoce por RUT si el terminal lo tiene con otro id', async () => {
+    const ids = createFixtureIds();
+    const tenant = sampleTenant(ids.tenantId);
+    const provLocal = createFixtureIds().productoId;
+    const provNube = createFixtureIds().productoId;
+    const provSoloNube = createFixtureIds().productoId;
+    const rut = `78.${ids.tenantId.slice(0, 3)}.685-1`;
+    const rutNuevo = `79.${ids.tenantId.slice(0, 3)}.111-2`;
+    const prodA = createFixtureIds().productoId;
+    const prodB = createFixtureIds().productoId;
+
+    sqliteClient.execute('INSERT INTO tenants (id, nombre, estado) VALUES (?, ?, ?)', [tenant.id, tenant.nombre, tenant.estado]);
+    sqliteClient.execute(
+      'INSERT INTO proveedores (id, tenant_id, rut_proveedor, nombre_proveedores) VALUES (?, ?, ?, ?)',
+      [provLocal, ids.tenantId, rut, 'Froneri Chile SpA']
+    );
+    await pgClient.query(`INSERT INTO tenants (id, nombre, estado) VALUES ($1, $2, $3)`, [tenant.id, tenant.nombre, tenant.estado]);
+    await pgClient.query(
+      `INSERT INTO proveedores (id, tenant_id, rut_proveedor, nombre_proveedores)
+       VALUES ($1, $2, $3, 'Froneri Chile SpA'), ($4, $2, $5, 'Proveedor solo en la nube')`,
+      [provNube, ids.tenantId, rut, provSoloNube, rutNuevo]
+    );
+    await pgClient.query(
+      `INSERT INTO productos (id, tenant_id, proveedor_id, sku, nombre, stock_actual, precio_compra, precio_venta)
+       VALUES ($1, $2, $3, $4, 'Helado nuevo', 5.0, 900, 1500),
+              ($5, $2, $6, $7, 'Producto de proveedor nuevo', 5.0, 300, 600)`,
+      [prodA, ids.tenantId, provNube, `SKU-FRO-${prodA.slice(0, 8)}`, prodB, provSoloNube, `SKU-NVO-${prodB.slice(0, 8)}`]
+    );
+
+    const updatedCount = await posEngine.syncPullCatalog(ids.tenantId, (req) =>
+      cloudReceiver.getPullUpdates(req.tenant_id, req.last_pull_timestamp)
+    );
+
+    expect(updatedCount).toBe(2);
+    const a = sqliteClient.queryOne<{ proveedor_id: string }>('SELECT proveedor_id FROM productos WHERE id = ?', [prodA]);
+    const b = sqliteClient.queryOne<{ proveedor_id: string }>('SELECT proveedor_id FROM productos WHERE id = ?', [prodB]);
+    expect(a?.proveedor_id).toBe(provLocal);
+    expect(b?.proveedor_id).toBe(provSoloNube);
+    const froneri = sqliteClient.query('SELECT id FROM proveedores WHERE tenant_id = ? AND rut_proveedor = ?', [ids.tenantId, rut]);
+    expect(froneri.length).toBe(1);
+  });
 });

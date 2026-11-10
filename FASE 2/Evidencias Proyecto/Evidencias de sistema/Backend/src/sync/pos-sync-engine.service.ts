@@ -312,6 +312,27 @@ export class PosSyncEngineService {
       let updatedCount = 0;
 
       this.sqlite.withTransaction(() => {
+        // El proveedor baja antes que el producto que lo referencia. Se reconoce por id o por RUT,
+        // y el producto se guarda con el id que el proveedor tiene en el terminal.
+        const proveedorLocal = new Map<string, string>();
+        for (const prov of response.proveedores || []) {
+          const existente = this.sqlite.queryOne<{ id: string }>(
+            `SELECT id FROM proveedores WHERE tenant_id = ? AND (id = ? OR rut_proveedor = ?)
+             ORDER BY (id = ?) DESC LIMIT 1`,
+            [tenantId, prov.id, prov.rut_proveedor, prov.id]
+          );
+          if (!existente) {
+            this.sqlite.execute(
+              `INSERT INTO proveedores (id, tenant_id, rut_proveedor, nombre_proveedores, email, origen_creacion)
+               VALUES (?, ?, ?, ?, ?, 'SINCRONIZACION')`,
+              [prov.id, tenantId, prov.rut_proveedor, prov.nombre_proveedores, prov.email]
+            );
+          }
+          proveedorLocal.set(prov.id, existente?.id ?? prov.id);
+        }
+        // Un proveedor que la nube no envio no existe en el terminal: el producto baja sin el.
+        const proveedorDe = (id?: string | null) => (id ? proveedorLocal.get(id) ?? null : null);
+
         for (const cloudProd of response.products) {
           // Mismo SKU con otro id es el mismo producto: insertarlo chocaria con UNIQUE(tenant_id, sku)
           // y desharia la bajada completa. Se actualiza el local conservando su id.
@@ -348,7 +369,7 @@ export class PosSyncEngineService {
               [
                 cloudProd.id,
                 tenantId,
-                cloudProd.proveedor_id || null,
+                proveedorDe(cloudProd.proveedor_id),
                 cloudProd.codigo_barra || null,
                 cloudProd.sku,
                 cloudProd.nombre,
