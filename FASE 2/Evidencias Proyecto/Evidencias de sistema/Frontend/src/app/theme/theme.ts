@@ -1,5 +1,6 @@
 // src/app/theme/theme.ts
 import { createTheme } from '@mui/material/styles'
+import { esES } from '@mui/x-data-grid/locales'
 
 // los dos temas que ofrece la app (la opcion "sistema" se resuelve antes de llegar aca)
 export type ModoTema = 'claro' | 'oscuro'
@@ -44,7 +45,8 @@ function paleta(modo: ModoTema) {
   }
 }
 
-// tema de gestock
+// tema de gestock. El esES del final traduce las tablas: sin el, la paginacion sale en ingles
+// ("Rows per page", "1-10 of 22") en las tres pantallas que usan DataGrid
 export function crearTema(modo: ModoTema) {
   return createTheme({
     palette: paleta(modo),
@@ -66,5 +68,5 @@ export function crearTema(modo: ModoTema) {
         },
       },
     },
-  })
+  }, esES)
 }

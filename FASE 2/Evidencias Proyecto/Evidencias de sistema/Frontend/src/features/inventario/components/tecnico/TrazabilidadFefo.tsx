@@ -65,9 +65,27 @@ export function TrazabilidadFefo() {
       {/* mismas 4 tarjetas que el catalogo visual: total, valor, bajo stock, sin stock */}
       <TarjetasResumenInventario resumen={resumenStock} />
 
-      <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+      {/* en pantalla ancha el panel va al costado; en angosta baja y se reparte a lo largo. Antes
+          bajaba conservando sus 320px y dejaba todo el lado derecho vacio */}
+      <Box
+        sx={{
+          display: 'flex',
+          gap: 2,
+          alignItems: 'flex-start',
+          flexDirection: { xs: 'column', lg: 'row' },
+        }}
+      >
         {/* tabla principal: todo el catalogo, con el estado fefo como una columna mas */}
-        <Box sx={{ flexGrow: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+        <Box
+          sx={{
+            flexGrow: 1,
+            minWidth: 0,
+            width: '100%',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 1.5,
+          }}
+        >
           <BarraHerramientasInventarioTecnico
             productos={filtrados}
             busqueda={busqueda}
@@ -94,7 +112,16 @@ export function TrazabilidadFefo() {
         </Box>
 
         {/* panel lateral: alertas de vencimiento + sugerencia de pedido + margen */}
-        <Box sx={{ width: 320, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+        <Box
+          sx={{
+            width: { xs: '100%', lg: 320 },
+            flexShrink: 0,
+            display: 'grid',
+            gridTemplateColumns: { xs: 'repeat(auto-fill, minmax(280px, 1fr))', lg: '1fr' },
+            alignItems: 'start',
+            gap: 1.5,
+          }}
+        >
           {vencimientos.data && <PanelAlertasFefo resumen={vencimientos.data.resumen} totalProductos={matriz.length} />}
           <PanelSugerenciaPedido />
           <PanelMargenPromedio margenPromedio={resumenStock.margenPromedio} />
