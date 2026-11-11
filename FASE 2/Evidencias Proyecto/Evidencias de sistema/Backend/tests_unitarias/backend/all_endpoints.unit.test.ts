@@ -17,7 +17,7 @@ const rsaKey = crypto.generateKeyPairSync('rsa', {
   privateKeyEncoding: { type: 'pkcs1', format: 'pem' }
 });
 
-describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (75/75)', () => {
+describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (76/76)', () => {
   let server: http.Server;
   let baseUrl: string;
   let dteId = 'demo-dte-01';
@@ -824,6 +824,15 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (7
       }, { Authorization: `Bearer ${adminToken}` });
 
       expect(res.status).toBe(404);
+      expect(res.data.success).toBe(false);
+    });
+
+    test('73. GET /api/v1/pos/products/lookup/:codigo rechaza un codigo que no es de barras sin salir a internet', async () => {
+      const res = await requestApi('GET', '/api/v1/pos/products/lookup/PRUEBA-1', undefined, {
+        Authorization: `Bearer ${adminToken}`
+      });
+
+      expect(res.status).toBe(400);
       expect(res.data.success).toBe(false);
     });
   });

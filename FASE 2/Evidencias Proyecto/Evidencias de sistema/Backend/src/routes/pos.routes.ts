@@ -7,6 +7,7 @@ import { defaultPosSyncEngine, TOPE_REINTENTOS_VENTA } from '../sync/pos-sync-en
 import { aplicarRedondeoChileno } from '../utils/pricing';
 import { logger } from '../utils/logger';
 import { defaultLotesService } from '../inventory/lotes.service';
+import { codigoValido, consultarCodigo } from '../inventory/open-food-facts.service';
 import { defaultDteEmitter } from '../dte/dte-emitter.service';
 import { defaultSiiEnvio } from '../dte/sii-envio.service';
 import { TipoDTE } from '../dte/types';
@@ -49,6 +50,51 @@ router.get('/products', (req: Request, res: Response): void => {
       message: 'Failed to retrieve products from local database',
       error: error instanceof Error ? error.message : String(error)
     });
+  }
+});
+
+/**
+ * GET /api/v1/pos/products/lookup/:codigo
+ * Completa el alta de un producto a partir de su codigo de barras real, consultando Open Food Facts.
+ * Si el codigo ya esta en el catalogo local lo informa en en_catalogo, para no duplicarlo.
+ * Sin internet responde 503 y el alta sigue siendo manual.
+ */
+router.get('/products/lookup/:codigo', async (req: Request, res: Response): Promise<void> => {
+  const tenantId = (req.query.tenant_id as string) || '00000000-0000-0000-0000-000000000001';
+  const codigo = String(req.params.codigo).trim();
+
+  if (!codigoValido(codigo)) {
+    res.status(400).json({ success: false, message: 'El codigo de barras debe tener entre 8 y 14 digitos' });
+    return;
+  }
+
+  try {
+    const enCatalogo = sqlite.queryOne<{ id: string; nombre: string; sku: string }>(
+      'SELECT id, nombre, sku FROM productos WHERE tenant_id = ? AND codigo_barra = ? LIMIT 1',
+      [tenantId, codigo]
+    ) ?? null;
+
+    const resultado = await consultarCodigo(codigo);
+    if (resultado.estado === 'sin_conexion') {
+      res.status(503).json({
+        success: false,
+        en_catalogo: enCatalogo,
+        message: 'No se pudo consultar Open Food Facts. El producto se puede ingresar a mano.'
+      });
+      return;
+    }
+    if (resultado.estado === 'no_encontrado') {
+      res.status(404).json({
+        success: false,
+        en_catalogo: enCatalogo,
+        message: 'El codigo no esta en Open Food Facts. El producto se puede ingresar a mano.'
+      });
+      return;
+    }
+    res.status(200).json({ success: true, en_catalogo: enCatalogo, data: resultado.producto });
+  } catch (error) {
+    logger.error('PosRoutes', 'Error consultando el codigo de barras', error);
+    res.status(500).json({ success: false, message: 'Error interno consultando el codigo de barras' });
   }
 });
 
