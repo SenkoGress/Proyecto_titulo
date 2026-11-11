@@ -280,7 +280,7 @@ export class PosSyncEngineService {
 
     const productos = this.sqlite.query<ProductoReferenciado>(
       `SELECT id, sku, codigo_barra, nombre, precio_compra, precio_venta, proveedor_id,
-              stock_actual, stock_minimo
+              stock_actual, stock_minimo, activo
        FROM productos WHERE tenant_id = ?`,
       [tenantId]
     );

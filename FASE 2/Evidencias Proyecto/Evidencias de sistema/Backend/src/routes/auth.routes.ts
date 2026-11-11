@@ -6,6 +6,7 @@ import { defaultSqliteClient } from '../database/sqlite/client';
 import { defaultPgClient } from '../database/postgres/client';
 import { logger } from '../utils/logger';
 import { getJwtSecret } from '../config/auth.config';
+import { estadoVigente } from '../middleware/security.middleware';
 
 const router = Router();
 const MIN_PASSWORD_LENGTH = 8;
@@ -124,6 +125,12 @@ function extractAndVerifyToken(req: Request): { valid: boolean; status: number; 
   const token = authHeader.split(' ')[1];
   try {
     const decoded = jwt.verify(token, getJwtSecret()) as any;
+    // Las rutas de /auth verifican el token por su cuenta: aplican el mismo estado vigente que el middleware
+    const vigente = estadoVigente(decoded?.id);
+    if (vigente && !vigente.activo) {
+      return { valid: false, status: 401, message: 'Esta cuenta fue desactivada por el administrador' };
+    }
+    if (vigente) decoded.rol = vigente.rol;
     return { valid: true, status: 200, user: decoded };
   } catch {
     return { valid: false, status: 401, message: 'Token inválido o expirado' };
@@ -265,9 +272,10 @@ router.get('/users', async (req: Request, res: Response): Promise<void> => {
       }
     }
 
+    // SQLite entrega 1/0 y PostgreSQL true/false: la interfaz recibe siempre 1/0
     res.status(200).json({
       success: true,
-      data: users
+      data: users.map((u) => ({ ...u, activo: estaActivo(u) ? 1 : 0 }))
     });
   } catch (error) {
     logger.error('AuthRoute', 'Error en consulta de usuarios', error);

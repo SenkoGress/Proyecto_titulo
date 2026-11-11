@@ -277,4 +277,23 @@ describe('Conflict Resolution Policies (Net Stock Delta & Catalog Primacy)', () 
     const froneri = sqliteClient.query('SELECT id FROM proveedores WHERE tenant_id = ? AND rut_proveedor = ?', [ids.tenantId, rut]);
     expect(froneri.length).toBe(1);
   });
+
+  test('7. El respaldo del catalogo sube desactivado el producto que el terminal desactivo', async () => {
+    const ids = createFixtureIds();
+    const tenant = sampleTenant(ids.tenantId);
+    sqliteClient.execute('INSERT INTO tenants (id, nombre, estado) VALUES (?, ?, ?)', [tenant.id, tenant.nombre, tenant.estado]);
+    await pgClient.query(`INSERT INTO tenants (id, nombre, estado) VALUES ($1, $2, $3)`, [tenant.id, tenant.nombre, tenant.estado]);
+    sqliteClient.execute(
+      `INSERT INTO productos (id, tenant_id, sku, nombre, stock_actual, precio_compra, precio_venta, activo)
+       VALUES (?, ?, ?, 'BORRAR - prueba automatica', 5.0, 500, 1000, 0)`,
+      [ids.productoId, ids.tenantId, `PRUEBA-${ids.productoId.slice(0, 8)}`]
+    );
+
+    await posEngine.respaldarCatalogoEnNube(ids.tenantId, (t, productos, proveedores) =>
+      cloudReceiver.respaldarCatalogo(t, productos, proveedores)
+    );
+
+    const arriba = await pgClient.query<{ activo: boolean }>('SELECT activo FROM productos WHERE id = $1', [ids.productoId]);
+    expect(arriba.rows[0].activo).toBe(false);
+  });
 });

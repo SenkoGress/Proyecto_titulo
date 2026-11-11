@@ -242,6 +242,8 @@ function crearVentana() {
     show: false,
     backgroundColor: '#f4f6fb',
     title: 'GesTock',
+    // El menu sigue disponible con Alt, sin la franja que dejaba bajo la barra de titulo
+    autoHideMenuBar: true,
     icon: path.join(raizAplicacion, 'front-end', 'dist', 'logo-gestock.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),

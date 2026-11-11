@@ -338,7 +338,7 @@ export class CloudSyncReceiverService {
           `INSERT INTO productos
            (id, tenant_id, proveedor_id, sku, codigo_barra, nombre, stock_actual,
             stock_minimo, precio_compra, precio_venta, activo, origen_creacion)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, true, 'SINCRONIZACION')
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'SINCRONIZACION')
            ON CONFLICT DO NOTHING`,
           [
             producto.id,
@@ -350,7 +350,8 @@ export class CloudSyncReceiverService {
             producto.stock_actual ?? 0,
             producto.stock_minimo ?? 0,
             producto.precio_compra,
-            producto.precio_venta
+            producto.precio_venta,
+            producto.activo === undefined ? true : Boolean(producto.activo)
           ]
         );
         productosNuevos += res.rowCount || 0;

@@ -6,13 +6,16 @@ import { getJwtSecret } from '../config/auth.config';
 import { defaultSqliteClient } from '../database/sqlite/client';
 
 /** Cuenta desactivada en el terminal. Si no se puede consultar, no se bloquea por ello. */
-function cuentaDesactivada(usuarioId: unknown): boolean {
-  if (typeof usuarioId !== 'string') return false;
+export function estadoVigente(usuarioId: unknown): { activo: boolean; rol: string } | null {
+  if (typeof usuarioId !== 'string') return null;
   try {
-    const fila = defaultSqliteClient.queryOne<{ activo: number }>('SELECT activo FROM usuarios WHERE id = ?', [usuarioId]);
-    return fila !== undefined && fila !== null && Number(fila.activo) === 0;
+    const fila = defaultSqliteClient.queryOne<{ activo: number; rol: string }>(
+      'SELECT activo, rol FROM usuarios WHERE id = ?',
+      [usuarioId]
+    );
+    return fila ? { activo: Number(fila.activo) !== 0, rol: fila.rol } : null;
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -215,10 +218,14 @@ export const rbacAuthMiddleware = (req: Request, res: Response, next: NextFuncti
       return;
     }
     // Un token emitido antes de desactivar la cuenta sigue firmado: la baja vale desde ya, no en 24 h
-    if (cuentaDesactivada(decodedUser?.id)) {
+    // Tambien el rol: el de la base manda sobre el del token, para que bajar a un administrador a
+    // cajero le quite el acceso de inmediato
+    const vigente = estadoVigente(decodedUser?.id);
+    if (vigente && !vigente.activo) {
       res.status(401).json({ success: false, message: 'Esta cuenta fue desactivada por el administrador' });
       return;
     }
+    if (vigente) decodedUser.rol = vigente.rol;
   } else if (enforceAuth) {
     res.status(401).json({
       success: false,

@@ -523,5 +523,20 @@ describe('Auth Endpoints & RBAC (RF-01, RF-02, RF-03, RNF-SEG-01, RNF-SEG-02)', 
       const tokenViejo = await getJson('/api/v1/pos/products', { Authorization: `Bearer ${sesion.data.token}` });
       expect(tokenViejo.status).toBe(401);
     });
+
+    it('bajar a un administrador a cajero le quita el acceso de administrador sin esperar a que venza su token', async () => {
+      const email = `admin.degradado.${sufijo}@gestock.cl`;
+      const id = await registrar('Admin Degradado', email);
+      await postJson(`/api/v1/auth/users/${id}`, { rol: 'admin' }, { Authorization: `Bearer ${adminToken}` }, 'PUT');
+      const sesion = await postJson('/api/v1/auth/login', { tenant_id: tenantId, email, password: 'ClaveTurno2026' });
+      expect(sesion.data.usuario.rol).toBe('admin');
+
+      await postJson(`/api/v1/auth/users/${id}`, { rol: 'cajero' }, { Authorization: `Bearer ${adminToken}` }, 'PUT');
+
+      const lista = await getJson('/api/v1/auth/users', { Authorization: `Bearer ${sesion.data.token}` });
+      expect(lista.status).toBe(403);
+      const panel = await getJson('/api/v1/dashboard/overview', { Authorization: `Bearer ${sesion.data.token}` });
+      expect(panel.status).toBe(403);
+    });
   });
 });

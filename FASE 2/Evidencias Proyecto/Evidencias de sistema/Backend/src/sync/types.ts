@@ -18,6 +18,8 @@ export interface ProductoReferenciado {
   /** Solo viaja en el respaldo del catalogo: en la fila que la nube ya tiene manda su propia cuenta. */
   stock_actual?: number;
   stock_minimo?: number;
+  /** Solo viaja en el respaldo: un producto desactivado en el terminal no debe subir activo. */
+  activo?: number | boolean;
 }
 
 export interface SyncPushItem {
