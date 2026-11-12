@@ -17,6 +17,9 @@ const rsaKey = crypto.generateKeyPairSync('rsa', {
   privateKeyEncoding: { type: 'pkcs1', format: 'pem' }
 });
 
+// Una imagen minima valida: la ruta solo exige formato data URL y el tope de tamano
+const FOTO = `data:image/png;base64,${Buffer.from('foto').toString('base64')}`;
+
 describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (76/76)', () => {
   let server: http.Server;
   let baseUrl: string;
@@ -643,12 +646,14 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (7
         precio_venta: 1500,
         stock_actual: 20,
         stock_minimo: 5,
-        categoria: 'Bebidas'
+        categoria: 'Bebidas',
+        imagen: FOTO
       });
 
       expect(res.status).toBe(201);
       expect(res.data.success).toBe(true);
       expect(res.data.data.sku).toBe(sku);
+      expect(res.data.data.imagen).toBe(FOTO);
       productoId = res.data.data.id;
       expect(productoId).toBeTruthy();
     });
@@ -663,6 +668,17 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (7
       expect(res.status).toBe(200);
       expect(res.data.success).toBe(true);
       expect(res.data.data.nombre).toBe('Producto de Verificación Editado');
+
+      // Sin el campo, la foto queda; el inventario la entrega para la caja
+      const inventario = await requestApi('GET', `/api/v1/pos/inventory?tenant_id=${DEMO_TENANT}`);
+      expect(inventario.data.data.find((p: any) => p.id === productoId).imagen).toBe(FOTO);
+
+      const invalida = await requestApi('PUT', `/api/v1/pos/products/${productoId}`, { imagen: 'https://otro.sitio/foto.jpg' });
+      expect(invalida.status).toBe(400);
+
+      const sinFoto = await requestApi('PUT', `/api/v1/pos/products/${productoId}`, { imagen: null });
+      expect(sinFoto.status).toBe(200);
+      expect(sinFoto.data.data.imagen).toBeNull();
     });
 
     test('60. PATCH /api/v1/pos/products/:id/stock ajusta el conteo físico', async () => {

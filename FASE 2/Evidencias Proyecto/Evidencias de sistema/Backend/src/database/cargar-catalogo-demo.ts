@@ -3,6 +3,7 @@ import path from 'node:path';
 import { defaultSqliteClient, SqliteClient } from './sqlite/client';
 import { defaultPgClient, PostgresClient } from './postgres/client';
 import { logger } from '../utils/logger';
+import { motivoImagenInvalida } from '../inventory/imagen-producto';
 
 /**
  * Catalogo de demostracion versionado en el proyecto.
@@ -44,6 +45,8 @@ export interface ProductoSembrado {
   impuesto_adicional_tasa?: number;
   fecha_vencimiento?: string | null;
   activo?: number;
+  /** Foto como data URL. Una que no cumple el formato o el tope se descarta y el producto se carga igual. */
+  imagen?: string | null;
 }
 
 export interface CatalogoDemo {
@@ -147,6 +150,12 @@ export async function cargarCatalogoDemo(
     }
   }
 
+  const imagenDe = (producto: ProductoSembrado): string | null => {
+    const motivo = motivoImagenInvalida(producto.imagen);
+    if (motivo) logger.warn('CatalogoDemo', 'Imagen descartada', { sku: producto.sku, motivo });
+    return motivo ? null : producto.imagen ?? null;
+  };
+
   for (const producto of catalogo.productos) {
     try {
       const existente = sqliteClient.queryOne<{ total: number }>(
@@ -162,8 +171,8 @@ export async function cargarCatalogoDemo(
         `INSERT INTO productos
            (id, tenant_id, proveedor_id, codigo_barra, sku, nombre, stock_actual, stock_minimo,
             precio_compra, precio_venta, categoria, impuesto_adicional_codigo,
-            impuesto_adicional_tasa, fecha_vencimiento, activo)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+            impuesto_adicional_tasa, fecha_vencimiento, imagen, activo)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
         [
           producto.id,
           tenant,
@@ -178,7 +187,8 @@ export async function cargarCatalogoDemo(
           producto.categoria ?? null,
           producto.impuesto_adicional_codigo ?? 0,
           producto.impuesto_adicional_tasa ?? 0,
-          producto.fecha_vencimiento ?? null
+          producto.fecha_vencimiento ?? null,
+          imagenDe(producto)
         ]
       );
       resultado.productos_nuevos += 1;
@@ -215,8 +225,8 @@ export async function cargarCatalogoDemo(
         await pgClient.query(
           `INSERT INTO productos
              (id, tenant_id, proveedor_id, codigo_barra, sku, nombre, stock_actual, stock_minimo,
-              precio_compra, precio_venta, categoria, activo)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, true)
+              precio_compra, precio_venta, categoria, imagen, activo)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, true)
            ON CONFLICT (id) DO NOTHING`,
           [
             producto.id,
@@ -229,7 +239,8 @@ export async function cargarCatalogoDemo(
             producto.stock_minimo,
             producto.precio_compra,
             producto.precio_venta,
-            producto.categoria ?? null
+            producto.categoria ?? null,
+            imagenDe(producto)
           ]
         );
       } catch {}

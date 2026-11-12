@@ -280,7 +280,7 @@ export class PosSyncEngineService {
 
     const productos = this.sqlite.query<ProductoReferenciado>(
       `SELECT id, sku, codigo_barra, nombre, precio_compra, precio_venta, proveedor_id,
-              stock_actual, stock_minimo, activo
+              stock_actual, stock_minimo, activo, imagen
        FROM productos WHERE tenant_id = ?`,
       [tenantId]
     );
@@ -348,13 +348,14 @@ export class PosSyncEngineService {
 
             this.sqlite.execute(
               `UPDATE productos 
-               SET precio_compra = ?, precio_venta = ?, nombre = ?, activo = ?, updated_at = datetime('now')
+               SET precio_compra = ?, precio_venta = ?, nombre = ?, activo = ?, imagen = COALESCE(?, imagen), updated_at = datetime('now')
                WHERE id = ? AND tenant_id = ?`,
               [
                 reconciled.precio_compra,
                 reconciled.precio_venta,
                 reconciled.nombre,
                 reconciled.activo ? 1 : 0,
+                cloudProd.imagen ?? null,
                 localProd.id,
                 tenantId
               ]
@@ -364,8 +365,8 @@ export class PosSyncEngineService {
             // Si no existía localmente, insertarlo desde la nube
             this.sqlite.execute(
               `INSERT INTO productos 
-               (id, tenant_id, proveedor_id, codigo_barra, sku, nombre, stock_actual, stock_minimo, precio_compra, precio_venta, categoria, activo)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+               (id, tenant_id, proveedor_id, codigo_barra, sku, nombre, stock_actual, stock_minimo, precio_compra, precio_venta, categoria, activo, imagen)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
               [
                 cloudProd.id,
                 tenantId,
@@ -378,7 +379,8 @@ export class PosSyncEngineService {
                 cloudProd.precio_compra,
                 cloudProd.precio_venta,
                 cloudProd.categoria || null,
-                cloudProd.activo ? 1 : 0
+                cloudProd.activo ? 1 : 0,
+                cloudProd.imagen ?? null
               ]
             );
             updatedCount++;

@@ -91,6 +91,8 @@ export interface Producto {
   id: string;
   tenant_id: string;
   proveedor_id?: string | null;
+  /** Foto como data URL (migracion 021). */
+  imagen?: string | null;
   codigo_barra?: string | null;
   sku: string;
   nombre: string;

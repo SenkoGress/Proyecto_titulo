@@ -296,4 +296,38 @@ describe('Conflict Resolution Policies (Net Stock Delta & Catalog Primacy)', () 
     const arriba = await pgClient.query<{ activo: boolean }>('SELECT activo FROM productos WHERE id = $1', [ids.productoId]);
     expect(arriba.rows[0].activo).toBe(false);
   });
+
+  test('8. La foto sube con el respaldo, baja con el catalogo y una foto ausente arriba no borra la del terminal', async () => {
+    const ids = createFixtureIds();
+    const tenant = sampleTenant(ids.tenantId);
+    const foto = `data:image/png;base64,${Buffer.from('foto').toString('base64')}`;
+    const idSube = ids.productoId;
+    const idBaja = createFixtureIds().productoId;
+    sqliteClient.execute('INSERT INTO tenants (id, nombre, estado) VALUES (?, ?, ?)', [tenant.id, tenant.nombre, tenant.estado]);
+    await pgClient.query(`INSERT INTO tenants (id, nombre, estado) VALUES ($1, $2, $3)`, [tenant.id, tenant.nombre, tenant.estado]);
+    sqliteClient.execute(
+      `INSERT INTO productos (id, tenant_id, sku, nombre, stock_actual, precio_compra, precio_venta, imagen)
+       VALUES (?, ?, ?, 'Con foto propia', 5.0, 500, 1000, ?)`,
+      [idSube, ids.tenantId, `SKU-FOTO-${idSube.slice(0, 8)}`, foto]
+    );
+    await pgClient.query(
+      `INSERT INTO productos (id, tenant_id, sku, nombre, stock_actual, precio_compra, precio_venta, imagen)
+       VALUES ($1, $2, $3, 'Con foto de la nube', 5.0, 500, 1000, $4)`,
+      [idBaja, ids.tenantId, `SKU-NUBE-${idBaja.slice(0, 8)}`, foto]
+    );
+
+    await posEngine.respaldarCatalogoEnNube(ids.tenantId, (t, productos, proveedores) =>
+      cloudReceiver.respaldarCatalogo(t, productos, proveedores)
+    );
+    const arriba = await pgClient.query<{ imagen: string }>('SELECT imagen FROM productos WHERE id = $1', [idSube]);
+    expect(arriba.rows[0].imagen).toBe(foto);
+
+    // La fila subida por el respaldo no tiene foto en una nube que la perdio: se simula borrandola arriba
+    await pgClient.query('UPDATE productos SET imagen = NULL WHERE id = $1', [idSube]);
+    await posEngine.syncPullCatalog(ids.tenantId, (req) => cloudReceiver.getPullUpdates(req.tenant_id, req.last_pull_timestamp));
+
+    const local = (id: string) => sqliteClient.queryOne<{ imagen: string | null }>('SELECT imagen FROM productos WHERE id = ?', [id])?.imagen;
+    expect(local(idBaja)).toBe(foto);
+    expect(local(idSube)).toBe(foto);
+  });
 });

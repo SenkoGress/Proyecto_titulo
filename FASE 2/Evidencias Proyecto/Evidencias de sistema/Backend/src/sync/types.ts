@@ -20,6 +20,7 @@ export interface ProductoReferenciado {
   stock_minimo?: number;
   /** Solo viaja en el respaldo: un producto desactivado en el terminal no debe subir activo. */
   activo?: number | boolean;
+  imagen?: string | null;
 }
 
 export interface SyncPushItem {

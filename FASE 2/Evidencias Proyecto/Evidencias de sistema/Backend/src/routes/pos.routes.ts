@@ -8,6 +8,7 @@ import { aplicarRedondeoChileno } from '../utils/pricing';
 import { logger } from '../utils/logger';
 import { defaultLotesService } from '../inventory/lotes.service';
 import { codigoValido, consultarCodigo } from '../inventory/open-food-facts.service';
+import { motivoImagenInvalida } from '../inventory/imagen-producto';
 import { defaultDteEmitter } from '../dte/dte-emitter.service';
 import { defaultSiiEnvio } from '../dte/sii-envio.service';
 import { TipoDTE } from '../dte/types';
@@ -118,8 +119,15 @@ router.post('/products', async (req: Request, res: Response): Promise<void> => {
     lote = null,
     fecha_vencimiento = null,
     impuesto_adicional_codigo = 0,
-    impuesto_adicional_tasa = 0
+    impuesto_adicional_tasa = 0,
+    imagen = null
   } = req.body;
+
+  const motivoImagen = motivoImagenInvalida(imagen);
+  if (motivoImagen) {
+    res.status(400).json({ success: false, message: motivoImagen });
+    return;
+  }
 
   if (!nombre || !sku) {
     res.status(400).json({
@@ -137,8 +145,8 @@ router.post('/products', async (req: Request, res: Response): Promise<void> => {
     sqlite.withTransaction(() => {
       sqlite.execute(
         `INSERT INTO productos 
-         (id, tenant_id, proveedor_id, codigo_barra, sku, nombre, stock_actual, stock_minimo, precio_compra, precio_venta, categoria, activo, lote, fecha_vencimiento, impuesto_adicional_codigo, impuesto_adicional_tasa, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+         (id, tenant_id, proveedor_id, codigo_barra, sku, nombre, stock_actual, stock_minimo, precio_compra, precio_venta, categoria, activo, lote, fecha_vencimiento, impuesto_adicional_codigo, impuesto_adicional_tasa, imagen, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
         [
           productId,
           tenant_id,
@@ -154,7 +162,8 @@ router.post('/products', async (req: Request, res: Response): Promise<void> => {
           lote ?? null,
           fecha_vencimiento ?? null,
           impuesto_adicional_codigo || 0,
-          impuesto_adicional_tasa || 0
+          impuesto_adicional_tasa || 0,
+          imagen
         ]
       );
 
@@ -174,8 +183,8 @@ router.post('/products', async (req: Request, res: Response): Promise<void> => {
       if (await defaultPgClient.healthCheck()) {
         await defaultPgClient.query(
           `INSERT INTO productos 
-           (id, tenant_id, proveedor_id, codigo_barra, sku, nombre, stock_actual, stock_minimo, precio_compra, precio_venta, categoria, activo, lote, fecha_vencimiento, impuesto_adicional_codigo, impuesto_adicional_tasa, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 1, $12, $13, $14, $15, now(), now())
+           (id, tenant_id, proveedor_id, codigo_barra, sku, nombre, stock_actual, stock_minimo, precio_compra, precio_venta, categoria, activo, lote, fecha_vencimiento, impuesto_adicional_codigo, impuesto_adicional_tasa, imagen, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 1, $12, $13, $14, $15, $16, now(), now())
            ON CONFLICT (tenant_id, sku) DO UPDATE SET 
              nombre = EXCLUDED.nombre,
              precio_venta = EXCLUDED.precio_venta,
@@ -183,6 +192,7 @@ router.post('/products', async (req: Request, res: Response): Promise<void> => {
              stock_actual = EXCLUDED.stock_actual,
              lote = EXCLUDED.lote,
              fecha_vencimiento = EXCLUDED.fecha_vencimiento,
+             imagen = COALESCE(EXCLUDED.imagen, productos.imagen),
              updated_at = now()`,
           [
             productId,
@@ -199,7 +209,8 @@ router.post('/products', async (req: Request, res: Response): Promise<void> => {
             lote ?? null,
             fecha_vencimiento ?? null,
             impuesto_adicional_codigo || 0,
-            impuesto_adicional_tasa || 0
+            impuesto_adicional_tasa || 0,
+            imagen
           ]
         );
       }
@@ -251,6 +262,14 @@ router.put('/products/:id', async (req: Request, res: Response): Promise<void> =
     activo
   } = req.body;
 
+  // La imagen no sigue el COALESCE del resto: enviarla en null la quita, omitirla la deja como esta
+  const cambiaImagen = req.body && Object.prototype.hasOwnProperty.call(req.body, 'imagen');
+  const motivoImagen = cambiaImagen ? motivoImagenInvalida(req.body.imagen) : null;
+  if (motivoImagen) {
+    res.status(400).json({ success: false, message: motivoImagen });
+    return;
+  }
+
   try {
     const existing = sqlite.queryOne<any>('SELECT * FROM productos WHERE id = ?', [id]);
     if (!existing) {
@@ -290,6 +309,9 @@ router.put('/products/:id', async (req: Request, res: Response): Promise<void> =
         id
       ]
     );
+    if (cambiaImagen) {
+      sqlite.execute("UPDATE productos SET imagen = ?, updated_at = datetime('now') WHERE id = ?", [req.body.imagen ?? null, id]);
+    }
 
     // Replicar a PostgreSQL si está conectado
     try {
@@ -326,6 +348,9 @@ router.put('/products/:id', async (req: Request, res: Response): Promise<void> =
             id
           ]
         );
+        if (cambiaImagen) {
+          await defaultPgClient.query('UPDATE productos SET imagen = $1, updated_at = now() WHERE id = $2', [req.body.imagen ?? null, id]);
+        }
       }
     } catch {}
 
@@ -1080,6 +1105,7 @@ router.get('/inventory', (req: Request, res: Response): void => {
               p.precio_compra, p.precio_venta, p.categoria, p.activo, p.created_at, p.updated_at,
               p.origen_creacion, p.factura_origen_folio,
               p.lote, p.fecha_vencimiento, p.impuesto_adicional_codigo, p.impuesto_adicional_tasa,
+              p.imagen,
               pr.nombre_proveedores as proveedor_nombre,
               (SELECT MAX(h.fecha_movimiento) FROM historial_stock h
                 WHERE h.producto_id = p.id AND h.tipo_movimiento = 'ingreso_factura') as ultimo_ingreso_factura
