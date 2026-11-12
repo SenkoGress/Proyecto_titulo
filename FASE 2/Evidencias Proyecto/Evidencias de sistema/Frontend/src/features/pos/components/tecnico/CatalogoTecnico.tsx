@@ -12,12 +12,14 @@ import Skeleton from '@mui/material/Skeleton'
 import { formatoClp } from '@/shared/utils/formatoClp'
 import { useProductos } from '@/features/pos/hooks/usePos'
 import { useCarritoStore } from '@/features/pos/stores/carritoStore'
+import { useImagenesProductos } from '@/features/pos/hooks/useImagenesProductos'
 
 // el catalogo ocupa el espacio del ticket mientras no hay nada vendido: con la caja vacia esa
 // zona solo tenia un mensaje, y sin saberse el nombre ni el codigo no habia por donde empezar
 export function CatalogoTecnico() {
   const { data: productos = [], isPending } = useProductos()
   const agregar = useCarritoStore((estado) => estado.agregar)
+  const fotos = useImagenesProductos()
 
   if (isPending) return <Skeleton variant="rounded" sx={{ flexGrow: 1 }} />
 
@@ -39,6 +41,7 @@ export function CatalogoTecnico() {
         <Table stickyHeader size="small">
           <TableHead>
             <TableRow sx={{ '& th': { whiteSpace: 'nowrap' } }}>
+              {fotos.size > 0 && <TableCell sx={{ width: 52 }} />}
               <TableCell>SKU / CODIGO</TableCell>
               <TableCell>PRODUCTO</TableCell>
               <TableCell align="center">STOCK</TableCell>
@@ -57,6 +60,30 @@ export function CatalogoTecnico() {
                   onClick={() => !agotado && agregar(producto)}
                   sx={{ cursor: agotado ? 'default' : 'pointer', opacity: agotado ? 0.5 : 1 }}
                 >
+                  {fotos.size > 0 && (
+                    <TableCell sx={{ py: 0.5 }}>
+                      <Box
+                        sx={{
+                          width: 40,
+                          height: 40,
+                          borderRadius: 1,
+                          bgcolor: 'action.hover',
+                          overflow: 'hidden',
+                        }}
+                      >
+                        {fotos.get(producto.id) && (
+                          <Box
+                            component="img"
+                            src={fotos.get(producto.id)}
+                            alt=""
+                            loading="lazy"
+                            sx={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                          />
+                        )}
+                      </Box>
+                    </TableCell>
+                  )}
+
                   <TableCell sx={{ fontFamily: 'monospace', fontSize: 12, whiteSpace: 'nowrap' }}>
                     {producto.codigo_barra ?? producto.sku}
                   </TableCell>
@@ -76,7 +103,10 @@ export function CatalogoTecnico() {
 
             {productos.length === 0 && (
               <TableRow>
-                <TableCell colSpan={4} sx={{ py: 6, textAlign: 'center', color: 'text.secondary' }}>
+                <TableCell
+                  colSpan={fotos.size > 0 ? 5 : 4}
+                  sx={{ py: 6, textAlign: 'center', color: 'text.secondary' }}
+                >
                   Todavia no hay productos en el catalogo.
                 </TableCell>
               </TableRow>

@@ -19,6 +19,7 @@ import { OPCIONES_ILA, TASA_ILA } from '@/shared/utils/ila'
 import { buscarPorCodigoBarras } from '@/features/inventario/api/inventario.api'
 import { codigoBuscable } from '@/features/inventario/utils/fichaCodigoBarras'
 import { SugerenciaCodigoBarras } from '@/features/inventario/components/compartidos/SugerenciaCodigoBarras'
+import { CampoFoto } from '@/features/inventario/components/compartidos/CampoFoto'
 import { useCrearProducto, useEditarProducto } from '@/features/inventario/hooks/useInventario'
 import { useProveedores } from '@/features/proveedores/hooks/useProveedores'
 import { obtenerMensajeError } from '@/lib/api/apiError'
@@ -44,6 +45,7 @@ type Formulario = {
   lote: string
   fecha_vencimiento: string
   impuesto_adicional_codigo: number
+  imagen: string | null
 }
 
 const VACIO: Formulario = {
@@ -59,6 +61,7 @@ const VACIO: Formulario = {
   lote: '',
   fecha_vencimiento: '',
   impuesto_adicional_codigo: 0,
+  imagen: null,
 }
 
 function desdeProducto(producto: ProductoInventario): Formulario {
@@ -75,6 +78,7 @@ function desdeProducto(producto: ProductoInventario): Formulario {
     lote: producto.lote ?? '',
     fecha_vencimiento: producto.fecha_vencimiento ?? '',
     impuesto_adicional_codigo: Number(producto.impuesto_adicional_codigo) || 0,
+    imagen: producto.imagen ?? null,
   }
 }
 
@@ -126,6 +130,7 @@ export function DialogoProducto({ abierto, onCerrar, producto }: Props) {
       fecha_vencimiento: form.fecha_vencimiento || null,
       impuesto_adicional_codigo: form.impuesto_adicional_codigo,
       impuesto_adicional_tasa: TASA_ILA[form.impuesto_adicional_codigo] ?? 0,
+      imagen: form.imagen,
     }
 
     if (producto) {
@@ -157,6 +162,9 @@ export function DialogoProducto({ abierto, onCerrar, producto }: Props) {
             resultado={sugerencia}
             onUsar={(nombre) => {
               cambiar('nombre', nombre)
+              // la ficha trae la foto ya incrustada, y solo se usa si no hay una propia
+              const foto = sugerencia.encontrada?.imagen
+              if (foto && !form.imagen) setForm((previo) => ({ ...previo, imagen: foto }))
               setSugerencia(null)
             }}
             onIgnorar={() => setSugerencia(null)}
@@ -299,6 +307,13 @@ export function DialogoProducto({ abierto, onCerrar, producto }: Props) {
               </MenuItem>
             ))}
           </TextField>
+        </Box>
+
+        <Box sx={{ mt: 2.5 }}>
+          <CampoFoto
+            imagen={form.imagen}
+            onCambiar={(imagen) => setForm((previo) => ({ ...previo, imagen }))}
+          />
         </Box>
 
         {!editando && (

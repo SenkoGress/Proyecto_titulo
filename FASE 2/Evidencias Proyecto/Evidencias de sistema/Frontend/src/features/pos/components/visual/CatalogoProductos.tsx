@@ -9,6 +9,7 @@ import Typography from '@mui/material/Typography'
 import SearchIcon from '@mui/icons-material/Search'
 import { ErrorBox } from '@/shared/components/ui/ErrorBox'
 import { ProductoCard } from '@/features/pos/components/visual/ProductoCard'
+import { useImagenesProductos } from '@/features/pos/hooks/useImagenesProductos'
 import { useProductos } from '@/features/pos/hooks/usePos'
 import { useCarritoStore } from '@/features/pos/stores/carritoStore'
 import {
@@ -22,6 +23,7 @@ const TODOS = 'Todos'
 // buscador, categorias y grilla
 export function CatalogoProductos() {
   const { data: productos, isPending, isError, error } = useProductos()
+  const fotos = useImagenesProductos()
   const agregar = useCarritoStore((estado) => estado.agregar)
 
   const [busqueda, setBusqueda] = useState('')
@@ -114,7 +116,13 @@ export function CatalogoProductos() {
           }}
         >
           {productosFiltrados.map((producto) => (
-            <ProductoCard key={producto.id} producto={producto} onAgregar={agregar} />
+            <ProductoCard
+              key={producto.id}
+              producto={producto}
+              onAgregar={agregar}
+              imagen={fotos.get(producto.id)}
+              conFoto={fotos.size > 0}
+            />
           ))}
         </Box>
       </Box>

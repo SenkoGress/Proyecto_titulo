@@ -2,6 +2,7 @@
 import Card from '@mui/material/Card'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
+import ImageOutlinedIcon from '@mui/icons-material/ImageOutlined'
 import { EtiquetasProducto } from '@/features/pos/components/compartidos/EtiquetasProducto'
 import IconButton from '@mui/material/IconButton'
 import AddIcon from '@mui/icons-material/Add'
@@ -12,10 +13,14 @@ import type { Producto } from '@/features/pos/types'
 type Props = {
   producto: Producto
   onAgregar: (producto: Producto) => void
+  imagen?: string
+  // el hueco de la foto se reserva en todas las tarjetas o en ninguna, para que no queden
+  // desparejas: un catalogo sin fotos se ve mejor sin cuadros grises
+  conFoto?: boolean
 }
 
 // tarjeta de producto
-export function ProductoCard({ producto, onAgregar }: Props) {
+export function ProductoCard({ producto, onAgregar, imagen, conFoto }: Props) {
   const categoria = producto.categoria ?? 'Sin categoria'
   const color = colorCategoria(categoria)
 
@@ -32,6 +37,31 @@ export function ProductoCard({ producto, onAgregar }: Props) {
         height: '100%',
       }}
     >
+      {conFoto && (
+        <Box
+          sx={{
+            height: 108,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            bgcolor: 'action.hover',
+            overflow: 'hidden',
+          }}
+        >
+          {imagen ? (
+            <Box
+              component="img"
+              src={imagen}
+              alt=""
+              loading="lazy"
+              sx={{ width: '100%', height: '100%', objectFit: 'contain' }}
+            />
+          ) : (
+            <ImageOutlinedIcon sx={{ color: 'text.disabled', fontSize: 34 }} />
+          )}
+        </Box>
+      )}
+
       {/* categoria y stock */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', px: 1.5, pt: 1.5 }}>
         <Typography variant="caption" sx={{ color, fontWeight: 700, letterSpacing: 0.4 }}>

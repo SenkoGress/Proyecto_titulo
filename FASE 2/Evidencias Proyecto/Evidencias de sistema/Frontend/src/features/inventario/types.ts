@@ -23,6 +23,7 @@ export type ProductoInventario = {
   impuesto_adicional_codigo: number | null
   impuesto_adicional_tasa: number | null
   proveedor_nombre: string | null
+  imagen: string | null // data URL, la manda GET /pos/inventory pero no GET /pos/products
 }
 
 export type RespuestaInventario = {
@@ -85,6 +86,7 @@ export type NuevoProducto = {
   fecha_vencimiento?: string | null
   impuesto_adicional_codigo?: number
   impuesto_adicional_tasa?: number
+  imagen?: string | null // data URL ya reducida; en el PUT, null la quita y omitirla la deja
 }
 
 // edicion (PUT /pos/products/:id): los campos que no se mandan quedan como estaban

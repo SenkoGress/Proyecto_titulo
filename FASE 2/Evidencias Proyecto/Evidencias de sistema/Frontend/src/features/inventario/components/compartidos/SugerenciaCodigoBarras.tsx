@@ -110,11 +110,11 @@ export function SugerenciaCodigoBarras({ resultado, onUsar, onIgnorar }: Props) 
           </Button>
         </Box>
 
-        {/* la foto sirve para reconocer el producto al darlo de alta: todavia no se guarda */}
+        {/* al usar el nombre tambien baja la foto, salvo que ya haya una propia cargada */}
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5 }}>
           Datos y foto de Open Food Facts (ODbL / CC BY-SA). Pueden estar incompletos o
-          equivocados: revisa antes de guardar. La foto es solo para reconocer el producto, todavia
-          no queda guardada.
+          equivocados: revisa antes de guardar. Al usar el nombre tambien se toma la foto, salvo
+          que ya hayas cargado una propia.
         </Typography>
       </Paper>
     </Box>
