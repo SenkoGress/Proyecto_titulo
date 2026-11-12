@@ -1,7 +1,13 @@
 // src/features/inventario/api/inventario.api.ts
+import { isAxiosError } from 'axios'
 import { httpClient } from '@/lib/api/httpClient'
 import { endpoints } from '@/lib/api/endpoints'
 import { tenantActual } from '@/features/auth/utils/identidad'
+import type {
+  FichaExterna,
+  ProductoEnCatalogo,
+  ResultadoBusqueda,
+} from '@/features/inventario/utils/fichaCodigoBarras'
 import type {
   AjusteStock,
   EdicionProducto,
@@ -73,4 +79,28 @@ export async function obtenerMermas() {
 export async function obtenerHistorialProducto(id: string) {
   const { data } = await httpClient.get<RespuestaHistorialStock>(endpoints.pos.historialProducto(id))
   return data.data
+}
+
+// busca la ficha del producto por su codigo de barras. El servidor consulta Open Food Facts y de
+// paso avisa si ese codigo ya esta en el catalogo del local. Nunca lanza: un codigo que no esta,
+// o Open Food Facts caido, son respuestas normales y la pantalla sigue funcionando a mano
+export async function buscarPorCodigoBarras(codigo: string): Promise<ResultadoBusqueda> {
+  try {
+    const { data } = await httpClient.get<{ data: FichaExterna; en_catalogo: ProductoEnCatalogo }>(
+      endpoints.pos.buscarCodigoBarras(codigo.trim()),
+      { params: { tenant_id: tenantActual() } },
+    )
+    return { encontrada: data.data, enCatalogo: data.en_catalogo ?? null, motivo: 'encontrado' }
+  } catch (error) {
+    const estado = isAxiosError(error) ? error.response?.status : undefined
+    const cuerpo = isAxiosError(error)
+      ? (error.response?.data as { en_catalogo?: ProductoEnCatalogo } | undefined)
+      : undefined
+
+    return {
+      encontrada: null,
+      enCatalogo: cuerpo?.en_catalogo ?? null,
+      motivo: estado === 404 ? 'no_esta' : 'sin_conexion',
+    }
+  }
 }

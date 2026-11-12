@@ -10,11 +10,20 @@ import MenuItem from '@mui/material/MenuItem'
 import Box from '@mui/material/Box'
 import Alert from '@mui/material/Alert'
 import Typography from '@mui/material/Typography'
+import IconButton from '@mui/material/IconButton'
+import InputAdornment from '@mui/material/InputAdornment'
+import Tooltip from '@mui/material/Tooltip'
+import CircularProgress from '@mui/material/CircularProgress'
+import SearchOutlined from '@mui/icons-material/SearchOutlined'
 import { OPCIONES_ILA, TASA_ILA } from '@/shared/utils/ila'
+import { buscarPorCodigoBarras } from '@/features/inventario/api/inventario.api'
+import { codigoBuscable } from '@/features/inventario/utils/fichaCodigoBarras'
+import { SugerenciaCodigoBarras } from '@/features/inventario/components/compartidos/SugerenciaCodigoBarras'
 import { useCrearProducto, useEditarProducto } from '@/features/inventario/hooks/useInventario'
 import { useProveedores } from '@/features/proveedores/hooks/useProveedores'
 import { obtenerMensajeError } from '@/lib/api/apiError'
 import type { ProductoInventario } from '@/features/inventario/types'
+import type { ResultadoBusqueda } from '@/features/inventario/utils/fichaCodigoBarras'
 
 type Props = {
   abierto: boolean
@@ -84,8 +93,24 @@ export function DialogoProducto({ abierto, onCerrar, producto }: Props) {
   const error = crear.error ?? editar.error
   const faltanDatos = !form.nombre.trim() || !form.sku.trim()
 
+  // la ficha de Open Food Facts se ofrece al lado y no entra sola: el nombre lo cambia la
+  // persona al aceptarla
+  const [sugerencia, setSugerencia] = useState<ResultadoBusqueda | null>(null)
+  const [buscando, setBuscando] = useState(false)
+
+  const puedeBuscar = !editando && codigoBuscable(form.codigo_barra) && !buscando
+
+  async function buscarCodigo() {
+    if (!puedeBuscar) return
+    setBuscando(true)
+    setSugerencia(await buscarPorCodigoBarras(form.codigo_barra))
+    setBuscando(false)
+  }
+
   function cambiar(campo: keyof Formulario, valor: string | number) {
     setForm((previo) => ({ ...previo, [campo]: valor }))
+    // la sugerencia era de otro codigo: dejarla a la vista confundiria
+    if (campo === 'codigo_barra') setSugerencia(null)
   }
 
   async function guardar() {
@@ -127,6 +152,17 @@ export function DialogoProducto({ abierto, onCerrar, producto }: Props) {
           </Alert>
         )}
 
+        {sugerencia && (
+          <SugerenciaCodigoBarras
+            resultado={sugerencia}
+            onUsar={(nombre) => {
+              cambiar('nombre', nombre)
+              setSugerencia(null)
+            }}
+            onIgnorar={() => setSugerencia(null)}
+          />
+        )}
+
         <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
           <TextField
             label="Nombre"
@@ -146,11 +182,43 @@ export function DialogoProducto({ abierto, onCerrar, producto }: Props) {
             helperText={editando ? 'El codigo no se puede cambiar' : 'Como lo identificas tu'}
           />
 
+          {/* la pistola lectora escribe el codigo y manda Enter, por eso busca con Enter ademas
+              del boton */}
           <TextField
             label="Codigo de barras"
             value={form.codigo_barra}
             onChange={(evento) => cambiar('codigo_barra', evento.target.value)}
-            helperText="Si lo dejas vacio se genera uno"
+            onKeyDown={(evento) => {
+              if (evento.key !== 'Enter') return
+              evento.preventDefault()
+              void buscarCodigo()
+            }}
+            helperText={
+              editando
+                ? 'Si lo dejas vacio se genera uno'
+                : 'Escanealo o escribelo y busca sus datos'
+            }
+            slotProps={{
+              input: {
+                endAdornment: !editando && (
+                  <InputAdornment position="end">
+                    <Tooltip
+                      title={
+                        codigoBuscable(form.codigo_barra)
+                          ? 'Buscar los datos de este producto'
+                          : 'Escribe un codigo de 8 a 14 digitos'
+                      }
+                    >
+                      <span>
+                        <IconButton size="small" onClick={buscarCodigo} disabled={!puedeBuscar}>
+                          {buscando ? <CircularProgress size={18} /> : <SearchOutlined fontSize="small" />}
+                        </IconButton>
+                      </span>
+                    </Tooltip>
+                  </InputAdornment>
+                ),
+              },
+            }}
           />
 
           <TextField

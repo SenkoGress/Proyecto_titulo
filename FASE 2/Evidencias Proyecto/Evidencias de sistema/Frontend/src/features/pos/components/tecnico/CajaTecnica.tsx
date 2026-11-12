@@ -1,9 +1,13 @@
 // src/features/pos/components/tecnico/CajaTecnica.tsx
 import { useState } from 'react'
 import Box from '@mui/material/Box'
+import Button from '@mui/material/Button'
+import GridViewOutlined from '@mui/icons-material/GridViewOutlined'
+import ReceiptLongOutlined from '@mui/icons-material/ReceiptLongOutlined'
 import { BuscadorTecnico } from '@/features/pos/components/tecnico/BuscadorTecnico'
 import { BarraAtajos } from '@/features/pos/components/tecnico/BarraAtajos'
 import { TablaTicket } from '@/features/pos/components/tecnico/TablaTicket'
+import { CatalogoTecnico } from '@/features/pos/components/tecnico/CatalogoTecnico'
 import { PanelCobro } from '@/features/pos/components/tecnico/PanelCobro'
 import { DialogoAtajos } from '@/features/pos/components/tecnico/DialogoAtajos'
 import { DialogoComprobante } from '@/features/pos/components/compartidos/DialogoComprobante'
@@ -17,8 +21,10 @@ import { METODOS_PAGO } from '@/features/pos/metodosPago'
 export function CajaTecnica() {
   const { cobrar, cerrarComprobante, ventaLista, cobrando, errorCobro } = useCobrarVenta()
   const limpiar = useCarritoStore((estado) => estado.limpiar)
+  const hayVenta = useCarritoStore((estado) => estado.lineas.length > 0)
   const cambiarMetodoPago = useCarritoStore((estado) => estado.cambiarMetodoPago)
   const [ayudaAbierta, setAyudaAbierta] = useState(false)
+  const [verCatalogo, setVerCatalogo] = useState(false)
 
   // ir al buscador
   function enfocarBuscador() {
@@ -56,8 +62,29 @@ export function CajaTecnica() {
       {/* izquierda: buscador y tabla */}
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, flexGrow: 1, minWidth: 0 }}>
         <BuscadorTecnico />
-        <BarraAtajos acciones={acciones} />
-        <TablaTicket />
+
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+          <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+            <BarraAtajos acciones={acciones} />
+          </Box>
+
+          {/* con la venta empezada el catalogo cede el espacio al ticket: este boton lo trae de
+              vuelta para agregar otro producto sin tener que escribirlo */}
+          {hayVenta && (
+            <Button
+              size="small"
+              variant={verCatalogo ? 'contained' : 'outlined'}
+              startIcon={verCatalogo ? <ReceiptLongOutlined /> : <GridViewOutlined />}
+              onClick={() => setVerCatalogo(!verCatalogo)}
+              sx={{ flexShrink: 0 }}
+            >
+              {verCatalogo ? 'Ver el ticket' : 'Ver el catalogo'}
+            </Button>
+          )}
+        </Box>
+        {/* el catalogo ocupa ese espacio hasta que empieza la venta, y despues se puede volver a
+            el para agregar otro producto sin escribir */}
+        {hayVenta && !verCatalogo ? <TablaTicket /> : <CatalogoTecnico />}
       </Box>
 
       {/* derecha: cobro */}

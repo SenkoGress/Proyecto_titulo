@@ -34,6 +34,7 @@ export const endpoints = {
     mermas: `${API_V1}/pos/mermas`,
     historialProducto: (id: string) => `${API_V1}/pos/products/${id}/history`,
     reintentarVenta: (id: string) => `${API_V1}/pos/transactions/${id}/reintentar-sincronizacion`,
+    buscarCodigoBarras: (codigo: string) => `${API_V1}/pos/products/lookup/${codigo}`,
   },
   replenishment: {
     sugerir: `${API_V1}/replenishment/suggest`,
