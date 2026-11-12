@@ -17,6 +17,7 @@ import { detalleIla, nombreIla, codigoIla } from '@/shared/utils/ila'
 import { calcularMargen } from '@/features/inventario/utils/calculosInventario'
 import { AccionesProducto } from '@/features/inventario/components/compartidos/AccionesProducto'
 import type { FilaFefo } from '@/features/inventario/utils/matrizFefo'
+import { CELDA_APILADA } from '@/features/inventario/utils/celdaApilada'
 
 type Acciones = {
   onEditar: (producto: FilaFefo) => void
@@ -48,11 +49,11 @@ function armarColumnas(acciones: Acciones, ultimoZ: Date | null): GridColDef<Fil
     headerName: 'SKU / Codigo',
     width: 135,
     renderCell: (parametros) => (
-      <Box sx={{ py: 1 }}>
+      <Box sx={CELDA_APILADA}>
         <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
           {parametros.row.sku}
         </Typography>
-        <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>
+        <Typography component="div" variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>
           {parametros.row.codigo_barra}
         </Typography>
       </Box>
@@ -64,11 +65,11 @@ function armarColumnas(acciones: Acciones, ultimoZ: Date | null): GridColDef<Fil
     flex: 1,
     minWidth: 200,
     renderCell: (parametros) => (
-      <Box sx={{ py: 1 }}>
+      <Box sx={CELDA_APILADA}>
         <Typography variant="body2" sx={{ fontWeight: 600 }}>
           {parametros.row.nombre}
         </Typography>
-        <Typography variant="caption" color="text.secondary">
+        <Typography component="div" variant="caption" color="text.secondary">
           {parametros.row.proveedor_nombre ?? 'Sin proveedor asignado'}
         </Typography>
       </Box>
@@ -79,12 +80,12 @@ function armarColumnas(acciones: Acciones, ultimoZ: Date | null): GridColDef<Fil
     headerName: 'Lote / Vence',
     width: 165,
     renderCell: (parametros) => (
-      <Box sx={{ py: 1 }}>
+      <Box sx={CELDA_APILADA}>
         <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
           {parametros.row.lote ?? '-'}
         </Typography>
         {/* sin las unidades la fecha sola no dice cuanto hay que liquidar */}
-        <Typography variant="caption" color="text.secondary">
+        <Typography component="div" variant="caption" color="text.secondary">
           {parametros.row.fecha_vencimiento ? formatFechaSola(parametros.row.fecha_vencimiento) : '-'}
           {textoUnidadesPorVencer(parametros.row.unidades_por_vencer) &&
             ` · ${textoUnidadesPorVencer(parametros.row.unidades_por_vencer)}`}
@@ -151,7 +152,7 @@ function armarColumnas(acciones: Acciones, ultimoZ: Date | null): GridColDef<Fil
             sx={{ fontWeight: 700 }}
           />
         ) : (
-          <Typography variant="caption" color="text.secondary">
+          <Typography component="div" variant="caption" color="text.secondary">
             {nombreIla(parametros.row)}
           </Typography>
         )}
@@ -215,7 +216,6 @@ export function TablaInventarioTecnico({
         rowSelectionModel={seleccion}
         onRowSelectionModelChange={onCambiarSeleccion}
         disableRowSelectionOnClick
-        density="comfortable"
       />
     </Box>
   )

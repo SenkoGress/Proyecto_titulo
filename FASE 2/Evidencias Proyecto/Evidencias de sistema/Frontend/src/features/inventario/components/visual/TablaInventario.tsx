@@ -12,6 +12,7 @@ import { EtiquetaProductoNuevo } from '@/features/inventario/components/comparti
 import { ultimoCierreZ } from '@/features/inventario/utils/productoNuevo'
 import { useHistorialCaja } from '@/features/caja/hooks/useCaja'
 import type { ProductoInventario } from '@/features/inventario/types'
+import { CELDA_APILADA } from '@/features/inventario/utils/celdaApilada'
 
 type Acciones = {
   onEditar: (producto: ProductoInventario) => void
@@ -33,11 +34,11 @@ function armarColumnas(acciones: Acciones, ultimoZ: Date | null): GridColDef<Pro
     headerName: 'SKU / Codigo',
     width: 150,
     renderCell: (parametros) => (
-      <Box sx={{ py: 1 }}>
+      <Box sx={CELDA_APILADA}>
         <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
           {parametros.row.sku}
         </Typography>
-        <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>
+        <Typography component="div" variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>
           {parametros.row.codigo_barra}
         </Typography>
       </Box>
@@ -49,14 +50,14 @@ function armarColumnas(acciones: Acciones, ultimoZ: Date | null): GridColDef<Pro
     flex: 1,
     minWidth: 220,
     renderCell: (parametros) => (
-      <Box sx={{ py: 1 }}>
+      <Box sx={CELDA_APILADA}>
         <Box sx={{ display: 'flex', gap: 0.75, alignItems: 'center', minWidth: 0 }}>
           <Typography variant="body2" noWrap sx={{ fontWeight: 600, minWidth: 0 }}>
             {parametros.row.nombre}
           </Typography>
           <EtiquetaProductoNuevo producto={parametros.row} ultimoZ={ultimoZ} />
         </Box>
-        <Typography variant="caption" color="text.secondary">
+        <Typography component="div" variant="caption" color="text.secondary">
           {parametros.row.proveedor_nombre ?? 'Sin proveedor asignado'}
         </Typography>
       </Box>
@@ -145,7 +146,6 @@ export function TablaInventario({ productos, cargando, onEditar, onAjustar, onMe
         initialState={{ pagination: { paginationModel: { pageSize: 10 } } }}
         pageSizeOptions={[10, 25, 50]}
         disableRowSelectionOnClick
-        density="comfortable"
       />
     </Box>
   )
