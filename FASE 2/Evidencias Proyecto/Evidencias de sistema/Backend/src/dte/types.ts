@@ -66,7 +66,7 @@ export interface ItemDTE {
   precioUnitario: number;
   subtotal: number;
   exento?: boolean;
-  codigoIla?: number; // 25: analcohólica 10%, 26: analcohólica 18%, 27: cerveza/vino 20.5%, 28: licores 31.5%
+  codigoIla?: number; // tabla SII: 24 licores 31.5%, 25 vinos 20.5%, 26 cervezas 20.5%, 27 analcohólica 10%, 271 azúcar alta 18%
   tasaIla?: number;
   montoIla?: number;
 }

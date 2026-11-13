@@ -21,6 +21,12 @@ describe('Cumplimiento Normativo SII & Integración POS', () => {
 
   beforeAll(async () => {
     await initializeDatabase();
+    // La siembra ya no trae productos: la prueba usa uno propio en la tienda de la demostracion
+    defaultSqliteClient.execute(
+      `INSERT OR IGNORE INTO productos (id, tenant_id, sku, nombre, stock_actual, stock_minimo, precio_compra, precio_venta, categoria, activo)
+       VALUES ('33333333-0000-0000-0000-0000000000a1', ?, 'PRUEBA-REF-02', 'Producto de referencia', 45, 12, 500, 1000, 'Pruebas', 1)`,
+      [tenantId]
+    );
     await new Promise<void>((resolve) => {
       testServer = app.listen(0, () => {
         const addr = testServer.address() as any;

@@ -218,20 +218,6 @@ describe('Pruebas Unitarias: Resiliencia del Envio de Ventas a la Nube', () => {
     }
   });
 
-  test('10. Las ventas de la siembra pueden subir: su identificador es un UUID', () => {
-    const sembradas = defaultSqliteClient.query<{ id: string }>(
-      `SELECT id FROM transacciones_venta
-       WHERE tenant_id = ? AND folio_local_sqlite LIKE 'FOLIO-HIST-%'`,
-      [TENANT]
-    );
-
-    // Eran del tipo v1-<uuid del producto>, que PostgreSQL rechaza por no ser UUID
-    expect(sembradas.length).toBeGreaterThan(0);
-    for (const venta of sembradas) {
-      expect(venta.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
-    }
-  });
-
   function intentosDe(ventaId: string): number {
     const fila = defaultSqliteClient.queryOne<{ sync_attempts: number }>(
       'SELECT sync_attempts FROM transacciones_venta WHERE id = ?',

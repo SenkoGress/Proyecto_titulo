@@ -81,14 +81,14 @@ describe('Chilean Retail & Tax Compliance Pack Integration Tests', () => {
 
   describe('2. Impuesto Adicional a las Bebidas y Licores (ILA - D.L. 825 Arts. 42 y 43)', () => {
     it('debe desglosar correctamente el IVA 19% y el ILA 20.5% para Cervezas y Vinos', () => {
-      // Producto: Sixpack Cerveza Artesanal ($10.000 bruto) afecto a ILA 20.5% (Cód 27)
+      // Producto: Sixpack Cerveza Artesanal ($10.000 bruto) afecto a ILA 20.5% (Cód 26, cervezas)
       const itemCerveza = {
         nroLinea: 1,
         nombre: 'Cerveza Austral Calafate 6x330cc',
         cantidad: 1,
         precioUnitario: 10000,
         subtotal: 10000,
-        codigoIla: 27,
+        codigoIla: 26,
         tasaIla: 20.5
       };
 
@@ -102,7 +102,7 @@ describe('Chilean Retail & Tax Compliance Pack Integration Tests', () => {
       expect(totales.montoNeto).toBeLessThan(7300);
       expect(totales.montoIla).toBeGreaterThan(1400);
       expect(totales.desgloseIla).toHaveLength(1);
-      expect(totales.desgloseIla![0].codigo).toBe(27);
+      expect(totales.desgloseIla![0].codigo).toBe(26);
       expect(totales.montoTotal).toBe(10000);
 
       // Emisión de DTE y verificación de tags XML
@@ -113,8 +113,8 @@ describe('Chilean Retail & Tax Compliance Pack Integration Tests', () => {
         items: [itemCerveza]
       });
 
-      expect(dte.xmlDte).toContain('<CodImpAdic>27</CodImpAdic>');
-      expect(dte.xmlDte).toContain('<TipoImp>27</TipoImp>');
+      expect(dte.xmlDte).toContain('<CodImpAdic>26</CodImpAdic>');
+      expect(dte.xmlDte).toContain('<TipoImp>26</TipoImp>');
       expect(dte.xmlDte).toContain('<TasaImp>20.5</TasaImp>');
     });
   });

@@ -218,109 +218,8 @@ function seedSqliteDemoData(): void {
       );
     }
 
-    // 5. Productos iniciales del catálogo
-    const productos = [
-      {
-        id: '33333333-0000-0000-0000-000000000001',
-        sku: 'BEB-CC-350',
-        barcode: '7801234567890',
-        nombre: 'Coca Cola 350ml Lata',
-        stock: 45.00,
-        min: 12.00,
-        costo: 500.00,
-        precio: 1000.00,
-        cat: 'Bebidas',
-        prov: proveedores[0].id
-      },
-      {
-        id: '33333333-0000-0000-0000-000000000002',
-        sku: 'BEB-MONS-473',
-        barcode: '7801234567891',
-        nombre: 'Bebida Energética Monster 473ml',
-        stock: 6.00, // Riesgo crítico < 15
-        min: 15.00,
-        costo: 1200.00,
-        precio: 2500.00,
-        cat: 'Bebidas',
-        prov: proveedores[0].id
-      },
-      {
-        id: '33333333-0000-0000-0000-000000000003',
-        sku: 'ABA-HAR-1K',
-        barcode: '7801234567892',
-        nombre: 'Harina Selecta Sin Polvos 1kg',
-        stock: 24.00,
-        min: 10.00,
-        costo: 750.00,
-        precio: 1350.00,
-        cat: 'Abarrotes',
-        prov: proveedores[1].id
-      },
-      {
-        id: '33333333-0000-0000-0000-000000000004',
-        sku: 'ABA-ACE-900',
-        barcode: '7801234567893',
-        nombre: 'Aceite Vegetal Belmont 900ml',
-        stock: 4.00, // Riesgo crítico < 12
-        min: 12.00,
-        costo: 1100.00,
-        precio: 2190.00,
-        cat: 'Abarrotes',
-        prov: proveedores[1].id
-      },
-      {
-        id: '33333333-0000-0000-0000-000000000005',
-        sku: 'LAC-LECH-1L',
-        barcode: '7801234567894',
-        nombre: 'Leche Entera Colun 1L',
-        stock: 35.00,
-        min: 10.00,
-        costo: 720.00,
-        precio: 1290.00,
-        cat: 'Lácteos',
-        prov: proveedores[2].id
-      },
-      {
-        id: '33333333-0000-0000-0000-000000000006',
-        sku: 'SNK-LAY-200',
-        barcode: '7801234567895',
-        nombre: 'Papas Fritas Lays Clásicas 200g',
-        stock: 18.00,
-        min: 8.00,
-        costo: 1050.00,
-        precio: 1890.00,
-        cat: 'Snacks',
-        prov: proveedores[1].id
-      }
-    ];
-
-    for (const p of productos) {
-      defaultSqliteClient.execute(
-        `INSERT OR IGNORE INTO productos 
-         (id, tenant_id, proveedor_id, codigo_barra, sku, nombre, stock_actual, stock_minimo, precio_compra, precio_venta, categoria, activo)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
-        [p.id, DEMO_TENANT_ID, p.prov, p.barcode, p.sku, p.nombre, p.stock, p.min, p.costo, p.precio, p.cat]
-      );
-    }
-
-    // 7. Sembrar historial de ventas de los últimos 7 días para cálculo predictivo
-    const seedSeller = defaultSqliteClient.queryOne<{ id: string }>(
-      "SELECT id FROM usuarios WHERE tenant_id = ? ORDER BY CASE rol WHEN 'admin' THEN 0 ELSE 1 END LIMIT 1",
-      [DEMO_TENANT_ID]
-    );
-    const sellerId = seedSeller?.id;
-    for (const p of sellerId ? productos : []) {
-      defaultSqliteClient.execute(
-        `INSERT INTO transacciones_venta (id, tenant_id, usuario_id, folio_local_sqlite, total, unidades, estado, is_dirty, sync_status, fecha)
-         VALUES (?, ?, ?, ?, ?, 10, 'COMPLETADA', 0, 'SYNCED', datetime('now', '-2 days'))`,
-        [idVentaSembrada(p.id), DEMO_TENANT_ID, sellerId, `FOLIO-HIST-${p.sku}`, p.precio * 10]
-      );
-      defaultSqliteClient.execute(
-        `INSERT INTO detalle_venta (id, venta_id, producto_id, cantidad, precio_unitario, subtotal)
-         VALUES (?, ?, ?, 10, ?, ?)`,
-        [idDetalleSembrado(p.id), idVentaSembrada(p.id), p.id, p.precio, p.precio * 10]
-      );
-    }
+    // Sin productos: el catalogo de demostracion es el de semillas/catalogo-demo.json y se carga
+    // solo si se pide. Una instalacion real empieza con su propio catalogo.
 
     // 8. Configuración inicial del negocio (Margen y Ley de Redondeo)
     defaultSqliteClient.execute(
@@ -405,14 +304,6 @@ async function ensurePostgresInitialUsers(): Promise<void> {
 const H = '[0-9a-fA-F]';
 const GLOB_UUID = `${H.repeat(8)}-${H.repeat(4)}-${H.repeat(4)}-${H.repeat(4)}-${H.repeat(12)}`;
 
-function idVentaSembrada(productoId: string): string {
-  return `44444444${productoId.slice(8)}`;
-}
-
-function idDetalleSembrado(productoId: string): string {
-  return `66666666${productoId.slice(8)}`;
-}
-
 async function seedPostgresDemoData(): Promise<void> {
   const res = await defaultPgClient.query(
     'SELECT id FROM tenants WHERE id = $1',
@@ -460,54 +351,6 @@ async function seedPostgresDemoData(): Promise<void> {
        ON CONFLICT DO NOTHING`,
       [DEMO_TENANT_ID]
     );
-
-    // 4. Productos
-    await client.query(
-      `INSERT INTO productos 
-       (id, tenant_id, sku, codigo_barra, nombre, stock_actual, stock_minimo, precio_compra, precio_venta, categoria, activo)
-       VALUES 
-       ('33333333-0000-0000-0000-000000000001', $1, 'BEB-CC-350', '7801234567890', 'Coca Cola 350ml Lata', 45.00, 12.00, 500.00, 1000.00, 'Bebidas', true),
-       ('33333333-0000-0000-0000-000000000002', $1, 'BEB-MONS-473', '7801234567891', 'Bebida Energética Monster 473ml', 6.00, 15.00, 1200.00, 2500.00, 'Bebidas', true),
-       ('33333333-0000-0000-0000-000000000003', $1, 'ABA-HAR-1K', '7801234567892', 'Harina Selecta Sin Polvos 1kg', 24.00, 10.00, 750.00, 1350.00, 'Abarrotes', true),
-       ('33333333-0000-0000-0000-000000000004', $1, 'ABA-ACE-900', '7801234567893', 'Aceite Vegetal Belmont 900ml', 4.00, 12.00, 1100.00, 2190.00, 'Abarrotes', true),
-       ('33333333-0000-0000-0000-000000000005', $1, 'LAC-LECH-1L', '7801234567894', 'Leche Entera Colun 1L', 35.00, 10.00, 720.00, 1290.00, 'Lácteos', true),
-       ('33333333-0000-0000-0000-000000000006', $1, 'SNK-LAY-200', '7801234567895', 'Papas Fritas Lays Clásicas 200g', 18.00, 8.00, 1050.00, 1890.00, 'Snacks', true)
-       ON CONFLICT DO NOTHING`,
-      [DEMO_TENANT_ID]
-    );
-
-    // 5. Historial de ventas de demostracion, el mismo que la siembra local. Sin esto el
-    // historial de la nube arranca despues que el del terminal y el respaldo nace incompleto.
-    const vendedor = await client.query<{ id: string }>(
-      `SELECT id FROM usuarios WHERE tenant_id = $1
-       ORDER BY CASE rol WHEN 'admin' THEN 0 ELSE 1 END LIMIT 1`,
-      [DEMO_TENANT_ID]
-    );
-
-    if (vendedor.rows.length > 0) {
-      const vendedorId = vendedor.rows[0].id;
-      const sembrados = await client.query<{ id: string; sku: string; precio_venta: string }>(
-        'SELECT id, sku, precio_venta FROM productos WHERE tenant_id = $1',
-        [DEMO_TENANT_ID]
-      );
-
-      for (const p of sembrados.rows) {
-        const total = Number(p.precio_venta) * 10;
-        await client.query(
-          `INSERT INTO transacciones_venta
-           (id, tenant_id, usuario_id, folio_local_sqlite, total, unidades, estado, is_dirty, sync_status, fecha)
-           VALUES ($1, $2, $3, $4, $5, 10, 'COMPLETADA', 0, 'SYNCED', NOW() - INTERVAL '2 days')
-           ON CONFLICT (id) DO NOTHING`,
-          [idVentaSembrada(p.id), DEMO_TENANT_ID, vendedorId, `FOLIO-HIST-${p.sku}`, total]
-        );
-        await client.query(
-          `INSERT INTO detalle_venta (id, venta_id, producto_id, cantidad, precio_unitario, subtotal)
-           VALUES ($1, $2, $3, 10, $4, $5)
-           ON CONFLICT (id) DO NOTHING`,
-          [idDetalleSembrado(p.id), idVentaSembrada(p.id), p.id, Number(p.precio_venta), total]
-        );
-      }
-    }
 
     // 6. Configuración inicial del negocio (Margen y Ley de Redondeo)
     await client.query(

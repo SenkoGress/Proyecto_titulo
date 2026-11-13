@@ -15,7 +15,7 @@ export type Producto = {
   activo: number
   lote: string | null
   fecha_vencimiento: string | null
-  impuesto_adicional_codigo: number | null // ila: 26, 27, 28
+  impuesto_adicional_codigo: number | null // ila segun la tabla del SII: 24, 25, 26, 27, 271
   impuesto_adicional_tasa: number | null
 }
 

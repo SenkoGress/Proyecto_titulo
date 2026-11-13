@@ -73,11 +73,13 @@ export class DteEmitterService {
     let totalBruto = 0;
     const desgloseMap: Record<number, { codigo: number; nombre: string; tasa: number; monto: number }> = {};
 
+    // Codigos de la tabla del formato DTE del SII: son los que viajan en CodImpAdic
     const nombresIla: Record<number, string> = {
-      25: 'ILA Analcohólica Azúcar Baja (10%)',
-      26: 'ILA Analcohólica Azúcar Alta (18%)',
-      27: 'ILA Cervezas y Vinos (20.5%)',
-      28: 'ILA Licores y Destilados (31.5%)'
+      24: 'ILA Licores y Destilados (31.5%)',
+      25: 'ILA Vinos (20.5%)',
+      26: 'ILA Cervezas (20.5%)',
+      27: 'ILA Analcohólica (10%)',
+      271: 'ILA Analcohólica Azúcar Alta (18%)'
     };
 
     for (const it of items) {

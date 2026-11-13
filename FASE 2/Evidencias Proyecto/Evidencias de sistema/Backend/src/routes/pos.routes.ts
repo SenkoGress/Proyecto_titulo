@@ -898,11 +898,11 @@ router.post('/checkout', async (req: Request, res: Response): Promise<void> => {
     }
 
     const soldProductIds = lineas.map((it: any) => it.producto_id);
-    let hasAlcohol = lineas.some((it: any) => it.codigo_ila === 27 || it.codigo_ila === 28);
+    let hasAlcohol = lineas.some((it: any) => [24, 25, 26].includes(it.codigo_ila));
     if (!hasAlcohol && soldProductIds.length > 0) {
       try {
         const alcCheck = sqlite.queryOne<{ count: number }>(
-          `SELECT COUNT(*) as count FROM productos WHERE id IN (${soldProductIds.map(() => '?').join(',')}) AND impuesto_adicional_codigo IN (27, 28)`,
+          `SELECT COUNT(*) as count FROM productos WHERE id IN (${soldProductIds.map(() => '?').join(',')}) AND impuesto_adicional_codigo IN (24, 25, 26)`,
           soldProductIds
         );
         if (alcCheck && alcCheck.count > 0) hasAlcohol = true;

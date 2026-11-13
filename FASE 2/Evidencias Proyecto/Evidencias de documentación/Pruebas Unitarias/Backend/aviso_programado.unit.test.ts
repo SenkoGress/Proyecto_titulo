@@ -156,6 +156,11 @@ describe('Pruebas Unitarias: Aviso de Reposicion Programado', () => {
          VALUES (?, ?, '76.123.456-7', 'Distribuidora Central', 'ventas@ejemplo.cl')`,
         [PROVEEDOR, TENANT]
       );
+      defaultSqliteClient.execute(
+        `INSERT OR IGNORE INTO productos (id, tenant_id, sku, nombre, stock_actual, stock_minimo, precio_compra, precio_venta, activo)
+         VALUES (?, ?, 'PRUEBA-AVISO-01', 'Producto de la orden', 4, 12, 500, 1000, 1)`,
+        [PRODUCTO_SEMBRADO, TENANT]
+      );
     });
 
     afterAll(() => {

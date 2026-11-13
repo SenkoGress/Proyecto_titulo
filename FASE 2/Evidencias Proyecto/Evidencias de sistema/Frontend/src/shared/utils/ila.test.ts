@@ -21,29 +21,41 @@ const catalogo = JSON.parse(
 ) as { productos: ProductoSembrado[] }
 
 describe('el aviso de azucar alta', () => {
-  it('solo sale en el codigo 26, que es el de elevado contenido de azucares', () => {
+  it('solo sale en el codigo 271, que es el de elevado contenido de azucares', () => {
     expect(esAzucarAlta(producto(ILA.AZUCAR_ALTA))).toBe(true)
   })
 
-  it('no sale en una bebida sin azucar, que va en el codigo 25', () => {
-    expect(esAzucarAlta(producto(ILA.AZUCAR_BAJA))).toBe(false)
+  it('no sale en una bebida sin azucar, que va en el codigo 27', () => {
+    expect(esAzucarAlta(producto(ILA.ANALCOHOLICA))).toBe(false)
   })
 
   it('no sale en el alcohol ni en un producto sin impuesto adicional', () => {
-    expect(esAzucarAlta(producto(ILA.CERVEZA_VINO))).toBe(false)
+    expect(esAzucarAlta(producto(ILA.CERVEZAS))).toBe(false)
     expect(esAzucarAlta(producto(0))).toBe(false)
   })
 
   it('las dos analcoholicas siguen reconociendose como tales', () => {
-    expect(esAnalcoholicaConIla(producto(ILA.AZUCAR_BAJA))).toBe(true)
+    expect(esAnalcoholicaConIla(producto(ILA.ANALCOHOLICA))).toBe(true)
     expect(esAnalcoholicaConIla(producto(ILA.AZUCAR_ALTA))).toBe(true)
-    expect(esAnalcoholicaConIla(producto(ILA.DESTILADOS))).toBe(false)
+    expect(esAnalcoholicaConIla(producto(ILA.LICORES))).toBe(false)
   })
 
-  it('el alcohol se reconoce por sus dos codigos', () => {
-    expect(esAlcohol(producto(ILA.CERVEZA_VINO))).toBe(true)
-    expect(esAlcohol(producto(ILA.DESTILADOS))).toBe(true)
+  it('el alcohol se reconoce por sus tres codigos', () => {
+    expect(esAlcohol(producto(ILA.VINOS))).toBe(true)
+    expect(esAlcohol(producto(ILA.CERVEZAS))).toBe(true)
+    expect(esAlcohol(producto(ILA.LICORES))).toBe(true)
     expect(esAlcohol(producto(ILA.AZUCAR_ALTA))).toBe(false)
+  })
+})
+
+// tabla del formato DTE del SII, version 2.5 (2026-02): el codigo va al documento tributario
+describe('los codigos son los del SII', () => {
+  it('cada codigo es el de la tabla oficial', () => {
+    expect(ILA).toEqual({ ANALCOHOLICA: 27, AZUCAR_ALTA: 271, VINOS: 25, CERVEZAS: 26, LICORES: 24 })
+  })
+
+  it('ningun producto usa el 28, que en el SII es el impuesto al diesel', () => {
+    expect(catalogo.productos.some((p) => p.impuesto_adicional_codigo === 28)).toBe(false)
   })
 })
 
@@ -70,7 +82,7 @@ describe('el catalogo de demostracion', () => {
   it('estan cubiertos los tres tramos de alcohol y azucar para la demostracion', () => {
     const codigos = new Set(conIla.map((p) => p.impuesto_adicional_codigo))
     expect(codigos).toContain(ILA.AZUCAR_ALTA)
-    expect(codigos).toContain(ILA.CERVEZA_VINO)
-    expect(codigos).toContain(ILA.DESTILADOS)
+    expect(codigos).toContain(ILA.CERVEZAS)
+    expect(codigos).toContain(ILA.LICORES)
   })
 })

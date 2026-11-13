@@ -1,26 +1,30 @@
 // src/shared/utils/ila.ts
-// impuesto adicional de la Ley de Alcoholes
+// impuesto adicional del DL 825, art. 42
+// los codigos son los de la tabla del formato DTE del SII: viajan tal cual en CodImpAdic
 
 export const ILA = {
-  AZUCAR_BAJA: 25, // analcoholica azucar baja (10%)
-  AZUCAR_ALTA: 26, // analcoholica azucar alta (18%)
-  CERVEZA_VINO: 27, // cervezas y vinos (20.5%)
-  DESTILADOS: 28, // licores y destilados (31.5%)
+  ANALCOHOLICA: 27, // bebidas analcoholicas y minerales (10%)
+  AZUCAR_ALTA: 271, // analcoholicas con elevado contenido de azucares (18%)
+  VINOS: 25, // vinos (20.5%)
+  CERVEZAS: 26, // cervezas y bebidas alcoholicas (20.5%)
+  LICORES: 24, // licores, piscos y destilados (31.5%)
 } as const
 
 const NOMBRES: Record<number, string> = {
-  [ILA.AZUCAR_BAJA]: 'Analcoholica azucar baja',
+  [ILA.ANALCOHOLICA]: 'Analcoholica',
   [ILA.AZUCAR_ALTA]: 'Analcoholica azucar alta',
-  [ILA.CERVEZA_VINO]: 'Cervezas y vinos',
-  [ILA.DESTILADOS]: 'Licores y destilados',
+  [ILA.VINOS]: 'Vinos',
+  [ILA.CERVEZAS]: 'Cervezas',
+  [ILA.LICORES]: 'Licores y destilados',
 }
 
 // tasa que fija la ley para cada codigo
 export const TASA_ILA: Record<number, number> = {
-  [ILA.AZUCAR_BAJA]: 10,
+  [ILA.ANALCOHOLICA]: 10,
   [ILA.AZUCAR_ALTA]: 18,
-  [ILA.CERVEZA_VINO]: 20.5,
-  [ILA.DESTILADOS]: 31.5,
+  [ILA.VINOS]: 20.5,
+  [ILA.CERVEZAS]: 20.5,
+  [ILA.LICORES]: 31.5,
 }
 
 // opciones del selector en el formulario de producto
@@ -49,12 +53,11 @@ export function tasaIla(producto: ConImpuesto): number {
 // ley 19.925: alcohol, no se vende a menores de 18
 export function esAlcohol(producto: ConImpuesto): boolean {
   const codigo = codigoIla(producto)
-  return codigo === ILA.CERVEZA_VINO || codigo === ILA.DESTILADOS
+  return codigo === ILA.VINOS || codigo === ILA.CERVEZAS || codigo === ILA.LICORES
 }
 
 // paga impuesto adicional por azucar
-// solo el codigo 26 es el de elevado contenido de azucares. El 25 es la bebida analcoholica
-// normal, y marcarla tambien dejaba una bebida sin azucar con el aviso de azucar alta
+// solo el 271 es el de elevado contenido de azucares; el 27 es la analcoholica normal
 export function esAzucarAlta(producto: ConImpuesto): boolean {
   return codigoIla(producto) === ILA.AZUCAR_ALTA
 }
@@ -62,7 +65,7 @@ export function esAzucarAlta(producto: ConImpuesto): boolean {
 // cualquier bebida analcoholica con impuesto adicional, con o sin azucar
 export function esAnalcoholicaConIla(producto: ConImpuesto): boolean {
   const codigo = codigoIla(producto)
-  return codigo === ILA.AZUCAR_BAJA || codigo === ILA.AZUCAR_ALTA
+  return codigo === ILA.ANALCOHOLICA || codigo === ILA.AZUCAR_ALTA
 }
 
 // nombre del impuesto para mostrarlo en tablas y comprobantes
