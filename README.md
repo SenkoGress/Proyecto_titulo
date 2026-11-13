@@ -212,7 +212,7 @@ La solución adopta el patrón arquitectónico **Dual-Core Híbrido Desacoplado*
 ```
 
 1. **Capa Cloud SaaS (PostgreSQL 16):** Gestión centralizada multi-tenant, catálogos maestros, analítica de inventario y respaldo tributario formal.
-2. **Capa Borde / POS Local (SQLite):** Persistencia espejo con integridad referencial y banderas `is_dirty`, que permite cobrar sin internet. La venta se resuelve en el servidor local con una mediana de 4 ms (batería de rendimiento del 07-11-2026); el percentil 95 queda sobre la referencia de 15 ms por una cola que depende del equipo, declarada como hallazgo abierto.
+2. **Capa Borde / POS Local (SQLite):** Persistencia espejo con integridad referencial y banderas `is_dirty`, que permite cobrar sin internet. La venta se resuelve en el servidor local con una mediana de 4 ms (batería de rendimiento del 07-11-2026); con la base en un disco de estado sólido, el percentil 95 queda entre 5 y 8 ms, dentro de la referencia de 15 ms. En un disco mecánico cada confirmación de escritura espera el giro del disco y la venta sube a 400 ms, por lo que el disco de estado sólido se declara como requisito de hardware de la caja.
 3. **Circuit Breaker & Resiliencia:** Cuando la nube no responde, el *Circuit Breaker* deja de consultarla por un periodo y responde de inmediato que no está disponible, de modo que la caja sigue en SQLite sin esperar un tiempo de espera de red.
 4. **Seguridad y Cumplimiento Normativo:** Aislamiento multi-tenant por discriminador `tenant_id` en cada consulta, con el comercio de la sesión aplicado aunque la petición no lo declare, contraseñas con hash Bcrypt (60 caracteres), tokens JWT (24h), desglose de IVA (19%), Ley de Redondeo (Ley N° 20.956) y correlatividad DTE ante el SII.
 
