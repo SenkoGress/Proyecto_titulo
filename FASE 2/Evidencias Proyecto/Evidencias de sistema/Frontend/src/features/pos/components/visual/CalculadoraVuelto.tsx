@@ -9,8 +9,8 @@ type Props = {
   total: number
 }
 
-// billetes mas usados
-const montosRapidos = [1000, 5000, 10000, 20000]
+// los billetes que circulan en Chile
+const montosRapidos = [1000, 2000, 5000, 10000, 20000]
 
 // calcular vuelto (solo en pantalla)
 export function CalculadoraVuelto({ total }: Props) {

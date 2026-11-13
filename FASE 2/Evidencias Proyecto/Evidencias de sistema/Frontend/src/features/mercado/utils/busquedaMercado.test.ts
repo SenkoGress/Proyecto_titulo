@@ -18,7 +18,7 @@ describe('terminoDeBusqueda', () => {
   })
 
   it('saca los parentesis de la norma, que no se buscan', () => {
-    expect(terminoDeBusqueda('Bolsa Reutilizable (Ley N 21.368)')).toBe('Bolsa Reutilizable Ley N 21.368')
+    expect(terminoDeBusqueda('Bolsa Reutilizable (Ley N 21.100)')).toBe('Bolsa Reutilizable Ley N 21.100')
   })
 
   it('saca la medida que termina en numero, como la caja de 6x200cm3', () => {
