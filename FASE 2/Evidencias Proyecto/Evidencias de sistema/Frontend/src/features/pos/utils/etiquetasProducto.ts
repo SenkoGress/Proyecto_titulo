@@ -1,5 +1,5 @@
 // src/features/pos/utils/etiquetasProducto.ts
-import { esAlcohol, esAzucarada, tasaIla, codigoIla } from '@/shared/utils/ila'
+import { esAlcohol, esAzucarAlta, tasaIla, codigoIla } from '@/shared/utils/ila'
 import type { Producto } from '@/features/pos/types'
 
 export type Etiqueta = {
@@ -37,7 +37,7 @@ export function etiquetasProducto(producto: Producto): Etiqueta[] {
     })
   }
 
-  if (esAzucarada(producto) && !esAlcohol(producto)) {
+  if (esAzucarAlta(producto) && !esAlcohol(producto)) {
     etiquetas.push({
       texto: 'ALTO EN AZUCAR',
       color: 'warning',

@@ -53,7 +53,14 @@ export function esAlcohol(producto: ConImpuesto): boolean {
 }
 
 // paga impuesto adicional por azucar
-export function esAzucarada(producto: ConImpuesto): boolean {
+// solo el codigo 26 es el de elevado contenido de azucares. El 25 es la bebida analcoholica
+// normal, y marcarla tambien dejaba una bebida sin azucar con el aviso de azucar alta
+export function esAzucarAlta(producto: ConImpuesto): boolean {
+  return codigoIla(producto) === ILA.AZUCAR_ALTA
+}
+
+// cualquier bebida analcoholica con impuesto adicional, con o sin azucar
+export function esAnalcoholicaConIla(producto: ConImpuesto): boolean {
   const codigo = codigoIla(producto)
   return codigo === ILA.AZUCAR_BAJA || codigo === ILA.AZUCAR_ALTA
 }
