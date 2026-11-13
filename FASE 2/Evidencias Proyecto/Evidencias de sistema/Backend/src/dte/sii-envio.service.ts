@@ -5,6 +5,7 @@ import { defaultXmlSigner, XmlSignerService } from './xml-signer.service';
 import { SiiTransport } from './types';
 import { SiiTransportHttp } from './sii-transport.http';
 import { logger } from '../utils/logger';
+import { fechaLocal, marcaLocal } from '../utils/fecha-local';
 
 export interface RequisitoFaltante {
   requisito: string;
@@ -228,9 +229,9 @@ export class SiiEnvioService {
       `<RutEmisor>${emisor.rut}</RutEmisor>` +
       `<RutEnvia>${emisor.rut}</RutEnvia>` +
       `<RutReceptor>60803000-K</RutReceptor>` +
-      `<FchResol>${new Date().toISOString().substring(0, 10)}</FchResol>` +
+      `<FchResol>${fechaLocal()}</FchResol>` +
       `<NroResol>0</NroResol>` +
-      `<TmstFirmaEnv>${new Date().toISOString().substring(0, 19)}</TmstFirmaEnv>` +
+      `<TmstFirmaEnv>${marcaLocal()}</TmstFirmaEnv>` +
       subtotales +
       `</Caratula>`;
 

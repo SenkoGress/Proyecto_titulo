@@ -6,6 +6,7 @@
 import { defaultSqliteClient } from '../database/sqlite/client';
 import { logger } from '../utils/logger';
 import { F29Statement, ResumenF29Item } from './types';
+import { mesLocal } from '../utils/fecha-local';
 
 export class F29ReportService {
   /**
@@ -14,7 +15,7 @@ export class F29ReportService {
   public generateMonthlyF29(tenantId: string, periodo: string, tasaPpm = 1.0): F29Statement {
     // Normalizar periodo a formato YYYY-MM
     const match = periodo.match(/^(\d{4})-(\d{2})/);
-    const targetMonth = match ? `${match[1]}-${match[2]}` : new Date().toISOString().substring(0, 7);
+    const targetMonth = match ? `${match[1]}-${match[2]}` : mesLocal();
 
     logger.info('F29ReportService', `Generando pre-liquidación F29 para tenant ${tenantId}, periodo ${targetMonth}`);
 
@@ -73,7 +74,7 @@ export class F29ReportService {
        WHERE tenant_id = ? 
          AND tipo_documento_tributario = 'VOUCHER_TRANSBANK'
          AND estado IN ('COMPLETADA', 'PAGADA')
-         AND strftime('%Y-%m', fecha) = ?`,
+         AND strftime('%Y-%m', fecha, 'localtime') = ?`,
       [tenantId, targetMonth]
     );
 

@@ -2,6 +2,7 @@
 const pdfParseModule = require('pdf-parse');
 import { ExtractedInvoiceData, InvoiceInput } from './types';
 import { logger } from '../utils/logger';
+import { fechaLocal } from '../utils/fecha-local';
 
 export class PdfInvoiceExtractor {
   /**
@@ -110,7 +111,7 @@ export class PdfInvoiceExtractor {
 
     // 4. Fecha de Emisión
     const fechaMatch = text.match(/(?:FECHA\s+EMISI[OÓ]N[^\r\n]*[\r\n]+[^\r\n]*?(\d{2}[./-]\d{2}[./-]\d{4})|(?:FECHA\s+EMISI[OÓ]N|FECHA)\s*[:.]?\s*(\d{2}[./-]\d{2}[./-]\d{4}))/i);
-    let fecha_emision = new Date().toISOString().slice(0, 10);
+    let fecha_emision = fechaLocal();
     if (fechaMatch) {
       const rawDate = fechaMatch[1] || fechaMatch[2];
       const parts = rawDate.split(/[./-]/);

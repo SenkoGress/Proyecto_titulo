@@ -21,6 +21,7 @@ import {
 } from '../invoices/invoice-ingestion.service';
 
 import { generateChileanBarcode } from '../utils/barcode.utils';
+import { detalleError } from '../utils/detalle-error';
 
 const router = Router();
 const sqlite = defaultSqliteClient;
@@ -49,7 +50,7 @@ router.get('/products', (req: Request, res: Response): void => {
     res.status(500).json({
       success: false,
       message: 'Failed to retrieve products from local database',
-      error: error instanceof Error ? error.message : String(error)
+      error: detalleError(error)
     });
   }
 });
@@ -236,7 +237,7 @@ router.post('/products', async (req: Request, res: Response): Promise<void> => {
     res.status(500).json({
       success: false,
       message: 'Error al dar de alta el producto',
-      error: error instanceof Error ? error.message : String(error)
+      error: detalleError(error)
     });
   }
 });
@@ -271,7 +272,9 @@ router.put('/products/:id', async (req: Request, res: Response): Promise<void> =
   }
 
   try {
-    const existing = sqlite.queryOne<any>('SELECT * FROM productos WHERE id = ?', [id]);
+    // Solo productos del comercio de la sesion: el id solo no impedia editar los de otro comercio
+    const tenantProducto = (req.body?.tenant_id as string) || (req.query.tenant_id as string) || '00000000-0000-0000-0000-000000000001';
+    const existing = sqlite.queryOne<any>('SELECT * FROM productos WHERE id = ? AND tenant_id = ?', [id, tenantProducto]);
     if (!existing) {
       res.status(404).json({ success: false, message: 'Producto no encontrado' });
       return;
@@ -372,7 +375,7 @@ router.put('/products/:id', async (req: Request, res: Response): Promise<void> =
     res.status(500).json({
       success: false,
       message: 'Error al actualizar producto',
-      error: error instanceof Error ? error.message : String(error)
+      error: detalleError(error)
     });
   }
 });
@@ -391,7 +394,7 @@ router.patch('/products/:id/stock', async (req: Request, res: Response): Promise
   }
 
   try {
-    const prod = sqlite.queryOne<any>('SELECT stock_actual FROM productos WHERE id = ?', [id]);
+    const prod = sqlite.queryOne<any>('SELECT stock_actual FROM productos WHERE id = ? AND tenant_id = ?', [id, tenant_id]);
     if (!prod) {
       res.status(404).json({ success: false, message: 'Producto no encontrado' });
       return;
@@ -525,7 +528,7 @@ router.post('/mermas', async (req: Request, res: Response): Promise<void> => {
     res.status(500).json({
       success: false,
       message: 'Error al registrar la merma',
-      error: error instanceof Error ? error.message : String(error)
+      error: detalleError(error)
     });
   }
 });
@@ -681,7 +684,7 @@ router.get('/status', async (req: Request, res: Response): Promise<void> => {
     res.status(500).json({
       success: false,
       message: 'Failed to evaluate POS network status',
-      error: error instanceof Error ? error.message : String(error)
+      error: detalleError(error)
     });
   }
 });
@@ -710,6 +713,27 @@ router.post('/checkout', async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
+  // El precio sale del catalogo, no de la peticion, y el producto tiene que ser de este comercio:
+  // una peticion armada a mano vendia a cualquier precio, una cantidad negativa sumaba stock, y un
+  // id de otro comercio le descontaba existencias a ese comercio.
+  const lineas: any[] = [];
+  for (const item of items) {
+    const cantidad = Number(item?.cantidad);
+    const producto = sqlite.queryOne<{ precio_venta: number }>(
+      'SELECT precio_venta FROM productos WHERE id = ? AND tenant_id = ? AND activo = 1',
+      [item?.producto_id, tenant_id]
+    );
+    if (!producto) {
+      res.status(400).json({ success: false, message: `El producto ${item?.producto_id} no esta disponible en este comercio` });
+      return;
+    }
+    if (!Number.isFinite(cantidad) || cantidad <= 0) {
+      res.status(400).json({ success: false, message: 'Cada producto de la venta necesita una cantidad mayor que cero' });
+      return;
+    }
+    lineas.push({ ...item, cantidad, precio_unitario: Number(producto.precio_venta) });
+  }
+
   const startTime = Date.now();
   const saleId = uuidv4();
   const folio = `POS-${Date.now()}`;
@@ -721,7 +745,7 @@ router.post('/checkout', async (req: Request, res: Response): Promise<void> => {
     // 1. Ejecutar venta transaccional en SQLite
     const checkoutResult = sqlite.withTransaction(() => {
       // Calcular total y unidades. La Ley N° 20.956 rige exclusivamente para pagos en efectivo
-      for (const item of items) {
+      for (const item of lineas) {
         total += Number(item.precio_unitario) * Number(item.cantidad);
         unidades += Number(item.cantidad);
       }
@@ -745,7 +769,7 @@ router.post('/checkout', async (req: Request, res: Response): Promise<void> => {
       );
 
       // Procesar cada detalle y actualizar stock
-      for (const item of items) {
+      for (const item of lineas) {
         const detailId = uuidv4();
         const subtotal = Number(item.precio_unitario) * Number(item.cantidad);
 
@@ -820,7 +844,7 @@ router.post('/checkout', async (req: Request, res: Response): Promise<void> => {
     // 3. Emisión de Documento Tributario (Boleta 39, Factura 33) o Voucher (Res. Ex. N° 176)
     let dteResult = null;
     try {
-      const dteItems = items.map((it: any, idx: number) => {
+      const dteItems = lineas.map((it: any, idx: number) => {
         const prod = sqlite.queryOne<{
           nombre: string;
           sku: string;
@@ -873,8 +897,8 @@ router.post('/checkout', async (req: Request, res: Response): Promise<void> => {
       logger.error('PosRoutes', 'Error emitting DTE during checkout', dteErr);
     }
 
-    const soldProductIds = items.map((it: any) => it.producto_id);
-    let hasAlcohol = items.some((it: any) => it.codigo_ila === 27 || it.codigo_ila === 28);
+    const soldProductIds = lineas.map((it: any) => it.producto_id);
+    let hasAlcohol = lineas.some((it: any) => it.codigo_ila === 27 || it.codigo_ila === 28);
     if (!hasAlcohol && soldProductIds.length > 0) {
       try {
         const alcCheck = sqlite.queryOne<{ count: number }>(
@@ -937,7 +961,7 @@ router.post('/checkout', async (req: Request, res: Response): Promise<void> => {
     res.status(500).json({
       success: false,
       message: 'Checkout failed due to transaction error',
-      error: error instanceof Error ? error.message : String(error)
+      error: detalleError(error)
     });
   }
 });
@@ -1087,7 +1111,7 @@ router.post('/sync', async (req: Request, res: Response): Promise<void> => {
     res.status(500).json({
       success: false,
       message: 'Error interno durante la sincronización',
-      error: error instanceof Error ? error.message : String(error)
+      error: detalleError(error)
     });
   }
 });
@@ -1306,6 +1330,17 @@ router.post('/devolucion', async (req: Request, res: Response): Promise<void> =>
       return;
     }
 
+    // Lo ya devuelto de esta venta, por producto: sin restarlo, devolver dos veces la misma venta
+    // emitia dos notas de credito y reponia el stock dos veces.
+    const devueltoAntes = new Map(
+      sqlite.query<{ producto_id: string; total: number }>(
+        `SELECT producto_id, SUM(cantidad) AS total FROM movimientos_inventario
+         WHERE id_origen = ? AND tipo_origen = 'DEVOLUCION_VENTA' GROUP BY producto_id`,
+        [venta_id]
+      ).map((f) => [f.producto_id, Number(f.total)])
+    );
+    const disponible = (d: any) => Math.max(0, Number(d.cantidad) - (devueltoAntes.get(d.producto_id) ?? 0));
+
     // 3. Determinar ítems a devolver
     const itemsADevolver: Array<{
       producto_id: string;
@@ -1321,8 +1356,13 @@ router.post('/devolucion', async (req: Request, res: Response): Promise<void> =>
     if (Array.isArray(items_devolucion) && items_devolucion.length > 0) {
       for (const reqItem of items_devolucion) {
         const match = detallesOriginales.find(d => d.producto_id === reqItem.producto_id);
-        if (match) {
-          const cant = Math.min(Number(reqItem.cantidad) || 1, match.cantidad);
+        const pedida = reqItem.cantidad === undefined ? 1 : Number(reqItem.cantidad);
+        if (!Number.isFinite(pedida) || pedida <= 0) {
+          res.status(400).json({ success: false, message: 'La cantidad a devolver debe ser mayor que cero' });
+          return;
+        }
+        const cant = match ? Math.min(pedida, disponible(match)) : 0;
+        if (match && cant > 0) {
           itemsADevolver.push({
             producto_id: match.producto_id,
             nombre: match.nombre,
@@ -1338,17 +1378,24 @@ router.post('/devolucion', async (req: Request, res: Response): Promise<void> =>
     } else {
       // Devolución total
       for (const d of detallesOriginales) {
+        const cant = disponible(d);
+        if (cant <= 0) continue;
         itemsADevolver.push({
           producto_id: d.producto_id,
           nombre: d.nombre,
           sku: d.sku,
-          cantidad: d.cantidad,
+          cantidad: cant,
           precio_unitario: d.precio_unitario,
-          subtotal: d.subtotal,
+          subtotal: d.precio_unitario * cant,
           codigoIla: d.impuesto_adicional_codigo || undefined,
           tasaIla: d.impuesto_adicional_tasa || undefined
         });
       }
+    }
+
+    if (itemsADevolver.length === 0) {
+      res.status(400).json({ success: false, message: 'No queda nada por devolver de esa venta: ya se devolvio completa' });
+      return;
     }
 
     // 4. Buscar DTE original emitido si existe
@@ -1483,7 +1530,7 @@ router.post('/devolucion', async (req: Request, res: Response): Promise<void> =>
     res.status(500).json({
       success: false,
       message: 'Error al procesar la devolución',
-      error: error instanceof Error ? error.message : String(error)
+      error: detalleError(error)
     });
   }
 });

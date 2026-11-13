@@ -8,7 +8,7 @@
 **GesTock** es una solución integral de gestión comercial, inventario predictivo y punto de venta (POS) diseñada bajo una arquitectura híbrida **Dual-Core (Cloud SaaS Multi-Tenant y Edge Offline-First)**.
 
 Está orientada al comercio minorista independiente chileno (minimarkets, almacenes de barrio, botillerías y ferreterías), mitigando tres problemáticas críticas de la industria:
-1. **Continuidad Operativa ante Fallos de Conectividad:** Erradica las pérdidas de ventas causadas por cortes de internet o suministro eléctrico mediante almacenamiento local en el terminal POS (SQLite 3) y conmutación automática en **0 ms** (*Circuit Breaker*), sincronizando transacciones diferidas de forma asíncrona hacia la nube (*PostgreSQL 16*).
+1. **Continuidad Operativa ante Fallos de Conectividad:** Evita las ventas perdidas por cortes de internet: cada caja guarda sus operaciones en su propio equipo (SQLite), no espera a una nube caída gracias a un *Circuit Breaker*, y sube lo pendiente a la nube (*PostgreSQL 16*) al sincronizar.
 2. **Automatización de Ingestión de Mercadería:** Reemplaza la digitación manual de compras mediante escaneo inteligente de facturas electrónicas con IA multimodal (*Google Gemini AI Studio*), extrayendo ítems, costos netos, impuestos y calculando precios comerciales con margen de ganancia configurable y redondeo legal.
 3. **Cumplimiento Tributario y Sanitario Chileno:** Automatiza la emisión de DTEs ante el SII (Boletas 39, Facturas 33, Guías 52, Notas de Crédito 61 con timbre fiscal `<TED>`), la aplicación estricta de la Ley de Redondeo en efectivo (Ley N° 20.956) y el semáforo de vencimientos sanitarios bajo el sistema FEFO (*D.S. 977/96 MINSAL*).
 
@@ -17,13 +17,14 @@ Está orientada al comercio minorista independiente chileno (minimarkets, almace
 ## 2. Tecnologías Utilizadas
 | Capa / Dominio | Tecnologías y Librerías | Propósito en la Solución |
 | :--- | :--- | :--- |
-| **Backend API** | Node.js (v20+ LTS), Express.js 4, TypeScript 5.8 | Arquitectura modular desacoplada por casos de uso y middlewares de seguridad. |
+| **Backend API** | Node.js 22.13 o superior (24 recomendado), Express.js 4, TypeScript 5.8 | Arquitectura modular desacoplada por casos de uso y middlewares de seguridad. |
 | **Ciberseguridad** | `jsonwebtoken` (^9.0), `bcryptjs` (^3.0), `helmet`, CORS dinámico | Autenticación basada en tokens JWT (24h), hash de contraseñas con salt rounds 10 (60 caracteres), RBAC y sanitización SQL. |
-| **Frontend SPA** | React 19, TypeScript, Vite, Tailwind CSS, Lucide Icons | Interfaz de usuario táctil para punto de venta (POS), catálogo de inventarios, reportes de caja y recepción de mercadería. |
-| **Persistencia Dual** | PostgreSQL 16+ (Cloud SaaS) & SQLite 3 (Edge POS) | Modelo dual de 29 tablas persistentes con integridad referencial estricta y banderas `is_dirty` para sincronización. |
+| **Frontend SPA** | React 19, TypeScript, Vite 8, Material UI 9, React Router 8, Zustand, TanStack Query | Interfaz de punto de venta en modo visual y modo técnico, inventario, caja, recepción de mercadería y administración. |
+| **Aplicación de escritorio** | Electron 44, electron-builder (instalador NSIS) | Programa instalable para Windows; los datos del local viven en una carpeta aparte que la reinstalación no toca. |
+| **Persistencia Dual** | PostgreSQL 16 (nube) y SQLite mediante `node:sqlite` (caja) | Modelo dual de 29 tablas más la tabla de control `_migrations`, con integridad referencial y banderas `is_dirty` para la sincronización. |
 | **Inteligencia Artificial** | Google Gemini AI Studio API (Flash / Vision) | Extracción OCR estructurada de facturas de compra y normalización de catálogos. |
 | **Pasarelas de Pago** | Sandbox Transbank Webpay Plus, Mercado Pago, SumUp | Simulación de cobros con tarjeta y prevención de doble tributación (Res. Exenta N° 176). |
-| **Testing Automatizado** | Jest 29, `ts-jest`, `pg-mem` | Batería de **429 pruebas automatizadas** en el servidor (329 unitarias en 24 suites y 100 de integración en 16 suites, medidas el 11-11-2026), 155 de interfaz en 20 archivos, más 118 comprobaciones de extremo a extremo y 7 escenarios de rendimiento con percentiles. |
+| **Testing Automatizado** | Jest 29, `ts-jest`, `pg-mem`, Vitest | Batería de **436 pruebas automatizadas** en el servidor (335 unitarias en 26 suites y 101 de integración en 16 suites, medidas el 12-11-2026 sobre `pg-mem` y sobre PostgreSQL real), 172 de interfaz en 22 archivos, más 118 comprobaciones de extremo a extremo y 7 escenarios de rendimiento con percentiles. |
 | **DevOps & Despliegue** | Docker, Docker Compose, Git / GitHub | Empaquetado en contenedores y control de versiones centralizado. |
 
 ---
@@ -49,10 +50,18 @@ Proyecto_titulo/
 ├── FASE 2/
 │   ├── Evidencias Proyecto/
 │   │   ├── Evidencias de sistema/
-│   │   │   ├── Backend/                   # Código fuente completo de la API REST (Express/TS)
-│   │   │   └── Frontend/                  # Código fuente completo de la SPA POS (React 19/Vite)
+│   │   │   ├── Backend/                   # Código fuente y pruebas de la API REST (Express/TS)
+│   │   │   ├── Frontend/                  # Código fuente y pruebas de la interfaz (React 19/Vite)
+│   │   │   ├── Escritorio/                # Proceso principal de la aplicación Electron
+│   │   │   ├── Semillas/                  # Catálogo de demostración
+│   │   │   ├── Dockerfile
+│   │   │   └── docker-compose.yml
 │   │   └── Evidencias de documentación/
-│   │       └── arquitectura_sistema.docx  # Documento de Arquitectura de Software (DAS 4+1)
+│   │       ├── Arquitectura Sistema.docx  # Documento de Arquitectura de Software (DAS 4+1)
+│   │       ├── Manual De Funcionalidades.docx
+│   │       ├── Plan De Pruebas.docx       # y el resto de los documentos formales
+│   │       ├── Diagramas/                 # Diagrama entidad-relación completo y general
+│   │       └── Pruebas Unitarias/         # Scripts de prueba del backend y de la interfaz
 │   ├── Evidencias Individuales/           # Diarios de reflexión (2.1) y autoevaluación (2.2)
 │   └── Evidencias Grupales/
 └── FASE 3/
@@ -61,7 +70,8 @@ Proyecto_titulo/
 ```
 
 > **Acceso a Diagramas UML:** Todos los diagramas de ingeniería de software se encuentran disponibles en la carpeta [`FASE 1/Diagramas`](./FASE%201/Diagramas).  
-> **Documento de Arquitectura:** El DAS oficial se encuentra en [`FASE 2/Evidencias Proyecto/Evidencias de documentación/arquitectura_sistema.docx`](./FASE%202/Evidencias%20Proyecto/Evidencias%20de%20documentación/arquitectura_sistema.docx).
+> **Documento de Arquitectura:** El DAS oficial se encuentra en [`FASE 2/Evidencias Proyecto/Evidencias de documentación/Arquitectura Sistema.docx`](./FASE%202/Evidencias%20Proyecto/Evidencias%20de%20documentaci%C3%B3n/Arquitectura%20Sistema.docx).
+> **Modelo de Datos:** El diagrama entidad-relación está en [`FASE 2/Evidencias Proyecto/Evidencias de documentación/Diagramas`](./FASE%202/Evidencias%20Proyecto/Evidencias%20de%20documentaci%C3%B3n/Diagramas).
 
 ---
 
@@ -105,13 +115,15 @@ npm run dev
 ```bash
 cd "FASE 2/Evidencias Proyecto/Evidencias de sistema/Backend"
 
-# Ejecutar las 87 pruebas de integración (16 suites)
+# Ejecutar las 101 pruebas de integración (16 suites) sobre pg-mem
 npm test
 
-# Ejecutar las 329 pruebas unitarias de algoritmos, RBAC y seguridad (22 suites)
+# Ejecutar las 335 pruebas unitarias de algoritmos, RBAC y seguridad (26 suites)
 npm run test:unit
 ```
-*Resultado de la última corrida: **429 pruebas del servidor aprobadas**, sin fallas.*
+*Resultado de la última corrida, el 12-11-2026: **436 pruebas del servidor aprobadas**, sin fallas.*
+
+Para correr la integración contra un PostgreSQL real, con el contenedor levantado, se define `USE_REAL_PG=true`. Las pruebas usan su propia base, `gestock_test_db`, que se crea sola: nunca escriben en la base de la nube.
 
 ---
 
@@ -140,12 +152,13 @@ docker compose up --build
 | **Backend API / POS Directo** | `http://localhost:3000/` | Servidor REST y vista directa de caja |
 | **Sonda de Salud (Healthcheck)** | `http://localhost:3000/health` | Estado del Circuit Breaker, SQLite y Postgres |
 | **Catálogo de Servicios API** | `http://localhost:3000/api` | Lista de endpoints expuestos |
-| **Usuario Administrador** | `admin@gestock.cl` | Cuenta con rol de administración general (acceso total a dashboard, compras, inventario y personal) |
+| **Usuario Administrador** | `admin@gestock.cl` | Cuenta de prueba con rol de administración general, solo fuera de producción |
 | **Contraseña Administrador** | `admin123` | Cifrada con Bcrypt work factor 10 (hash 60 caracteres) |
-| **Usuario Cajero** | `cajero@gestock.cl` | Cuenta con rol operativo de cajero (acceso a terminal POS y arqueo de caja; bloqueado en dashboard) |
+| **Usuario Cajero** | `cajero@gestock.cl` | Cuenta de prueba con rol de cajero (caja, cierre de caja, inventario, ventas y notificaciones), solo fuera de producción |
 | **Contraseña Cajero** | `cajero123` | Cifrada con Bcrypt work factor 10 (hash 60 caracteres) |
 | **Tenant ID de Prueba** | `00000000-0000-0000-0000-000000000001` | Comercio demo (*Almacén Don Tito*) |
-| **API Key para Clientes Externos** | `gestock_sec_key_2026_x89` | Acceso a endpoints B2B en cabecera `X-API-Key` |
+| **Clave para integraciones** | Variable `API_KEY` (opcional) | Si se define, toda petición con cabecera `X-API-Key` debe traer ese valor |
+| **Producción** | Sin cuentas de prueba | La aplicación de escritorio crea el administrador en el primer inicio |
 
 ---
 
@@ -154,7 +167,7 @@ docker compose up --build
 | Integrante | Rol en el Proyecto | Responsabilidades Principales |
 | :--- | :--- | :--- |
 | **Pino, Marcelo** | Líder de Proyecto / Arquitectura & Backend Developer | Diseño de arquitectura Dual-Core, persistencia híbrida (PostgreSQL/SQLite), Circuit Breaker, seguridad JWT/Bcrypt, cumplimiento SII/DTE, testing y liderazgo técnico. |
-| **Miranda, David** | Desarrollador Frontend / Diseñador UX-UI | Diseño de interfaces de usuario (Google Stitch), desarrollo de componentes visuales en React y experiencia de usuario en mostrador. |
+| **Miranda, David** | Desarrollador Frontend / Diseñador UX-UI | Diseño de interfaces, SPA en React con modo visual y técnico, experiencia de usuario en mostrador, pruebas de interfaz y de extremo a extremo. |
 
 ---
 
@@ -163,7 +176,7 @@ docker compose up --build
 El proyecto se desarrolla bajo el marco de **RUP (Rational Unified Process)**, con un enfoque iterativo e incremental orientado a la arquitectura y mitigación temprana de riesgos:
 
 - **Incepción y Elaboración (Fase 1 - 20%):** Definición de la visión, justificación económica (*Business Case*), especificación de requisitos y diseño de la arquitectura base. Se elaboraron los artefactos UML (Casos de Uso, Clases, Componentes, Despliegue, Secuencia) y el modelo entidad-relación inicial.
-- **Construcción (Fase 2 - 50%):** Implementación técnica modular del software. Desarrollo del Backend API con persistencia dual (29 tablas persistentes), autenticación criptográfica JWT/Bcrypt, interfaz React 19, integración de IA Gemini OCR para facturas, simulación de pasarelas de pago y acreditación de calidad mediante **429 pruebas automatizadas** del servidor, 118 comprobaciones de extremo a extremo y 7 escenarios de rendimiento con percentiles.
+- **Construcción (Fase 2 - 50%):** Implementación técnica modular del software. Desarrollo del Backend API con persistencia dual (29 tablas persistentes), autenticación criptográfica JWT/Bcrypt, interfaz React 19, integración de IA Gemini OCR para facturas, simulación de pasarelas de pago y acreditación de calidad mediante **436 pruebas automatizadas** del servidor, 172 de interfaz, 118 comprobaciones de extremo a extremo y 7 escenarios de rendimiento con percentiles.
 - **Transición (Fase 3 - 30%):** Despliegue del MVP, ejecución del plan de pruebas y de las pruebas de rendimiento, documentación de usuario, manuales de instalación y preparación de la defensa de título ante la comisión evaluadora.
 
 ---
@@ -186,26 +199,26 @@ La solución adopta el patrón arquitectónico **Dual-Core Híbrido Desacoplado*
 │              ▼                                             ▼                │
 │  ┌───────────────────────────────────────────────────────────────────────┐  │
 │  │                     API REST BACKEND (Express / TS)                   │  │
-│  │              Circuit Breaker (0 ms) & Exponential Backoff             │  │
+│  │              Circuit Breaker & Exponential Backoff                    │  │
 │  └───────────┬─────────────────────────────────────────────┬─────────────┘  │
-│              │ Local (Latencia < 15ms)                     │ TCP Cloud      │
+│              │ Local, sin esperar a la nube                │ TCP Cloud      │
 │              ▼                                             ▼                │
-│  ┌─────────────────────────┐   Sincronización Asíncrona  ┌─────────────────┐│
+│  ┌─────────────────────────┐   Sincronización al pedirla ┌─────────────────┐│
 │  │    SQLite 3 (Borde)     │ ◄─────────────────────────► │  PostgreSQL 16  ││
-│  │  29 Tablas (is_dirty)   │       (Cola de eventos)     │  (Cloud SaaS)   ││
+│  │  29 Tablas (is_dirty)   │  (ventas, catálogo, fotos)  │  (Cloud SaaS)   ││
 │  └─────────────────────────┘                             └─────────────────┘│
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 1. **Capa Cloud SaaS (PostgreSQL 16):** Gestión centralizada multi-tenant, catálogos maestros, analítica de inventario y respaldo tributario formal.
-2. **Capa Borde / POS Local (SQLite 3):** Persistencia espejo con integridad referencial estricta y banderas `is_dirty`, garantizando checkout en menos de 15 ms y cobro continuo sin internet.
-3. **Circuit Breaker & Resiliencia:** Conmutación determinista en 0 ms ante fallos de conectividad hacia PostgreSQL Cloud, derivando inmediatamente a SQLite local sin bloquear al cajero.
-4. **Seguridad y Cumplimiento Normativo:** Aislamiento multi-tenant por discriminador `tenant_id`, contraseñas con hash Bcrypt (60 caracteres), tokens JWT (24h), desglose de IVA (19%), Ley de Redondeo (Ley N° 20.956) y correlatividad DTE ante el SII.
+2. **Capa Borde / POS Local (SQLite):** Persistencia espejo con integridad referencial y banderas `is_dirty`, que permite cobrar sin internet. La venta se resuelve en el servidor local con una mediana de 4 ms (batería de rendimiento del 07-11-2026); el percentil 95 queda sobre la referencia de 15 ms por una cola que depende del equipo, declarada como hallazgo abierto.
+3. **Circuit Breaker & Resiliencia:** Cuando la nube no responde, el *Circuit Breaker* deja de consultarla por un periodo y responde de inmediato que no está disponible, de modo que la caja sigue en SQLite sin esperar un tiempo de espera de red.
+4. **Seguridad y Cumplimiento Normativo:** Aislamiento multi-tenant por discriminador `tenant_id` en cada consulta, con el comercio de la sesión aplicado aunque la petición no lo declare, contraseñas con hash Bcrypt (60 caracteres), tokens JWT (24h), desglose de IVA (19%), Ley de Redondeo (Ley N° 20.956) y correlatividad DTE ante el SII.
 
 ---
 
 ### Sección de Innovación
 - **¿Qué problema resuelve?** Erradica las pérdidas económicas y detenciones de caja en el comercio de barrio por cortes de internet, eliminando al mismo tiempo la digitación manual de facturas de proveedores y los descuadres de dinero.
-- **¿Qué hace diferente a la solución?** La capacidad única de operar 100% offline sin pérdida de datos con conmutación en 0 ms, combinada con digitalización de facturas por IA multimodal (Gemini OCR) y adaptación nativa a las leyes chilenas (Redondeo, DTE, FEFO).
-- **¿Qué valor agrega?** Asegura un 100% de disponibilidad operativa en caja, ahorra hasta un 80% del tiempo de ingreso de mercadería y previene sanciones tributarias y sanitarias para los comerciantes independientes.
+- **¿Qué hace diferente a la solución?** Vender sin internet sin perder ventas, junto con el ingreso de facturas por IA multimodal (Gemini), el alta de productos por código de barras con Open Food Facts y la adaptación a las leyes chilenas (redondeo, DTE, FEFO).
+- **¿Qué valor agrega?** Mantiene la caja operando aunque se caiga internet, reduce la digitación de facturas de proveedores y ayuda a cumplir las obligaciones tributarias y sanitarias del comercio independiente. El detalle de lo implementado y verificado está en `Innovacion.docx`.

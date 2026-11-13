@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { defaultReplenishmentService } from '../replenishment/replenishment.service';
 import { logger } from '../utils/logger';
+import { detalleError } from '../utils/detalle-error';
 
 const router = Router();
 
@@ -25,7 +26,7 @@ router.get('/velocity', async (req: Request, res: Response): Promise<void> => {
     res.status(500).json({
       success: false,
       message: 'Internal server error calculating sales velocity',
-      error: error instanceof Error ? error.message : String(error)
+      error: detalleError(error)
     });
   }
 });
@@ -145,7 +146,7 @@ router.get('/suggest', async (req: Request, res: Response): Promise<void> => {
     res.status(500).json({
       success: false,
       message: 'Error al generar sugerencias de reabastecimiento',
-      error: error instanceof Error ? error.message : String(error)
+      error: detalleError(error)
     });
   }
 });
@@ -178,7 +179,7 @@ router.post('/suggest', async (req: Request, res: Response): Promise<void> => {
     res.status(500).json({
       success: false,
       message: 'Internal server error generating purchase orders',
-      error: error instanceof Error ? error.message : String(error)
+      error: detalleError(error)
     });
   }
 });
@@ -219,7 +220,7 @@ router.post('/send-email', async (req: Request, res: Response): Promise<void> =>
     res.status(500).json({
       success: false,
       message: 'Error al enviar órdenes por correo',
-      error: error instanceof Error ? error.message : String(error)
+      error: detalleError(error)
     });
   }
 });
@@ -245,7 +246,7 @@ router.get('/purchase-orders', async (req: Request, res: Response): Promise<void
     res.status(500).json({
       success: false,
       message: 'Internal server error retrieving purchase orders',
-      error: error instanceof Error ? error.message : String(error)
+      error: detalleError(error)
     });
   }
 });

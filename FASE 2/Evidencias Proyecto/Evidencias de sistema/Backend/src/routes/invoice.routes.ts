@@ -7,6 +7,7 @@ import { esFacturaDuplicada } from '../invoices/invoice-ingestion.service';
 import { defaultSqliteClient } from '../database/sqlite/client';
 import { InvoiceInput, ExtractedInvoiceData } from '../ocr/types';
 import { logger } from '../utils/logger';
+import { detalleError } from '../utils/detalle-error';
 
 const router = Router();
 
@@ -122,7 +123,7 @@ router.get('/pending', (req: Request, res: Response): void => {
     res.status(500).json({
       success: false,
       message: 'Error al consultar la cola de facturas pendientes',
-      error: error instanceof Error ? error.message : String(error)
+      error: detalleError(error)
     });
   }
 });
@@ -152,7 +153,7 @@ router.post('/process-pending', async (req: Request, res: Response): Promise<voi
     res.status(500).json({
       success: false,
       message: 'Error al procesar la cola de facturas pendientes',
-      error: error instanceof Error ? error.message : String(error)
+      error: detalleError(error)
     });
   }
 });
@@ -201,7 +202,7 @@ router.post('/confirm', async (req: Request, res: Response): Promise<void> => {
     res.status(500).json({
       success: false,
       message: 'Error al autorizar e ingresar la factura',
-      error: error instanceof Error ? error.message : String(error)
+      error: detalleError(error)
     });
   }
 });
@@ -290,7 +291,7 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
     res.status(500).json({
       success: false,
       message: 'Internal server error retrieving invoices',
-      error: error instanceof Error ? error.message : String(error)
+      error: detalleError(error)
     });
   }
 });
@@ -350,7 +351,7 @@ router.get('/:id/document', async (req: Request, res: Response): Promise<void> =
     res.status(500).json({
       success: false,
       message: 'Error al recuperar el documento de la factura',
-      error: error instanceof Error ? error.message : String(error)
+      error: detalleError(error)
     });
   }
 });

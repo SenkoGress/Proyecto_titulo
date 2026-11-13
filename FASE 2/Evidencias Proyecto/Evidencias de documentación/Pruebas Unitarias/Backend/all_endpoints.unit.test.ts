@@ -506,6 +506,31 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (7
       });
       expect([200, 201]).toContain(res.status);
       expect(res.data.success).toBe(true);
+
+      // El precio lo pone el catalogo: un precio alterado en la peticion no cambia lo que se cobra
+      const catalogo = await requestApi('GET', `/api/v1/pos/products?tenant_id=${DEMO_TENANT}`);
+      const producto = catalogo.data.data.find((p: any) => p.id === '33333333-0000-0000-0000-000000000001');
+      const alterada = await requestApi('POST', '/api/v1/pos/checkout', {
+        tenant_id: DEMO_TENANT,
+        usuario_id: DEMO_USER,
+        items: [{ producto_id: producto.id, cantidad: 1, precio_unitario: 1 }],
+        metodo_pago: 'TARJETA'
+      });
+      expect(alterada.data.data.total).toBe(Number(producto.precio_venta));
+
+      const negativa = await requestApi('POST', '/api/v1/pos/checkout', {
+        tenant_id: DEMO_TENANT,
+        usuario_id: DEMO_USER,
+        items: [{ producto_id: producto.id, cantidad: -5, precio_unitario: producto.precio_venta }]
+      });
+      expect(negativa.status).toBe(400);
+
+      const ajeno = await requestApi('POST', '/api/v1/pos/checkout', {
+        tenant_id: DEMO_TENANT,
+        usuario_id: DEMO_USER,
+        items: [{ producto_id: 'producto-de-otro-comercio', cantidad: 1, precio_unitario: 100 }]
+      });
+      expect(ajeno.status).toBe(400);
     });
 
     test('43. POST /api/v1/pos/sync ejecuta sincronización con tolerancia offline', async () => {
@@ -544,6 +569,22 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (7
       });
       expect([200, 201]).toContain(res.status);
       expect(res.data.success).toBe(true);
+
+      // Ya devuelta completa: una segunda devolucion no emite otra nota ni repone stock de nuevo
+      const segunda = await requestApi('POST', '/api/v1/pos/devolucion', {
+        tenant_id: DEMO_TENANT,
+        usuario_id: DEMO_USER,
+        venta_id: DEMO_SALE_PAY
+      });
+      expect(segunda.status).toBe(400);
+
+      const negativa = await requestApi('POST', '/api/v1/pos/devolucion', {
+        tenant_id: DEMO_TENANT,
+        usuario_id: DEMO_USER,
+        venta_id: DEMO_SALE_PAY,
+        items_devolucion: [{ producto_id: 'cualquiera', cantidad: -3 }]
+      });
+      expect(negativa.status).toBe(400);
     });
   });
 
@@ -679,6 +720,13 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (7
       const sinFoto = await requestApi('PUT', `/api/v1/pos/products/${productoId}`, { imagen: null });
       expect(sinFoto.status).toBe(200);
       expect(sinFoto.data.data.imagen).toBeNull();
+
+      // Un producto de otro comercio no existe para esta sesion
+      const ajeno = await requestApi('PUT', `/api/v1/pos/products/${productoId}`, {
+        tenant_id: 'otro-comercio-0000',
+        nombre: 'No deberia cambiar'
+      });
+      expect(ajeno.status).toBe(404);
     });
 
     test('60. PATCH /api/v1/pos/products/:id/stock ajusta el conteo físico', async () => {

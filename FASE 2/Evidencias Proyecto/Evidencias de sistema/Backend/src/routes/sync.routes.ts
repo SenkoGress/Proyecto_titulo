@@ -3,6 +3,7 @@ import { defaultCloudSyncReceiver } from '../sync/cloud-sync-receiver.service';
 import { defaultPgClient } from '../database/postgres/client';
 import { SyncPushPayload } from '../sync/types';
 import { logger } from '../utils/logger';
+import { detalleError } from '../utils/detalle-error';
 
 const router = Router();
 
@@ -30,7 +31,7 @@ router.post('/push', async (req: Request, res: Response): Promise<void> => {
     res.status(500).json({
       success: false,
       message: 'Internal server error during sync push',
-      error: error instanceof Error ? error.message : String(error)
+      error: detalleError(error)
     });
   }
 });
@@ -68,7 +69,7 @@ router.get('/pull', async (req: Request, res: Response): Promise<void> => {
     res.status(500).json({
       success: false,
       message: 'Internal server error during sync pull',
-      error: error instanceof Error ? error.message : String(error)
+      error: detalleError(error)
     });
   }
 });

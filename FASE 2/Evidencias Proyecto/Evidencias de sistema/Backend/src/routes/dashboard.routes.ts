@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { defaultDashboardService } from '../analytics/dashboard.service';
 import { logger } from '../utils/logger';
+import { detalleError } from '../utils/detalle-error';
 
 const router = Router();
 
@@ -27,7 +28,7 @@ router.get('/overview', (req: Request, res: Response): void => {
     res.status(500).json({
       success: false,
       message: 'Error al generar analítica del dashboard',
-      error: error instanceof Error ? error.message : String(error)
+      error: detalleError(error)
     });
   }
 });

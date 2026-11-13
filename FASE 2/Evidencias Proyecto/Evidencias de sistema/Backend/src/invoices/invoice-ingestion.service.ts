@@ -10,6 +10,7 @@ import { generateChileanBarcode } from '../utils/barcode.utils';
 import { logger } from '../utils/logger';
 import { normalizarFolio } from '../ocr/extraccion';
 import { defaultLotesService } from '../inventory/lotes.service';
+import { fechaLocal } from '../utils/fecha-local';
 
 export interface IngestionResult {
   invoice_id: string;
@@ -739,7 +740,7 @@ export class InvoiceIngestionService {
             tenantId,
             supplierId,
             invoiceData.folio_factura || 'FOLIO-S/N',
-            invoiceData.fecha_emision || new Date().toISOString().slice(0, 10),
+            invoiceData.fecha_emision || fechaLocal(),
             totalQuantity,
             invoiceData.metodo_ingreso || ocrProvider || 'CONFIRMED_SCAN',
             invoiceData.rut_proveedor || 'S/RUT',

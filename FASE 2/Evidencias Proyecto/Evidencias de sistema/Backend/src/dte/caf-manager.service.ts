@@ -8,6 +8,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { defaultSqliteClient } from '../database/sqlite/client';
 import { logger } from '../utils/logger';
 import { TipoDTE, SiiCafRecord, TedResult } from './types';
+import { fechaLocal, marcaLocal } from '../utils/fecha-local';
 
 export class CafManagerService {
   /**
@@ -85,7 +86,7 @@ export class CafManagerService {
     cafXml: string;
     rsaskPrivateKey: string;
   }): TedResult {
-    const timestamp = new Date().toISOString().replace(/\.\d{3}Z$/, '');
+    const timestamp = marcaLocal();
 
     // Limpiar el nodo CAF para incrustarlo dentro de <DD>
     let rawCaf = params.cafXml.trim();
@@ -185,7 +186,7 @@ export class CafManagerService {
       .replace(/\s+/g, '');
 
     const id = uuidv4();
-    const fechaHoy = new Date().toISOString().split('T')[0];
+    const fechaHoy = fechaLocal();
 
     // Estructura con la forma del CAF del SII, pero sin su firma: el nodo FRMA lleva una marca
     // literal en lugar de la firma de la autoridad, y por eso el rango queda como PROVISIONAL.

@@ -9,6 +9,7 @@ import { logger } from '../utils/logger';
 import { defaultXmlSigner } from './xml-signer.service';
 import { defaultDteEmitter } from './dte-emitter.service';
 import { RcofDaySummary } from './types';
+import { fechaLocal, marcaLocal } from '../utils/fecha-local';
 
 export class RcofService {
   /**
@@ -16,7 +17,7 @@ export class RcofService {
    * agrupando todas las boletas electrónicas emitidas en la fecha indicada.
    */
   public generateDailyRcof(tenantId: string, fechaReporte?: string): RcofDaySummary {
-    const fecha = fechaReporte || new Date().toISOString().split('T')[0];
+    const fecha = fechaReporte || fechaLocal();
     const { emisor } = defaultDteEmitter.getTenantFiscalConfig(tenantId);
 
     // Obtener boletas del día emitidas
@@ -56,7 +57,7 @@ export class RcofService {
     const secuencia = (prevCount?.count || 0) + 1;
 
     const docId = `RCOF_${fecha.replace(/-/g, '')}_SEQ${secuencia}`;
-    const timestamp = new Date().toISOString().replace(/\.\d{3}Z$/, '');
+    const timestamp = marcaLocal();
 
     // Construcción XML oficial del Documento de Consumo de Folios
     const documentoXml = `<DocumentoConsumoFolios ID="${docId}"><Caratula><RutEmisor>${emisor.rut}</RutEmisor><FchInicio>${fecha}</FchInicio><FchFinal>${fecha}</FchFinal><Correlativo>${secuencia}</Correlativo><Secuencia>${secuencia}</Secuencia><TmstFirmaEnv>${timestamp}</TmstFirmaEnv></Caratula><Resumen><TipoDocumento>39</TipoDocumento><MntNeto>${montoNeto}</MntNeto><MntIva>${montoIva}</MntIva><TasaIVA>19</TasaIVA><MntExento>${montoExento}</MntExento><MntTotal>${montoTotal}</MntTotal><FoliosEmitidos>${cantidad}</FoliosEmitidos><FoliosAnulados>0</FoliosAnulados><RangoFolios><Inicial>${folioInicial}</Inicial><Final>${folioFinal}</Final></RangoFolios></Resumen></DocumentoConsumoFolios>`;

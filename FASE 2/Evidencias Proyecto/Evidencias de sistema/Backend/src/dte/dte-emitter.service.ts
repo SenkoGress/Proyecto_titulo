@@ -19,6 +19,7 @@ import {
   EmisionDteRequest,
   EmisionDteResponse
 } from './types';
+import { fechaLocal, marcaLocal } from '../utils/fecha-local';
 
 export class DteEmitterService {
   /**
@@ -152,7 +153,7 @@ export class DteEmitterService {
     };
 
     const totales = this.calculateTotals(req.items);
-    const fecha = req.fechaEmision || new Date().toISOString().split('T')[0];
+    const fecha = req.fechaEmision || fechaLocal();
     const isPaymentCard = req.metodoPago.toUpperCase() !== 'EFECTIVO';
     const isDevolucion = req.tipoDte === TipoDTE.NOTA_CREDITO;
     const isFactura = req.tipoDte === TipoDTE.FACTURA_ELECTRONICA || req.tipoDte === TipoDTE.FACTURA_EXENTA;
@@ -212,7 +213,7 @@ export class DteEmitterService {
 
     // 3. Construir el documento XML oficial DTE
     const docId = `DTE_${tipoDte}_F${folio}`;
-    const tmstFirma = new Date().toISOString().replace(/\.\d{3}Z$/, '');
+    const tmstFirma = marcaLocal();
 
     let itemsXml = '';
     req.items.forEach((it, idx) => {

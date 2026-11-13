@@ -2,6 +2,8 @@ import http from 'http';
 import app from '../../src/index';
 import { initializeDatabase } from '../../src/database/init-db';
 import { defaultSqliteClient } from '../../src/database/sqlite/client';
+import jwt from 'jsonwebtoken';
+import { getJwtSecret } from '../../src/config/auth.config';
 
 describe('Auth Endpoints & RBAC (RF-01, RF-02, RF-03, RNF-SEG-01, RNF-SEG-02)', () => {
   const tenantId = '00000000-0000-0000-0000-000000000001';
@@ -537,6 +539,25 @@ describe('Auth Endpoints & RBAC (RF-01, RF-02, RF-03, RNF-SEG-01, RNF-SEG-02)', 
       expect(lista.status).toBe(403);
       const panel = await getJson('/api/v1/dashboard/overview', { Authorization: `Bearer ${sesion.data.token}` });
       expect(panel.status).toBe(403);
+    });
+  });
+
+  describe('Aislamiento entre comercios cuando la peticion no declara el suyo', () => {
+    it('una sesion de otro comercio que no envia tenant_id no recibe el inventario de la demostracion', async () => {
+      const otroComercio = '7a1e0000-0000-4000-8000-0000000000ff';
+      const token = jwt.sign(
+        { id: 'usuario-de-otro-comercio', tenant_id: otroComercio, email: 'otro@comercio.cl', rol: 'admin', nombre: 'Otro' },
+        getJwtSecret(),
+        { expiresIn: '5m' }
+      );
+
+      const demo = await getJson(`/api/v1/pos/inventory?tenant_id=${tenantId}`);
+      expect(demo.data.data.length).toBeGreaterThan(0);
+
+      const res = await getJson('/api/v1/pos/inventory', { Authorization: `Bearer ${token}` });
+      expect(res.status).toBe(200);
+      expect(res.data.data.every((p: any) => p.tenant_id === otroComercio)).toBe(true);
+      expect(res.data.data.some((p: any) => p.tenant_id === tenantId)).toBe(false);
     });
   });
 });

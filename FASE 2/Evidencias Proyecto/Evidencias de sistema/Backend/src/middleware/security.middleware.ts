@@ -251,6 +251,17 @@ export const rbacAuthMiddleware = (req: Request, res: Response, next: NextFuncti
       return;
     }
 
+    // Sin comercio declarado, las rutas caian al de demostracion y una sesion de otro comercio
+    // leia sus datos. Se fija el de la sesion, que es el unico que puede pedir.
+    if (decodedUser.tenant_id) {
+      if (req.query && req.query.tenant_id === undefined) {
+        (req.query as Record<string, unknown>).tenant_id = decodedUser.tenant_id;
+      }
+      if (req.body && typeof req.body === 'object' && !Buffer.isBuffer(req.body) && req.body.tenant_id === undefined) {
+        req.body.tenant_id = decodedUser.tenant_id;
+      }
+    }
+
     // El autor de ventas, aperturas de caja y devoluciones es el usuario de la sesion, no el que declare el cliente
     if (req.body && typeof req.body === 'object' && 'usuario_id' in req.body && decodedUser.id) {
       req.body.usuario_id = decodedUser.id;

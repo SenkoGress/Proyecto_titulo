@@ -4,6 +4,7 @@ import { defaultSqliteClient } from '../database/sqlite/client';
 import { defaultPgClient } from '../database/postgres/client';
 import { calculateNextVisit } from '../utils/supplier.utils';
 import { logger } from '../utils/logger';
+import { detalleError } from '../utils/detalle-error';
 
 const router = Router();
 
@@ -56,7 +57,7 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
     res.status(500).json({
       success: false,
       message: 'Error al obtener la lista de proveedores',
-      error: error instanceof Error ? error.message : String(error)
+      error: detalleError(error)
     });
   }
 });
@@ -144,7 +145,7 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
     res.status(500).json({
       success: false,
       message: 'Error al registrar el proveedor',
-      error: error instanceof Error ? error.message : String(error)
+      error: detalleError(error)
     });
   }
 });
@@ -229,7 +230,7 @@ router.put('/:id', async (req: Request, res: Response): Promise<void> => {
     res.status(500).json({
       success: false,
       message: 'Error al actualizar proveedor',
-      error: error instanceof Error ? error.message : String(error)
+      error: detalleError(error)
     });
   }
 });

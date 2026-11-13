@@ -83,14 +83,10 @@ export class DashboardService {
 
     // 1. Cláusula de tiempo según período
     let dateFilter = '';
-    const now = new Date();
-    const todayStr = now.toISOString().split('T')[0];
-    const monthStr = todayStr.substring(0, 7); // YYYY-MM
-
     if (periodo === 'diario') {
-      dateFilter = `AND DATE(tv.fecha) = '${todayStr}'`;
+      dateFilter = `AND DATE(tv.fecha, 'localtime') = DATE('now', 'localtime')`;
     } else if (periodo === 'mensual') {
-      dateFilter = `AND strftime('%Y-%m', tv.fecha) = '${monthStr}'`;
+      dateFilter = `AND strftime('%Y-%m', tv.fecha, 'localtime') = strftime('%Y-%m', 'now', 'localtime')`;
     } // 'historico' no agrega filtro de fecha
 
     // 2. KPIs de Ventas
@@ -165,27 +161,27 @@ export class DashboardService {
     let timelineQuery = '';
     if (periodo === 'diario') {
       timelineQuery = `
-        SELECT strftime('%H:00', fecha) as periodo_label,
+        SELECT strftime('%H:00', fecha, 'localtime') as periodo_label,
                SUM(total) as monto,
                COUNT(*) as conteo
         FROM transacciones_venta
-        WHERE tenant_id = ? AND DATE(fecha) = '${todayStr}'
+        WHERE tenant_id = ? AND DATE(fecha, 'localtime') = DATE('now', 'localtime')
         GROUP BY periodo_label
         ORDER BY periodo_label ASC
       `;
     } else if (periodo === 'mensual') {
       timelineQuery = `
-        SELECT strftime('%d/%m', fecha) as periodo_label,
+        SELECT strftime('%d/%m', fecha, 'localtime') as periodo_label,
                SUM(total) as monto,
                COUNT(*) as conteo
         FROM transacciones_venta
-        WHERE tenant_id = ? AND strftime('%Y-%m', fecha) = '${monthStr}'
+        WHERE tenant_id = ? AND strftime('%Y-%m', fecha, 'localtime') = strftime('%Y-%m', 'now', 'localtime')
         GROUP BY periodo_label
         ORDER BY fecha ASC
       `;
     } else {
       timelineQuery = `
-        SELECT strftime('%Y-%m', fecha) as periodo_label,
+        SELECT strftime('%Y-%m', fecha, 'localtime') as periodo_label,
                SUM(total) as monto,
                COUNT(*) as conteo
         FROM transacciones_venta

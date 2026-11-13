@@ -5,6 +5,7 @@ const config: Config = {
   testEnvironment: 'node',
   roots: ['<rootDir>/backend/tests'],
   setupFiles: ['<rootDir>/jest.setup.ts'],
+  globalSetup: '<rootDir>/jest.global-setup.ts',
   testMatch: ['**/*.test.ts'],
   transform: {
     '^.+\\.tsx?$': ['ts-jest', { tsconfig: 'tsconfig.json' }]

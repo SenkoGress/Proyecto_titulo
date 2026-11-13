@@ -15,6 +15,7 @@ import { defaultSiiEnvio } from '../dte/sii-envio.service';
 import { defaultSqliteClient } from '../database/sqlite/client';
 import { TipoDTE } from '../dte/types';
 import { logger } from '../utils/logger';
+import { mesLocal } from '../utils/fecha-local';
 
 export const dteRouter = Router();
 
@@ -339,7 +340,7 @@ dteRouter.post('/send-email', (req: Request, res: Response) => {
 dteRouter.get('/f29', (req: Request, res: Response) => {
   try {
     const tenantId = (req.query.tenantId as string) || DEFAULT_TENANT;
-    const periodo = (req.query.periodo as string) || new Date().toISOString().substring(0, 7);
+    const periodo = (req.query.periodo as string) || mesLocal();
     const tasaPpm = req.query.tasaPpm ? parseFloat(req.query.tasaPpm as string) : 1.0;
 
     const report = defaultF29ReportService.generateMonthlyF29(tenantId, periodo, tasaPpm);

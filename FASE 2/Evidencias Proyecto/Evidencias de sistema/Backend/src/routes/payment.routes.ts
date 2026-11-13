@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { defaultPaymentDispatcher } from '../payments/payment-dispatcher.service';
 import { PaymentConfirmRequest, PaymentInitRequest } from '../payments/types';
 import { logger } from '../utils/logger';
+import { detalleError } from '../utils/detalle-error';
 
 const router = Router();
 
@@ -28,7 +29,7 @@ router.post('/initiate', async (req: Request, res: Response): Promise<void> => {
     res.status(500).json({
       success: false,
       message: 'Internal server error during payment initiation',
-      error: error instanceof Error ? error.message : String(error)
+      error: detalleError(error)
     });
   }
 });
@@ -56,7 +57,7 @@ router.post('/confirm', async (req: Request, res: Response): Promise<void> => {
     res.status(500).json({
       success: false,
       message: 'Internal server error during payment confirmation',
-      error: error instanceof Error ? error.message : String(error)
+      error: detalleError(error)
     });
   }
 });
@@ -76,7 +77,7 @@ router.get('/sale/:saleId', async (req: Request, res: Response): Promise<void> =
     res.status(500).json({
       success: false,
       message: 'Internal server error retrieving payment transactions',
-      error: error instanceof Error ? error.message : String(error)
+      error: detalleError(error)
     });
   }
 });
