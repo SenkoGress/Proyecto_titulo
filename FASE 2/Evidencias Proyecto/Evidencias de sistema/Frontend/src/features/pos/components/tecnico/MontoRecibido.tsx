@@ -12,8 +12,8 @@ type Props = {
   total: number
 }
 
-// billetes chilenos
-const BILLETES = [1000, 5000, 10000, 20000]
+// billetes chilenos: faltaba el de 2.000, que circula igual que los demas
+const BILLETES = [1000, 2000, 5000, 10000, 20000]
 
 // montos sugeridos segun el total
 function sugerirMontos(total: number): number[] {
