@@ -13,6 +13,7 @@ import { ultimoCierreZ } from '@/features/inventario/utils/productoNuevo'
 import { useHistorialCaja } from '@/features/caja/hooks/useCaja'
 import type { ProductoInventario } from '@/features/inventario/types'
 import { CELDA_APILADA } from '@/features/inventario/utils/celdaApilada'
+import { MiniaturaProducto } from '@/features/inventario/components/compartidos/MiniaturaProducto'
 
 type Acciones = {
   onEditar: (producto: ProductoInventario) => void
@@ -27,8 +28,22 @@ type Props = Acciones & {
 }
 
 // columnas de la tabla: todas vienen de GET /pos/inventory, nada inventado
-function armarColumnas(acciones: Acciones, ultimoZ: Date | null): GridColDef<ProductoInventario>[] {
+function armarColumnas(acciones: Acciones, ultimoZ: Date | null, hayFotos: boolean): GridColDef<ProductoInventario>[] {
   return [
+  ...(hayFotos
+    ? [{
+        field: 'imagen',
+        headerName: '',
+        width: 60,
+        sortable: false,
+        filterable: false,
+        renderCell: (parametros: { row: ProductoInventario }) => (
+          <Box sx={CELDA_APILADA}>
+            <MiniaturaProducto imagen={parametros.row.imagen} nombre={parametros.row.nombre} />
+          </Box>
+        ),
+      } as GridColDef<ProductoInventario>]
+    : []),
   {
     field: 'sku',
     headerName: 'SKU / Codigo',
@@ -131,9 +146,11 @@ export function TablaInventario({ productos, cargando, onEditar, onAjustar, onMe
   const historial = useHistorialCaja()
   const ultimoZ = useMemo(() => ultimoCierreZ(historial.data), [historial.data])
 
+  const hayFotos = useMemo(() => productos.some((p) => p.imagen), [productos])
+
   const columnas = useMemo(
-    () => armarColumnas({ onEditar, onAjustar, onMerma, onHistorial }, ultimoZ),
-    [onEditar, onAjustar, onMerma, onHistorial, ultimoZ],
+    () => armarColumnas({ onEditar, onAjustar, onMerma, onHistorial }, ultimoZ, hayFotos),
+    [onEditar, onAjustar, onMerma, onHistorial, ultimoZ, hayFotos],
   )
 
   return (

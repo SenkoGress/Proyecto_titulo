@@ -18,6 +18,7 @@ import { calcularMargen } from '@/features/inventario/utils/calculosInventario'
 import { AccionesProducto } from '@/features/inventario/components/compartidos/AccionesProducto'
 import type { FilaFefo } from '@/features/inventario/utils/matrizFefo'
 import { CELDA_APILADA } from '@/features/inventario/utils/celdaApilada'
+import { MiniaturaProducto } from '@/features/inventario/components/compartidos/MiniaturaProducto'
 
 type Acciones = {
   onEditar: (producto: FilaFefo) => void
@@ -34,8 +35,22 @@ type Props = Acciones & {
 }
 
 // mismas columnas que el catalogo visual (GET /pos/inventory), mas estado fefo y lote/vencimiento
-function armarColumnas(acciones: Acciones, ultimoZ: Date | null): GridColDef<FilaFefo>[] {
+function armarColumnas(acciones: Acciones, ultimoZ: Date | null, hayFotos: boolean): GridColDef<FilaFefo>[] {
   return [
+  ...(hayFotos
+    ? [{
+        field: 'imagen',
+        headerName: '',
+        width: 60,
+        sortable: false,
+        filterable: false,
+        renderCell: (parametros: { row: FilaFefo }) => (
+          <Box sx={CELDA_APILADA}>
+            <MiniaturaProducto imagen={parametros.row.imagen} nombre={parametros.row.nombre} />
+          </Box>
+        ),
+      } as GridColDef<FilaFefo>]
+    : []),
   {
     field: 'nivel',
     headerName: 'Estado FEFO',
@@ -198,9 +213,11 @@ export function TablaInventarioTecnico({
   const historial = useHistorialCaja()
   const ultimoZ = useMemo(() => ultimoCierreZ(historial.data), [historial.data])
 
+  const hayFotos = useMemo(() => productos.some((p) => p.imagen), [productos])
+
   const columnas = useMemo(
-    () => armarColumnas({ onEditar, onAjustar, onMerma, onHistorial }, ultimoZ),
-    [onEditar, onAjustar, onMerma, onHistorial, ultimoZ],
+    () => armarColumnas({ onEditar, onAjustar, onMerma, onHistorial }, ultimoZ, hayFotos),
+    [onEditar, onAjustar, onMerma, onHistorial, ultimoZ, hayFotos],
   )
 
   return (
