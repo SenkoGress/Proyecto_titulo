@@ -62,7 +62,8 @@ export function ArqueoDenominaciones() {
             Cuenta el efectivo y digita cuantas piezas hay de cada denominacion.
           </Typography>
         </Box>
-        <Button size="small" color="inherit" startIcon={<ClearIcon />} onClick={limpiar}>
+        {/* borra el conteo entero: en rojo porque se perdia entre los demas botones */}
+        <Button size="small" color="error" startIcon={<ClearIcon />} onClick={limpiar}>
           Limpiar
         </Button>
       </Box>

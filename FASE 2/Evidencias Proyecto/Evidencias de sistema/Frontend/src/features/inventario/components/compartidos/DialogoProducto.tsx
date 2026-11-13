@@ -1,11 +1,12 @@
 // src/features/inventario/components/compartidos/DialogoProducto.tsx
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import Dialog from '@mui/material/Dialog'
 import DialogTitle from '@mui/material/DialogTitle'
 import DialogContent from '@mui/material/DialogContent'
 import DialogActions from '@mui/material/DialogActions'
 import Button from '@mui/material/Button'
 import TextField from '@mui/material/TextField'
+import Autocomplete from '@mui/material/Autocomplete'
 import MenuItem from '@mui/material/MenuItem'
 import Box from '@mui/material/Box'
 import Alert from '@mui/material/Alert'
@@ -20,6 +21,8 @@ import { buscarPorCodigoBarras } from '@/features/inventario/api/inventario.api'
 import { codigoBuscable } from '@/features/inventario/utils/fichaCodigoBarras'
 import { SugerenciaCodigoBarras } from '@/features/inventario/components/compartidos/SugerenciaCodigoBarras'
 import { CampoFoto } from '@/features/inventario/components/compartidos/CampoFoto'
+import { categoriasExistentes } from '@/features/inventario/utils/categoriasExistentes'
+import { useInventario } from '@/features/inventario/hooks/useInventario'
 import { useCrearProducto, useEditarProducto } from '@/features/inventario/hooks/useInventario'
 import { useProveedores } from '@/features/proveedores/hooks/useProveedores'
 import { obtenerMensajeError } from '@/lib/api/apiError'
@@ -99,6 +102,8 @@ export function DialogoProducto({ abierto, onCerrar, producto }: Props) {
 
   // la ficha de Open Food Facts se ofrece al lado y no entra sola: el nombre lo cambia la
   // persona al aceptarla
+  const { data: inventario } = useInventario()
+  const categorias = useMemo(() => categoriasExistentes(inventario ?? []), [inventario])
   const [sugerencia, setSugerencia] = useState<ResultadoBusqueda | null>(null)
   const [buscando, setBuscando] = useState(false)
 
@@ -229,10 +234,15 @@ export function DialogoProducto({ abierto, onCerrar, producto }: Props) {
             }}
           />
 
-          <TextField
-            label="Categoria"
+          {/* se ofrecen las categorias que ya existen, pero deja escribir una nueva: a mano,
+              "Lacteos" y "Lacteos " terminaban siendo dos categorias distintas */}
+          <Autocomplete
+            freeSolo
+            options={categorias}
             value={form.categoria}
-            onChange={(evento) => cambiar('categoria', evento.target.value)}
+            onChange={(_evento, valor) => cambiar('categoria', valor ?? '')}
+            onInputChange={(_evento, valor) => cambiar('categoria', valor)}
+            renderInput={(params) => <TextField {...params} label="Categoria" />}
           />
 
           <TextField

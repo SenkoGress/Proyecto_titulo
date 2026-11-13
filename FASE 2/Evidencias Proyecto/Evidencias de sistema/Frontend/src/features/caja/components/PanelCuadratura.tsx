@@ -23,7 +23,13 @@ export function PanelCuadratura({ sesion }: Props) {
   if (!revelada) {
     return (
       <Paper variant="outlined" sx={{ p: 2, textAlign: 'center' }}>
-        <Button variant="outlined" startIcon={<VisibilityIcon />} onClick={revelarCuadratura}>
+        {/* es el paso que sigue al conteo, asi que va destacado */}
+        <Button
+          variant="contained"
+          size="large"
+          startIcon={<VisibilityIcon />}
+          onClick={revelarCuadratura}
+        >
           Comparar con el sistema
         </Button>
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
