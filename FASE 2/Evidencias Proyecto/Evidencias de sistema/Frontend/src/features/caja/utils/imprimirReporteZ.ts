@@ -1,18 +1,16 @@
 // src/features/caja/utils/imprimirReporteZ.ts
 import { anchoPapelActual } from '@/shared/stores/papelStore'
 import { reglaPagina, tamanoLetraPx } from '@/shared/utils/papelTermico'
+import { imprimirDocumento } from '@/shared/utils/imprimirDocumento'
 
 // imprime el reporte del turno desde el navegador, en el rollo que tenga esta caja
 export function imprimirReporteZ() {
   const reporte = document.getElementById('reporte-z')
   if (!reporte) return
 
-  const ventana = window.open('', '_blank', 'width=400,height=700')
-  if (!ventana) return
-
   const ancho = anchoPapelActual()
 
-  ventana.document.write(`
+  const html = `
     <html lang="es">
       <head>
         <title>Reporte Z - GesTock</title>
@@ -23,10 +21,7 @@ export function imprimirReporteZ() {
       </head>
       <body>${reporte.innerHTML}</body>
     </html>
-  `)
+  `
 
-  ventana.document.close()
-  ventana.focus()
-  ventana.print()
-  ventana.close()
+  imprimirDocumento(html)
 }

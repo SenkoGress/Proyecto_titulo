@@ -1,6 +1,5 @@
 // src/features/pos/utils/resumenSincronizacion.ts
 import { isAxiosError } from 'axios'
-import { obtenerMensajeError } from '@/lib/api/apiError'
 
 // POST /pos/sync responde 500 cuando alguna venta no pudo subir, aunque otras si hayan subido.
 // El detalle viene en result, y sin leerlo no se distingue una subida parcial de una que no
@@ -25,9 +24,10 @@ export function detalleSyncDelError(error: unknown): DetalleSync | null {
 export function resumenSincronizacion(error: unknown): string {
   const detalle = detalleSyncDelError(error)
 
-  // sin detalle no se puede afirmar que subio algo
+  // sin detalle no se puede afirmar que subio algo. No se dice que fallo el servidor: desde la
+  // caja lo unico cierto es que el respaldo no se hizo y que la venta no se perdio
   if (!detalle) {
-    return `${obtenerMensajeError(error)} Las ventas siguen guardadas en este equipo.`
+    return 'No se pudo respaldar en la nube. Las ventas siguen guardadas en este equipo y suben solas al sincronizar de nuevo.'
   }
 
   const subieron = cuantas(detalle.synced_ids)

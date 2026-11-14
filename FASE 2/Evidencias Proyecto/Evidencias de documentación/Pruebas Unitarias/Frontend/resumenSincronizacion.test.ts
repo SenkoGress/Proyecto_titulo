@@ -57,8 +57,16 @@ describe('resumenSincronizacion', () => {
   // sin red no hay respuesta, asi que no se puede afirmar que algo subio
   it('cae al mensaje generico cuando no hay detalle', () => {
     const texto = resumenSincronizacion(new AxiosError('Network Error'))
-    expect(texto).toContain('No se pudo conectar con el servidor')
-    expect(texto).toContain('Las ventas siguen guardadas en este equipo.')
+    expect(texto).toContain('No se pudo respaldar en la nube')
+    expect(texto).toContain('siguen guardadas en este equipo')
+  })
+
+  // decir que fallo el servidor hace pensar que el sistema se rompio, cuando lo unico que pasa
+  // es que la nube no esta disponible y la venta quedo guardada
+  it('no culpa al servidor cuando lo que falta es la nube', () => {
+    const texto = resumenSincronizacion(new AxiosError('Network Error'))
+    expect(texto).not.toContain('El servidor')
+    expect(texto).toContain('suben solas')
   })
 })
 

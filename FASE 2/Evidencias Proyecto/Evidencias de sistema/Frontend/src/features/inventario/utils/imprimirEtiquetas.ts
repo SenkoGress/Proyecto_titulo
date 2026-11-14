@@ -1,14 +1,12 @@
 // src/features/inventario/utils/imprimirEtiquetas.ts
+import { imprimirDocumento } from '@/shared/utils/imprimirDocumento'
 
 // imprime las etiquetas desde el navegador
 export function imprimirEtiquetas() {
   const grilla = document.getElementById('etiquetas-gondola')
   if (!grilla) return
 
-  const ventana = window.open('', '_blank', 'width=900,height=700')
-  if (!ventana) return
-
-  ventana.document.write(`
+  const html = `
     <html lang="es">
       <head>
         <title>Etiquetas de gondola - GesTock</title>
@@ -35,10 +33,7 @@ export function imprimirEtiquetas() {
       </head>
       <body>${grilla.innerHTML}</body>
     </html>
-  `)
+  `
 
-  ventana.document.close()
-  ventana.focus()
-  ventana.print()
-  ventana.close()
+  imprimirDocumento(html)
 }
