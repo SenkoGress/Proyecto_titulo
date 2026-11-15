@@ -71,8 +71,24 @@ export class MercadoPagoGateway implements IPaymentGateway {
 
   /** POST /v1/orders/{id}/refund: sin cuerpo es total; con la transaccion y el monto, parcial. */
   public async reembolsar(req: ReembolsoRequest): Promise<Record<string, unknown>> {
-    if (configPagos().modo === 'simulado') return { simulado: true };
+    const { modo, mercadoPago } = configPagos();
+    if (modo === 'simulado') return { simulado: true };
     const parcial = req.monto < req.totalCobrado;
+
+    // Mercado Pago no reembolsa un pago simulado (412 refund_not_possible_simulation_payment):
+    // en sandbox el reembolso tambien se pide como evento, y siempre es por la orden completa.
+    if (modo === 'sandbox' && mercadoPago.resultadoSandbox) {
+      await this.llamar('POST', `/v1/orders/${req.token}/events`, { status: 'refunded' });
+      const limite = Date.now() + 30000;
+      let orden = await this.llamar('GET', `/v1/orders/${req.token}`);
+      while (orden.status !== 'refunded' && Date.now() < limite) {
+        await esperar(2000);
+        orden = await this.llamar('GET', `/v1/orders/${req.token}`);
+      }
+      if (orden.status !== 'refunded') throw new Error(`el sandbox no confirmo el reembolso (orden en ${orden.status})`);
+      return { order_status: orden.status, status_detail: orden.status_detail, parcial, simulado_en_sandbox: true };
+    }
+
     const orden = await this.llamar('POST', `/v1/orders/${req.token}/refund`,
       parcial ? { transactions: [{ id: req.transactionId, amount: String(Math.round(req.monto)) }] } : undefined,
       { 'X-Idempotency-Key': req.idReverso });

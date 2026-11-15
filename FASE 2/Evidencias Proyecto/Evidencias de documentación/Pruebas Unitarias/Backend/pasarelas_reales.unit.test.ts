@@ -207,6 +207,14 @@ describe('Reverso del cobro en la devolucion', () => {
     expect(llamadas[1].cuerpo).toEqual({ transactions: [{ id: 'PAY01', amount: '1890' }] });
   });
 
+  test('en sandbox Mercado Pago no reembolsa pagos simulados: el reembolso se pide como evento', async () => {
+    Object.assign(process.env, { PAGOS_MODO: 'sandbox', MP_ACCESS_TOKEN: 'APP_USR-prueba', MP_SANDBOX_RESULTADO: 'processed' });
+    const { http, llamadas } = proveedorFalso([{ status: 204 }, { body: { id: 'T1', status: 'refunded', status_detail: 'refunded' } }]);
+    const r = await new MercadoPagoGateway(http).reembolsar({ ...base, monto: 5000 });
+    expect(llamadas[0]).toMatchObject({ url: 'https://api.mercadopago.com/v1/orders/T1/events', cuerpo: { status: 'refunded' } });
+    expect(r).toMatchObject({ order_status: 'refunded', simulado_en_sandbox: true });
+  });
+
   test('SumUp reembolsa el pago por su id, en pesos', async () => {
     Object.assign(process.env, { PAGOS_MODO: 'produccion', SUMUP_API_KEY: 'k', SUMUP_MERCHANT_CODE: 'MC123' });
     const { http, llamadas } = proveedorFalso([{ status: 201, body: {} }]);
