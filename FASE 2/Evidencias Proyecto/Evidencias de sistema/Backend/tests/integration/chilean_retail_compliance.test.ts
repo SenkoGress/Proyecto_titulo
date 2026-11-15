@@ -105,17 +105,59 @@ describe('Chilean Retail & Tax Compliance Pack Integration Tests', () => {
       expect(totales.desgloseIla![0].codigo).toBe(26);
       expect(totales.montoTotal).toBe(10000);
 
-      // Emisión de DTE y verificación de tags XML
+      // La factura a otro vendedor si lleva el impuesto adicional (art. 43 letra d)
       const dte = defaultDteEmitter.emitDocument({
         tenantId: TEST_TENANT,
-        tipoDte: TipoDTE.BOLETA_ELECTRONICA,
+        tipoDte: TipoDTE.FACTURA_ELECTRONICA,
         metodoPago: 'EFECTIVO',
-        items: [itemCerveza]
+        items: [itemCerveza],
+        receptor: {
+          rut: '77.888.999-0',
+          razonSocial: 'BOTILLERIA LOS ANDES SPA',
+          giro: 'VENTA DE BEBIDAS ALCOHOLICAS',
+          direccion: 'CALLE INDUSTRIAL 456',
+          comuna: 'PUDAHUEL',
+          ciudad: 'SANTIAGO'
+        }
       });
 
       expect(dte.xmlDte).toContain('<CodImpAdic>26</CodImpAdic>');
       expect(dte.xmlDte).toContain('<TipoImp>26</TipoImp>');
       expect(dte.xmlDte).toContain('<TasaImp>20.5</TasaImp>');
+    });
+
+    it('la boleta al consumidor no lleva impuesto adicional (art. 43 inciso final)', () => {
+      const item = {
+        nroLinea: 1,
+        nombre: 'Cerveza Austral Calafate 6x330cc',
+        cantidad: 1,
+        precioUnitario: 10000,
+        subtotal: 10000,
+        codigoIla: 26,
+        tasaIla: 20.5
+      };
+
+      const boleta = defaultDteEmitter.emitDocument({
+        tenantId: TEST_TENANT,
+        tipoDte: TipoDTE.BOLETA_ELECTRONICA,
+        metodoPago: 'EFECTIVO',
+        items: [item]
+      });
+      expect(boleta.totales.montoNeto).toBe(8403);
+      expect(boleta.totales.montoIva).toBe(1597);
+      expect(boleta.totales.montoIla).toBe(0);
+      expect(boleta.xmlDte).not.toContain('CodImpAdic');
+      expect(boleta.xmlDte).not.toContain('ImptoReten');
+
+      const nc = defaultDteEmitter.emitDocument({
+        tenantId: TEST_TENANT,
+        tipoDte: TipoDTE.NOTA_CREDITO,
+        metodoPago: 'EFECTIVO',
+        items: [item],
+        referencia: { nroLineaRef: 1, tipoDocRef: 39, folioRef: boleta.folio!, fechaRef: boleta.fecha, codigoRef: 1, razonRef: 'Devolucion' }
+      });
+      expect(nc.totales.montoIla).toBe(0);
+      expect(nc.xmlDte).not.toContain('ImptoReten');
     });
   });
 

@@ -21,6 +21,9 @@ export interface ProductoReferenciado {
   /** Solo viaja en el respaldo: un producto desactivado en el terminal no debe subir activo. */
   activo?: number | boolean;
   imagen?: string | null;
+  impuesto_adicional_codigo?: number | null;
+  impuesto_adicional_tasa?: number | null;
+  factura_origen_folio?: string | null;
 }
 
 export interface SyncPushItem {

@@ -330,4 +330,53 @@ describe('Conflict Resolution Policies (Net Stock Delta & Catalog Primacy)', () 
     expect(local(idBaja)).toBe(foto);
     expect(local(idSube)).toBe(foto);
   });
+
+  test('9. El impuesto adicional y el folio de la factura viajan en los dos sentidos, y un 0 de la nube no borra el del terminal', async () => {
+    const ids = createFixtureIds();
+    const tenant = sampleTenant(ids.tenantId);
+    const idSube = ids.productoId;
+    const idYaArriba = createFixtureIds().productoId;
+    const idBaja = createFixtureIds().productoId;
+    sqliteClient.execute('INSERT INTO tenants (id, nombre, estado) VALUES (?, ?, ?)', [tenant.id, tenant.nombre, tenant.estado]);
+    await pgClient.query(`INSERT INTO tenants (id, nombre, estado) VALUES ($1, $2, $3)`, [tenant.id, tenant.nombre, tenant.estado]);
+    sqliteClient.execute(
+      `INSERT INTO productos (id, tenant_id, sku, nombre, stock_actual, precio_compra, precio_venta,
+                              impuesto_adicional_codigo, impuesto_adicional_tasa, factura_origen_folio)
+       VALUES (?, ?, ?, 'Pisco', 5.0, 3000, 6000, 24, 31.5, '11354'),
+              (?, ?, ?, 'Cerveza', 5.0, 800, 1500, 26, 20.5, NULL)`,
+      [idSube, ids.tenantId, `SKU-PISCO-${idSube.slice(0, 8)}`, idYaArriba, ids.tenantId, `SKU-CERV-${idYaArriba.slice(0, 8)}`]
+    );
+    // La cerveza ya estaba en la nube, subida cuando el impuesto no viajaba
+    await pgClient.query(
+      `INSERT INTO productos (id, tenant_id, sku, nombre, stock_actual, precio_compra, precio_venta)
+       VALUES ($1, $2, $3, 'Cerveza', 5.0, 800, 1500)`,
+      [idYaArriba, ids.tenantId, `SKU-CERV-${idYaArriba.slice(0, 8)}`]
+    );
+    await pgClient.query(
+      `INSERT INTO productos (id, tenant_id, sku, nombre, stock_actual, precio_compra, precio_venta,
+                              impuesto_adicional_codigo, impuesto_adicional_tasa, factura_origen_folio)
+       VALUES ($1, $2, $3, 'Crush', 5.0, 500, 1000, 271, 18, '11354')`,
+      [idBaja, ids.tenantId, `SKU-CRUSH-${idBaja.slice(0, 8)}`]
+    );
+
+    await posEngine.respaldarCatalogoEnNube(ids.tenantId, (t, productos, proveedores) =>
+      cloudReceiver.respaldarCatalogo(t, productos, proveedores)
+    );
+    const arriba = async (id: string) => (await pgClient.query<any>(
+      'SELECT impuesto_adicional_codigo AS c, impuesto_adicional_tasa AS t, factura_origen_folio AS f FROM productos WHERE id = $1', [id]
+    )).rows[0];
+    expect(await arriba(idSube)).toMatchObject({ c: 24, f: '11354' });
+    expect(Number((await arriba(idSube)).t)).toBe(31.5);
+    expect(await arriba(idYaArriba)).toMatchObject({ c: 26 });
+
+    // Una nube que vuelve con el codigo en 0 no borra el del terminal
+    await pgClient.query('UPDATE productos SET impuesto_adicional_codigo = 0, impuesto_adicional_tasa = 0 WHERE id = $1', [idSube]);
+    await posEngine.syncPullCatalog(ids.tenantId, (req) => cloudReceiver.getPullUpdates(req.tenant_id, req.last_pull_timestamp));
+
+    const local = (id: string) => sqliteClient.queryOne<any>(
+      'SELECT impuesto_adicional_codigo AS c, impuesto_adicional_tasa AS t, factura_origen_folio AS f FROM productos WHERE id = ?', [id]
+    );
+    expect(local(idBaja)).toEqual({ c: 271, t: 18, f: '11354' });
+    expect(local(idSube)).toEqual({ c: 24, t: 31.5, f: '11354' });
+  });
 });

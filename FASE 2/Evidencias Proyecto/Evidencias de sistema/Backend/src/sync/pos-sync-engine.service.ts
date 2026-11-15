@@ -280,7 +280,8 @@ export class PosSyncEngineService {
 
     const productos = this.sqlite.query<ProductoReferenciado>(
       `SELECT id, sku, codigo_barra, nombre, precio_compra, precio_venta, proveedor_id,
-              stock_actual, stock_minimo, activo, imagen
+              stock_actual, stock_minimo, activo, imagen,
+              impuesto_adicional_codigo, impuesto_adicional_tasa, factura_origen_folio
        FROM productos WHERE tenant_id = ?`,
       [tenantId]
     );
@@ -334,6 +335,9 @@ export class PosSyncEngineService {
         const proveedorDe = (id?: string | null) => (id ? proveedorLocal.get(id) ?? null : null);
 
         for (const cloudProd of response.products) {
+          // Postgres devuelve NUMERIC como texto. Un codigo 0 en la nube no borra el del terminal.
+          const codigoIla = Number(cloudProd.impuesto_adicional_codigo) || 0;
+          const tasaIla = Number(cloudProd.impuesto_adicional_tasa) || 0;
           // Mismo SKU con otro id es el mismo producto: insertarlo chocaria con UNIQUE(tenant_id, sku)
           // y desharia la bajada completa. Se actualiza el local conservando su id.
           const localProd = this.sqlite.queryOne<Producto>(
@@ -348,7 +352,11 @@ export class PosSyncEngineService {
 
             this.sqlite.execute(
               `UPDATE productos 
-               SET precio_compra = ?, precio_venta = ?, nombre = ?, activo = ?, imagen = COALESCE(?, imagen), updated_at = datetime('now')
+               SET precio_compra = ?, precio_venta = ?, nombre = ?, activo = ?, imagen = COALESCE(?, imagen),
+                   impuesto_adicional_codigo = CASE WHEN ? > 0 THEN ? ELSE impuesto_adicional_codigo END,
+                   impuesto_adicional_tasa = CASE WHEN ? > 0 THEN ? ELSE impuesto_adicional_tasa END,
+                   factura_origen_folio = COALESCE(factura_origen_folio, ?),
+                   updated_at = datetime('now')
                WHERE id = ? AND tenant_id = ?`,
               [
                 reconciled.precio_compra,
@@ -356,6 +364,9 @@ export class PosSyncEngineService {
                 reconciled.nombre,
                 reconciled.activo ? 1 : 0,
                 cloudProd.imagen ?? null,
+                codigoIla, codigoIla,
+                codigoIla, tasaIla,
+                cloudProd.factura_origen_folio ?? null,
                 localProd.id,
                 tenantId
               ]
@@ -365,8 +376,9 @@ export class PosSyncEngineService {
             // Si no existía localmente, insertarlo desde la nube
             this.sqlite.execute(
               `INSERT INTO productos 
-               (id, tenant_id, proveedor_id, codigo_barra, sku, nombre, stock_actual, stock_minimo, precio_compra, precio_venta, categoria, activo, imagen)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+               (id, tenant_id, proveedor_id, codigo_barra, sku, nombre, stock_actual, stock_minimo, precio_compra, precio_venta, categoria, activo, imagen,
+                impuesto_adicional_codigo, impuesto_adicional_tasa, factura_origen_folio)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
               [
                 cloudProd.id,
                 tenantId,
@@ -380,7 +392,10 @@ export class PosSyncEngineService {
                 cloudProd.precio_venta,
                 cloudProd.categoria || null,
                 cloudProd.activo ? 1 : 0,
-                cloudProd.imagen ?? null
+                cloudProd.imagen ?? null,
+                codigoIla,
+                tasaIla,
+                cloudProd.factura_origen_folio ?? null
               ]
             );
             updatedCount++;

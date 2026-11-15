@@ -44,4 +44,21 @@ describe('Pruebas Unitarias: migracion de los codigos ILA a la tabla del SII', (
     const cuerpo = (s: string) => s.slice(s.indexOf('UPDATE'));
     expect(cuerpo(nube)).toBe(cuerpo(sql));
   });
+
+  test('la 023 devuelve al 27 la fila de azucar alta con tasa 10 y deja MODELO_A', () => {
+    const db = new DatabaseSync(':memory:');
+    db.exec(`CREATE TABLE productos (id TEXT, nombre TEXT, impuesto_adicional_codigo INTEGER, impuesto_adicional_tasa REAL);
+             CREATE TABLE configuracion_sistema (clave TEXT, valor TEXT)`);
+    db.exec(`INSERT INTO productos VALUES ('zero', 'Coca Cola Zero', 271, 10), ('crush', 'Crush', 271, 18);
+             INSERT INTO configuracion_sistema VALUES ('sii_modelo_emision', 'MODELO_B')`);
+
+    db.exec(readFileSync(
+      path.join(__dirname, '../../backend/src/database/sqlite/migrations/023_ila_tasa_y_modelo_emision.sql'),
+      'utf-8'
+    ));
+
+    const codigos = db.prepare('SELECT id, impuesto_adicional_codigo AS c FROM productos ORDER BY id').all();
+    expect(codigos).toEqual([{ id: 'crush', c: 271 }, { id: 'zero', c: 27 }]);
+    expect(db.prepare('SELECT valor FROM configuracion_sistema').get()).toEqual({ valor: 'MODELO_A' });
+  });
 });

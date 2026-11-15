@@ -235,7 +235,7 @@ function seedSqliteDemoData(): void {
 
     // 9. Configuración Tributaria SII (Res. Ex. N° 176, Ley N° 20.727)
     const siiConfigs = [
-      { k: 'sii_modelo_emision', v: 'MODELO_B', d: 'Modelo Emisión SII: MODELO_B (Voucher reemplaza boleta - Res. 176) / MODELO_A (Siempre emite boleta)' },
+      { k: 'sii_modelo_emision', v: 'MODELO_A', d: 'Modelo Emisión SII: MODELO_A (Siempre emite boleta) / MODELO_B (Voucher de un operador autorizado reemplaza la boleta - Res. 176)' },
       { k: 'sii_rut_emisor', v: '76.123.456-0', d: 'RUT Emisor de la empresa' },
       { k: 'sii_razon_social', v: 'ALMACEN DON TITO SPA', d: 'Razón Social comercial' },
       { k: 'sii_giro_comercial', v: 'VENTA AL POR MENOR EN ALMACENES Y MINIMARKET', d: 'Giro comercial según SII' },

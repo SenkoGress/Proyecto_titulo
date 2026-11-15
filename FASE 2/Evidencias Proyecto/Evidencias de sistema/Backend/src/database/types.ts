@@ -102,6 +102,10 @@ export interface Producto {
   precio_compra: number;
   precio_venta: number;
   categoria?: string | null;
+  impuesto_adicional_codigo?: number | null;
+  /** NUMERIC en Postgres: llega como texto. */
+  impuesto_adicional_tasa?: number | string | null;
+  factura_origen_folio?: string | null;
   activo: boolean;
   created_at?: string;
   updated_at?: string;

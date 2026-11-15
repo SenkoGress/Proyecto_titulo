@@ -39,7 +39,7 @@ export class DteEmitterService {
       map[r.clave] = r.valor;
     }
 
-    const modeloEmision = (map['sii_modelo_emision'] as SiiModeloEmision) || 'MODELO_B';
+    const modeloEmision = (map['sii_modelo_emision'] as SiiModeloEmision) || 'MODELO_A';
 
     const rawRut = map['sii_rut_emisor'] || '76.123.456-0';
     const rutEmisor = rawRut === '76.123.456-7' ? '76.123.456-0' : rawRut;
@@ -60,12 +60,11 @@ export class DteEmitterService {
   }
 
   /**
-   * Calcula los totales respetando el IVA del 19% y la Ley de Redondeo N° 20.956
+   * Calcula los totales respetando el IVA del 19%, ILA y la Ley de Redondeo N° 20.956.
+   * conIla en false para la venta del minorista al consumidor (DL 825, art. 43 inciso final):
+   * el impuesto adicional ya viene en el costo y el precio solo se separa en neto e IVA.
    */
-  /**
-   * Calcula los totales respetando el IVA del 19%, ILA y la Ley de Redondeo N° 20.956
-   */
-  public calculateTotals(items: ItemDTE[]): TotalesDTE {
+  public calculateTotals(items: ItemDTE[], conIla = true): TotalesDTE {
     let netoTotal = 0;
     let ivaTotal = 0;
     let exentoTotal = 0;
@@ -88,8 +87,8 @@ export class DteEmitterService {
         exentoTotal += sub;
         totalBruto += sub;
       } else {
-        const tasaIla = it.tasaIla || 0;
-        const codigoIla = it.codigoIla || 0;
+        const tasaIla = conIla ? it.tasaIla || 0 : 0;
+        const codigoIla = conIla ? it.codigoIla || 0 : 0;
         const factorImpuestos = 1.19 + (tasaIla / 100);
 
         // Precios en catálogo chileno minorista son brutos (IVA + ILA incluidos)
@@ -154,11 +153,14 @@ export class DteEmitterService {
       ciudad: emisor.ciudad
     };
 
-    const totales = this.calculateTotals(req.items);
     const fecha = req.fechaEmision || fechaLocal();
     const isPaymentCard = req.metodoPago.toUpperCase() !== 'EFECTIVO';
     const isDevolucion = req.tipoDte === TipoDTE.NOTA_CREDITO;
     const isFactura = req.tipoDte === TipoDTE.FACTURA_ELECTRONICA || req.tipoDte === TipoDTE.FACTURA_EXENTA;
+    const esBoleta = (tipo?: number) => tipo === TipoDTE.BOLETA_ELECTRONICA || tipo === TipoDTE.BOLETA_EXENTA;
+    // La boleta y la nota de credito que la anula no llevan ILA; la factura a otro vendedor si (art. 43 letra d)
+    const conIla = !esBoleta(req.tipoDte || TipoDTE.BOLETA_ELECTRONICA) && !(isDevolucion && esBoleta(req.referencia?.tipoDocRef));
+    const totales = this.calculateTotals(req.items, conIla);
 
     // Cumplimiento Resolucion Exenta N 176 del SII: Prevencion de doble debito tributario
     // Solo aplica para Boletas a consumidor final (no para Facturas ni Notas de Crédito)
@@ -219,7 +221,7 @@ export class DteEmitterService {
 
     let itemsXml = '';
     req.items.forEach((it, idx) => {
-      const ilaTag = it.codigoIla ? `<CodImpAdic>${it.codigoIla}</CodImpAdic>` : '';
+      const ilaTag = conIla && it.codigoIla ? `<CodImpAdic>${it.codigoIla}</CodImpAdic>` : '';
       itemsXml += `<Detalle><NroLinDet>${idx + 1}</NroLinDet>${ilaTag}<NmbItem>${it.nombre.replace(/[<>&'"]/g, '').substring(0, 50)}</NmbItem><QtyItem>${it.cantidad}</QtyItem><PrcItem>${Math.round(it.precioUnitario)}</PrcItem><MontoItem>${Math.round(it.subtotal)}</MontoItem></Detalle>`;
     });
 

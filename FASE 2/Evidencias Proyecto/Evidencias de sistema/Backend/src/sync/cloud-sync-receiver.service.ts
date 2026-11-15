@@ -337,8 +337,9 @@ export class CloudSyncReceiverService {
         const res = await this.pgClient.query(
           `INSERT INTO productos
            (id, tenant_id, proveedor_id, sku, codigo_barra, nombre, stock_actual,
-            stock_minimo, precio_compra, precio_venta, activo, origen_creacion, imagen)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'SINCRONIZACION', $12)
+            stock_minimo, precio_compra, precio_venta, activo, origen_creacion, imagen,
+            impuesto_adicional_codigo, impuesto_adicional_tasa, factura_origen_folio)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'SINCRONIZACION', $12, $13, $14, $15)
            ON CONFLICT DO NOTHING`,
           [
             producto.id,
@@ -352,10 +353,33 @@ export class CloudSyncReceiverService {
             producto.precio_compra,
             producto.precio_venta,
             producto.activo === undefined ? true : Boolean(producto.activo),
-            producto.imagen ?? null
+            producto.imagen ?? null,
+            Number(producto.impuesto_adicional_codigo) || 0,
+            Number(producto.impuesto_adicional_tasa) || 0,
+            producto.factura_origen_folio ?? null
           ]
         );
         productosNuevos += res.rowCount || 0;
+
+        // La fila que la nube ya tenia pudo subir antes de que el impuesto y el folio viajaran:
+        // se completan solo si alla estan vacios, sin pisar lo que la nube ya sabe.
+        if (!res.rowCount && (Number(producto.impuesto_adicional_codigo) > 0 || producto.factura_origen_folio)) {
+          await this.pgClient.query(
+            `UPDATE productos SET
+               impuesto_adicional_tasa = CASE WHEN COALESCE(impuesto_adicional_codigo, 0) = 0 THEN $4 ELSE impuesto_adicional_tasa END,
+               impuesto_adicional_codigo = CASE WHEN COALESCE(impuesto_adicional_codigo, 0) = 0 THEN $3 ELSE impuesto_adicional_codigo END,
+               factura_origen_folio = COALESCE(factura_origen_folio, $5)
+             WHERE tenant_id = $1 AND (id = $2 OR sku = $6)`,
+            [
+              tenantId,
+              producto.id,
+              Number(producto.impuesto_adicional_codigo) || 0,
+              Number(producto.impuesto_adicional_tasa) || 0,
+              producto.factura_origen_folio ?? null,
+              producto.sku
+            ]
+          );
+        }
       }
 
       if (productosNuevos > 0 || proveedoresNuevos > 0) {
