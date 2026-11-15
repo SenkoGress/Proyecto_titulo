@@ -23,8 +23,8 @@ export async function obtenerEstadoPos() {
 
 // registrar venta
 export async function registrarVenta(peticion: PeticionCheckout) {
-  // con tarjeta el servidor espera a que el cliente pague en la maquina (hasta 2 minutos)
-  const { data } = await httpClient.post<RespuestaCheckout>(endpoints.pos.checkout, peticion, { timeout: 150000 })
+  // con tarjeta el servidor espera a que el cliente pague: el terminal de Transbank da hasta 150 s
+  const { data } = await httpClient.post<RespuestaCheckout>(endpoints.pos.checkout, peticion, { timeout: 180000 })
   return data.data
 }
 

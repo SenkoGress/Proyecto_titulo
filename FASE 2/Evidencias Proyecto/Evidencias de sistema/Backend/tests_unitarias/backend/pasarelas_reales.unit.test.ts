@@ -141,6 +141,11 @@ describe('Transbank POS Integrado', () => {
       autoconnect: async () => {
         m.conexiones++;
       },
+      anulaciones: [] as string[],
+      refund: async (operacion: string) => {
+        m.anulaciones.push(operacion);
+        return { responseCode: 0, authorizationCode: '991204' };
+      },
       sale: async (monto: number, ticket: string) => {
         m.ventas.push([monto, ticket]);
         const r = respuestas.shift()!;
@@ -164,8 +169,9 @@ describe('Transbank POS Integrado', () => {
     const fin = await tbk.confirmPayment({ token: inicio.token, saleId: venta.saleId, tenantId: 't1', gateway: 'Transbank' });
 
     expect(m.ventas).toEqual([[1890, '3F2A9C']]);
-    expect(fin).toMatchObject({ status: 'APPROVED', authorizationCode: '583201', transactionId: '41' });
-    expect(fin.metadataResponse.card_last4).toBe('6623');
+    expect(fin).toMatchObject({ status: 'APPROVED', authorizationCode: '583201' });
+    // El numero de operacion se repite entre terminales: queda en metadata y el id es propio
+    expect(fin.metadataResponse).toMatchObject({ card_last4: '6623', operation_number: '41' });
   });
 
   test('un codigo de respuesta distinto de 0 es un rechazo', async () => {
@@ -181,6 +187,43 @@ describe('Transbank POS Integrado', () => {
     await expect(tbk.initiatePayment({ ...venta, gateway: 'Transbank' })).rejects.toThrow('Port is not open');
     await tbk.initiatePayment({ ...venta, gateway: 'Transbank' });
     expect(m.conexiones).toBe(2);
+  });
+});
+
+describe('Reverso del cobro en la devolucion', () => {
+  const base = { token: 'T1', transactionId: 'PAY01', metadata: {}, totalCobrado: 5000, idReverso: 'dev-1' };
+
+  test('Mercado Pago reembolsa la orden completa sin cuerpo, y la parcial con el pago y el monto', async () => {
+    process.env.PAGOS_MODO = 'produccion';
+    process.env.MP_ACCESS_TOKEN = 'APP_USR-prod';
+    const { http, llamadas } = proveedorFalso([{ body: { status: 'refunded' } }, { body: { status: 'processed', status_detail: 'partially_refunded' } }]);
+    const mp = new MercadoPagoGateway(http);
+
+    await mp.reembolsar({ ...base, monto: 5000 });
+    await mp.reembolsar({ ...base, monto: 1890 });
+
+    expect(llamadas[0]).toMatchObject({ url: 'https://api.mercadopago.com/v1/orders/T1/refund', cuerpo: undefined });
+    expect(llamadas[0].cabeceras['X-Idempotency-Key']).toBe('dev-1');
+    expect(llamadas[1].cuerpo).toEqual({ transactions: [{ id: 'PAY01', amount: '1890' }] });
+  });
+
+  test('SumUp reembolsa el pago por su id, en pesos', async () => {
+    Object.assign(process.env, { PAGOS_MODO: 'produccion', SUMUP_API_KEY: 'k', SUMUP_MERCHANT_CODE: 'MC123' });
+    const { http, llamadas } = proveedorFalso([{ status: 201, body: {} }]);
+    await new SumUpGateway(http).reembolsar({ ...base, transactionId: 'tx1', monto: 1890 });
+    expect(llamadas[0]).toMatchObject({ url: 'https://api.sumup.com/v1.0/merchants/MC123/payments/tx1/refunds', cuerpo: { amount: 1890 } });
+  });
+
+  test('Transbank anula por numero de operacion, y una devolucion parcial se rechaza con su motivo', async () => {
+    process.env.PAGOS_MODO = 'produccion';
+    const m = { conexiones: 0, anulaciones: [] as string[], connect: async () => undefined, autoconnect: async () => undefined,
+      sale: async () => ({ responseCode: 0 }),
+      refund: async (op: string) => { m.anulaciones.push(op); return { responseCode: 0 }; } };
+    const tbk = new TransbankGateway(m as MaquinaPos);
+
+    await tbk.reembolsar({ ...base, metadata: { operation_number: '4128' }, monto: 5000 });
+    await expect(tbk.reembolsar({ ...base, metadata: { operation_number: '4128' }, monto: 1890 })).rejects.toThrow(/venta completa/);
+    expect(m.anulaciones).toEqual(['4128']);
   });
 });
 

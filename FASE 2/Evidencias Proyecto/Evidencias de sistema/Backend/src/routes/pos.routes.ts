@@ -1412,8 +1412,22 @@ router.post('/devolucion', async (req: Request, res: Response): Promise<void> =>
     const folioRef = dteOriginal?.folio || parseInt((ventaOriginal.folio_local_sqlite || '1').replace(/\D/g, ''), 10) || 1;
     const fechaRef = (dteOriginal?.fecha_emision || ventaOriginal.fecha || new Date().toISOString()).substring(0, 10);
 
-    // 5. Restituir inventario dentro de una transacción
+    // 5. Lo cobrado con tarjeta se devuelve primero en la maquina: si no se puede, no hay devolucion
     const returnSaleId = uuidv4();
+    let reverso: PaymentTransactionResult | null = null;
+    try {
+      reverso = await defaultPaymentDispatcher.reembolsar(
+        venta_id, itemsADevolver.reduce((suma, it) => suma + it.subtotal, 0), returnSaleId);
+    } catch (errReverso) {
+      logger.warn('PosRoutes', 'No se pudo reversar el cobro con tarjeta', { errReverso: detalleError(errReverso) });
+      res.status(402).json({
+        success: false,
+        message: `No se pudo devolver el pago a la tarjeta: ${detalleError(errReverso)}. La devolucion no se registro.`
+      });
+      return;
+    }
+
+    // 6. Restituir inventario dentro de una transacción
     let totalDevuelto = 0;
 
     sqlite.withTransaction(() => {
@@ -1479,7 +1493,10 @@ router.post('/devolucion', async (req: Request, res: Response): Promise<void> =>
       );
     });
 
-    // 6. Emitir Nota de Crédito Electrónica (DTE Tipo 61) con nodo <Referencia>
+    // El reverso se guarda junto a la devolucion, sin marcarla PAGADA
+    if (reverso) await defaultPaymentDispatcher.registrarPago(reverso, false);
+
+    // 7. Emitir Nota de Crédito Electrónica (DTE Tipo 61) con nodo <Referencia>
     const dteItems = itemsADevolver.map((it, idx) => ({
       nroLinea: idx + 1,
       nombre: it.nombre,
@@ -1518,7 +1535,7 @@ router.post('/devolucion', async (req: Request, res: Response): Promise<void> =>
 
     res.status(200).json({
       success: true,
-      message: `Devolución procesada exitosamente. Se emitió la Nota de Crédito DTE 61 N° ${ncResponse.folio} y el stock fue restituido.`,
+      message: `Devolución procesada exitosamente. Se emitió la Nota de Crédito DTE 61 N° ${ncResponse.folio} y el stock fue restituido.${reverso ? ` El pago se devolvio a la tarjeta (${reverso.gateway}).` : ''}`,
       data: {
         devolucion_id: returnSaleId,
         folio_nc: ncResponse.folio,
@@ -1526,7 +1543,8 @@ router.post('/devolucion', async (req: Request, res: Response): Promise<void> =>
         total_devuelto: totalDevuelto,
         nota_credito: ncResponse,
         dte_nc: ncResponse,
-        items_devueltos: itemsADevolver
+        items_devueltos: itemsADevolver,
+        reverso_tarjeta: reverso ? { pasarela: reverso.gateway, monto: -reverso.amount, detalle: reverso.metadataResponse } : null
       }
     });
   } catch (error) {

@@ -5,7 +5,8 @@ import {
   PaymentGatewayType,
   PaymentInitRequest,
   PaymentInitResponse,
-  PaymentTransactionResult
+  PaymentTransactionResult,
+  ReembolsoRequest
 } from './types';
 import { logger } from '../utils/logger';
 import { configPagos, esperar, exigir } from './pagos.config';
@@ -64,6 +65,15 @@ export class SumUpGateway implements IPaymentGateway {
       usedFallback: false,
       createdAt: new Date().toISOString()
     };
+  }
+
+  /** POST /v1.0/merchants/{mc}/payments/{id}/refunds, en pesos; vuelve a la tarjeta del cliente. */
+  public async reembolsar(req: ReembolsoRequest): Promise<Record<string, unknown>> {
+    if (configPagos().modo === 'simulado') return { simulado: true };
+    const { sumUp } = configPagos();
+    await this.llamar('POST', `/v1.0/merchants/${sumUp.merchantCode}/payments/${req.transactionId}/refunds`,
+      { amount: Math.round(req.monto) });
+    return { parcial: req.monto < req.totalCobrado };
   }
 
   /**

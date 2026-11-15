@@ -25,6 +25,19 @@ export interface PaymentConfirmRequest {
   simulateFailure?: boolean;
 }
 
+export interface ReembolsoRequest {
+  /** Token con que se cobro: orden de Mercado Pago, ticket de Transbank, checkout de SumUp. */
+  token: string;
+  /** Id del pago en el proveedor (payment_transactions.id). */
+  transactionId: string;
+  metadata: Record<string, any>;
+  monto: number;
+  /** Lo que se cobro: si monto es menor, el reembolso es parcial. */
+  totalCobrado: number;
+  /** Id de la devolucion, que sirve de clave de idempotencia. */
+  idReverso: string;
+}
+
 export interface PaymentTransactionResult {
   transactionId: string;
   saleId: string;

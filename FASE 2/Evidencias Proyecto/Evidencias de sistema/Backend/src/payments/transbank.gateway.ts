@@ -5,7 +5,8 @@ import {
   PaymentGatewayType,
   PaymentInitRequest,
   PaymentInitResponse,
-  PaymentTransactionResult
+  PaymentTransactionResult,
+  ReembolsoRequest
 } from './types';
 import { logger } from '../utils/logger';
 import { configPagos, esperar } from './pagos.config';
@@ -30,6 +31,7 @@ export interface MaquinaPos {
   connect(puerto: string): Promise<unknown>;
   autoconnect(): Promise<unknown>;
   sale(monto: number, ticket: string): Promise<RespuestaVentaPos>;
+  refund(numeroOperacion: string): Promise<RespuestaVentaPos>;
 }
 
 export class TransbankGateway implements IPaymentGateway {
@@ -117,7 +119,8 @@ export class TransbankGateway implements IPaymentGateway {
     logger.info('TransbankGateway', `Terminal respondio ${respuesta.responseCode} (${respuesta.responseMessage ?? ''}) para el ticket ${ticket}`);
 
     this.resultados.set(ticket, {
-      transactionId: String(respuesta.operationNumber ?? ticket),
+      // El numero de operacion se repite entre terminales y dias: va en metadata, no como id
+      transactionId: uuidv4(),
       saleId: req.saleId,
       gateway: this.gatewayType,
       token: ticket,
@@ -132,12 +135,45 @@ export class TransbankGateway implements IPaymentGateway {
         card_type: respuesta.cardType,
         card_brand: respuesta.cardBrand,
         card_last4: respuesta.last4Digits !== undefined ? String(respuesta.last4Digits) : undefined,
-        terminal_id: respuesta.terminalId
+        terminal_id: respuesta.terminalId,
+        operation_number: respuesta.operationNumber !== undefined ? String(respuesta.operationNumber) : undefined
       },
       usedFallback: false,
       createdAt: new Date().toISOString()
     });
     return { token: ticket, gateway: this.gatewayType, status: 'PENDING' };
+  }
+
+  /**
+   * Anulacion en el terminal por numero de operacion. El POS Integrado anula la venta completa:
+   * una devolucion parcial no se puede reversar desde la caja.
+   */
+  public async reembolsar(req: ReembolsoRequest): Promise<Record<string, unknown>> {
+    const { modo } = configPagos();
+    if (modo === 'simulado') return { simulado: true };
+    if (req.monto < req.totalCobrado) {
+      throw new Error('el POS Integrado de Transbank solo anula la venta completa; una devolucion parcial se reversa desde el portal de Transbank');
+    }
+    const operacion = req.metadata.operation_number;
+    if (!operacion) throw new Error('el cobro no guardo el numero de operacion del terminal');
+
+    const respuesta = modo === 'sandbox'
+      ? { responseCode: 0, responseMessage: 'Aprobado', authorizationCode: '000000' }
+      : await this.anular(String(operacion));
+    if (Number(respuesta.responseCode) !== 0) {
+      throw new Error(`el terminal no anulo la venta: ${respuesta.responseMessage ?? `codigo ${respuesta.responseCode}`}`);
+    }
+    return { response_code: respuesta.responseCode, authorization_code: respuesta.authorizationCode, operation_number: operacion };
+  }
+
+  private async anular(operacion: string): Promise<RespuestaVentaPos> {
+    const maquina = await this.conectar();
+    try {
+      return await maquina.refund(operacion);
+    } catch (err) {
+      this.conectada = false;
+      throw err;
+    }
   }
 
   private async vender(monto: number, ticket: string): Promise<RespuestaVentaPos> {

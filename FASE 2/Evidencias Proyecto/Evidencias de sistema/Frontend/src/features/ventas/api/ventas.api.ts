@@ -45,6 +45,6 @@ export async function registrarDevolucion(variables: {
     venta_id: variables.ventaId,
     motivo: variables.motivo,
     items_devolucion: variables.items,
-  })
+  }, { timeout: 180000 }) // si se pago con tarjeta, el servidor espera a que la maquina anule el cobro
   return data
 }

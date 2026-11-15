@@ -137,8 +137,51 @@ export class PaymentDispatcherService {
     return { ...resultado, gateway: req.gateway, amount: Math.round(req.amount), usedFallback: inicio.usedFallback };
   }
 
+  /**
+   * Devuelve en la maquina lo cobrado con tarjeta en una venta, antes de emitir la nota de credito.
+   * Devuelve null si la venta no tuvo cobro con tarjeta (efectivo). Lanza el motivo si no se pudo.
+   */
+  public async reembolsar(ventaId: string, monto: number, idReverso: string): Promise<PaymentTransactionResult | null> {
+    const pago = defaultSqliteClient.queryOne<{ id: string; pasarela: PaymentGatewayType; transaction_token: string; monto: number; metadata_response: string | null }>(
+      `SELECT id, pasarela, transaction_token, monto, metadata_response FROM payment_transactions
+       WHERE sale_id = ? AND estado_transaccion = 'APPROVED' ORDER BY created_at DESC LIMIT 1`,
+      [ventaId]
+    );
+    if (!pago) return null;
+
+    const metadata = pago.metadata_response ? JSON.parse(pago.metadata_response) : {};
+    const gateway = this.gateways.get(pago.pasarela);
+    let detalle: Record<string, unknown>;
+    if (gateway?.reembolsar) {
+      detalle = await gateway.reembolsar({
+        token: pago.transaction_token,
+        transactionId: pago.id,
+        metadata,
+        monto: Math.round(monto),
+        totalCobrado: Number(pago.monto),
+        idReverso
+      });
+    } else if (configPagos().modo === 'simulado') {
+      detalle = { simulado: true };
+    } else {
+      throw new Error(`${pago.pasarela} no permite reversar el cobro desde la caja`);
+    }
+
+    return {
+      transactionId: uuidv4(),
+      saleId: idReverso,
+      gateway: pago.pasarela,
+      token: pago.transaction_token,
+      amount: -Math.round(monto),
+      status: 'APPROVED',
+      metadataResponse: { tipo: 'REVERSO', venta_original: ventaId, pago_original: pago.id, ...detalle },
+      usedFallback: false,
+      createdAt: new Date().toISOString()
+    };
+  }
+
   /** Guarda el resultado del cobro y marca la venta como PAGADA si se aprobo. */
-  public async registrarPago(txResult: PaymentTransactionResult): Promise<void> {
+  public async registrarPago(txResult: PaymentTransactionResult, marcarPagada = true): Promise<void> {
     const req = { saleId: txResult.saleId, gateway: txResult.gateway };
 
     // 3. Persistir en SQLite local de inmediato
@@ -158,7 +201,7 @@ export class PaymentDispatcherService {
         ]
       );
 
-      if (txResult.status === 'APPROVED') {
+      if (txResult.status === 'APPROVED' && marcarPagada) {
         defaultSqliteClient.execute(
           `UPDATE transacciones_venta SET estado = 'PAGADA' WHERE id = ?`,
           [req.saleId]
@@ -187,7 +230,7 @@ export class PaymentDispatcherService {
           ]
         );
 
-        if (txResult.status === 'APPROVED') {
+        if (txResult.status === 'APPROVED' && marcarPagada) {
           await client.query(
             `UPDATE transacciones_venta 
              SET estado = 'PAGADA' 

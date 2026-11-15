@@ -5,7 +5,8 @@ import {
   PaymentGatewayType,
   PaymentInitRequest,
   PaymentInitResponse,
-  PaymentTransactionResult
+  PaymentTransactionResult,
+  ReembolsoRequest
 } from './types';
 import { logger } from '../utils/logger';
 import { configPagos, esperar, exigir } from './pagos.config';
@@ -66,6 +67,16 @@ export class MercadoPagoGateway implements IPaymentGateway {
       usedFallback: false,
       createdAt: new Date().toISOString()
     };
+  }
+
+  /** POST /v1/orders/{id}/refund: sin cuerpo es total; con la transaccion y el monto, parcial. */
+  public async reembolsar(req: ReembolsoRequest): Promise<Record<string, unknown>> {
+    if (configPagos().modo === 'simulado') return { simulado: true };
+    const parcial = req.monto < req.totalCobrado;
+    const orden = await this.llamar('POST', `/v1/orders/${req.token}/refund`,
+      parcial ? { transactions: [{ id: req.transactionId, amount: String(Math.round(req.monto)) }] } : undefined,
+      { 'X-Idempotency-Key': req.idReverso });
+    return { order_status: orden.status, status_detail: orden.status_detail, parcial };
   }
 
   /** Envia el monto a la maquina Point (Orders API). La orden queda esperando la tarjeta. */
