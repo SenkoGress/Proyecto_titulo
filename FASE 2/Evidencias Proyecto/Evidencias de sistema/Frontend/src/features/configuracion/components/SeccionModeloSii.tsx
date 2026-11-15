@@ -13,18 +13,20 @@ import { Seccion } from '@/features/configuracion/components/Seccion'
 import { useConfigDte, useGuardarConfigDte } from '@/features/dte/hooks/useConfigDte'
 import type { ModeloEmision } from '@/features/dte/types'
 
+// el modelo A va primero porque es el que sirve a cualquier local. El B exige un terminal de un
+// operador autorizado: sin el, el cliente se va sin ningun documento tributario
 const OPCIONES: { valor: ModeloEmision; titulo: string; detalle: string }[] = [
-  {
-    valor: 'MODELO_B',
-    titulo: 'El voucher de la tarjeta reemplaza a la boleta',
-    detalle:
-      'Al cobrar con tarjeta (Transbank, Mercado Pago o SumUp) el POS no emite boleta tipo 39, porque la pasarela ya informa el debito al SII. Se entrega un comprobante interno no tributario. La boleta electronica queda para efectivo y transferencia.',
-  },
   {
     valor: 'MODELO_A',
     titulo: 'Emitir siempre boleta electronica, tambien con tarjeta',
     detalle:
-      'Se genera boleta tipo 39 por el 100% de las ventas. Requiere tener informado al SII que el terminal POS esta integrado, para que la operadora no duplique el debito fiscal.',
+      'Se genera boleta tipo 39 por el 100% de las ventas, con su folio. Es lo que corresponde a un local que cobra con tarjeta en un terminal propio, y lo que viene puesto de fabrica.',
+  },
+  {
+    valor: 'MODELO_B',
+    titulo: 'El voucher de la tarjeta reemplaza a la boleta',
+    detalle:
+      'Al cobrar con tarjeta el POS no emite boleta tipo 39: el comprobante de pago hace sus veces. Esto solo vale si el terminal es de un operador de medios de pago autorizado, que informa la venta al SII (Res. Ex. N° 176). Sin ese terminal, el cliente se queda sin documento tributario.',
   },
 ]
 

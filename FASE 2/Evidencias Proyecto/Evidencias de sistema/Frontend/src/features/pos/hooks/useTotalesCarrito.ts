@@ -3,11 +3,13 @@ import { useMemo } from 'react'
 import { useCarritoStore } from '@/features/pos/stores/carritoStore'
 import { desglosarImpuestos } from '@/shared/utils/impuestos'
 import { tieneAlcohol } from '@/features/pos/utils/alcohol'
+import { lineasParaImpuestos } from '@/features/pos/utils/lineasImpuesto'
 
 // totales del ticket
 export function useTotalesCarrito() {
   const lineas = useCarritoStore((estado) => estado.lineas)
   const metodoPago = useCarritoStore((estado) => estado.metodoPago)
+  const tipoComprobante = useCarritoStore((estado) => estado.tipoComprobante)
 
   return useMemo(() => {
     // ley 20.956: el redondeo a la decena solo rige para pagos en efectivo
@@ -15,10 +17,7 @@ export function useTotalesCarrito() {
 
     // neto, iva, ila y redondeo
     const desglose = desglosarImpuestos(
-      lineas.map((linea) => ({
-        subtotal: linea.producto.precio_venta * linea.cantidad,
-        tasaIla: Number(linea.producto.impuesto_adicional_tasa) || 0,
-      })),
+      lineasParaImpuestos(lineas, tipoComprobante),
       esEfectivo,
     )
 
@@ -34,5 +33,5 @@ export function useTotalesCarrito() {
       cantidadLineas: lineas.length,
       contieneAlcohol: tieneAlcohol(lineas),
     }
-  }, [lineas, metodoPago])
+  }, [lineas, metodoPago, tipoComprobante])
 }

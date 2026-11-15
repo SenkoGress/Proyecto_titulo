@@ -1,6 +1,7 @@
 // src/features/pos/hooks/useCobrarVenta.ts
 import { useState } from 'react'
 import { desglosarImpuestos } from '@/shared/utils/impuestos'
+import { lineasParaImpuestos } from '@/features/pos/utils/lineasImpuesto'
 import { useRegistrarVenta } from '@/features/pos/hooks/usePos'
 import { useCarritoStore } from '@/features/pos/stores/carritoStore'
 import { tieneAlcohol } from '@/features/pos/utils/alcohol'
@@ -34,10 +35,7 @@ export function useCobrarVenta() {
 
     // el redondeo de la ley 20.956 solo corre en efectivo
     const desglose = desglosarImpuestos(
-      lineas.map((linea) => ({
-        subtotal: linea.producto.precio_venta * linea.cantidad,
-        tasaIla: Number(linea.producto.impuesto_adicional_tasa) || 0,
-      })),
+      lineasParaImpuestos(lineas, tipoComprobante),
       metodoPago === 'EFECTIVO',
     )
 
