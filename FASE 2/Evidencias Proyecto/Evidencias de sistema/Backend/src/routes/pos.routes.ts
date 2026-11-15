@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { defaultPgClient } from '../database/postgres/client';
 import { defaultSqliteClient, SqliteClient } from '../database/sqlite/client';
 import { defaultPaymentDispatcher } from '../payments/payment-dispatcher.service';
+import { PaymentTransactionResult } from '../payments/types';
 import { defaultPosSyncEngine, TOPE_REINTENTOS_VENTA } from '../sync/pos-sync-engine.service';
 import { aplicarRedondeoChileno } from '../utils/pricing';
 import { logger } from '../utils/logger';
@@ -741,17 +742,40 @@ router.post('/checkout', async (req: Request, res: Response): Promise<void> => {
   try {
     let total = 0;
     let unidades = 0;
+    // Calcular total y unidades. La Ley N° 20.956 rige exclusivamente para pagos en efectivo
+    for (const item of lineas) {
+      total += Number(item.precio_unitario) * Number(item.cantidad);
+      unidades += Number(item.cantidad);
+    }
+    if (metodo_pago && String(metodo_pago).trim().toUpperCase() === 'EFECTIVO') {
+      total = aplicarRedondeoChileno(total);
+    }
 
-    // 1. Ejecutar venta transaccional en SQLite
+    // 1. Con tarjeta se cobra primero en la maquina: un pago rechazado no deja venta ni descuenta stock
+    let cobro: PaymentTransactionResult | null = null;
+    if (metodo_pago !== 'EFECTIVO') {
+      try {
+        cobro = await defaultPaymentDispatcher.cobrar({
+          saleId,
+          amount: total,
+          gateway: metodo_pago === 'MERCADOPAGO' ? 'MercadoPago' : metodo_pago === 'SUMUP' ? 'SumUp' : metodo_pago === 'RUTPAY' ? 'RutPay' : 'Transbank',
+          tenantId: tenant_id
+        });
+      } catch (payError) {
+        logger.warn('PosRoutes', 'La maquina de pago no pudo cobrar', { payError: detalleError(payError) });
+        res.status(402).json({ success: false, message: `No se pudo cobrar con tarjeta: ${detalleError(payError)}` });
+        return;
+      }
+      if (cobro.status !== 'APPROVED') {
+        const motivo = cobro.metadataResponse.response_message || cobro.metadataResponse.status_detail
+          || cobro.metadataResponse.order_status || cobro.metadataResponse.status || cobro.metadataResponse.error;
+        res.status(402).json({ success: false, message: `La maquina rechazo el pago${motivo ? `: ${motivo}` : ''}. La venta no se registro.` });
+        return;
+      }
+    }
+
+    // 2. Ejecutar venta transaccional en SQLite
     const checkoutResult = sqlite.withTransaction(() => {
-      // Calcular total y unidades. La Ley N° 20.956 rige exclusivamente para pagos en efectivo
-      for (const item of lineas) {
-        total += Number(item.precio_unitario) * Number(item.cantidad);
-        unidades += Number(item.cantidad);
-      }
-      if (metodo_pago && String(metodo_pago).trim().toUpperCase() === 'EFECTIVO') {
-        total = aplicarRedondeoChileno(total);
-      }
 
       // Buscar metodo_pago_id o usar un UUID determinista si no existe
       const metodoRow = sqlite.queryOne<{ id: string }>(
@@ -812,33 +836,13 @@ router.post('/checkout', async (req: Request, res: Response): Promise<void> => {
       return { saleId, folio, total, unidades };
     });
 
-    // 2. Procesamiento de pago si es con pasarela de tarjeta
+    // El cobro ya aprobado se guarda ahora que la venta existe
     let paymentStatus = 'APPROVED';
     let paymentTransactionId = null;
-
-    if (metodo_pago !== 'EFECTIVO') {
-      try {
-        const payRes = await defaultPaymentDispatcher.initiatePayment({
-          saleId,
-          amount: total,
-          gateway: metodo_pago === 'MERCADOPAGO' ? 'MercadoPago' : metodo_pago === 'SUMUP' ? 'SumUp' : metodo_pago === 'RUTPAY' ? 'RutPay' : 'Transbank',
-          tenantId: tenant_id
-        });
-
-        const confirmRes = await defaultPaymentDispatcher.confirmPayment({
-          token: payRes.token,
-          saleId,
-          tenantId: tenant_id,
-          gateway: payRes.gateway
-        });
-
-        paymentStatus = confirmRes.status;
-        paymentTransactionId = confirmRes.transactionId;
-      } catch (payError) {
-        // Tolerancia a fallos: emisión de vale offline
-        logger.warn('PosRoutes', 'External payment failed during checkout, generating offline voucher', { payError });
-        paymentStatus = 'OFFLINE_VOUCHER';
-      }
+    if (cobro) {
+      await defaultPaymentDispatcher.registrarPago(cobro);
+      paymentStatus = cobro.status;
+      paymentTransactionId = cobro.transactionId;
     }
 
     // 3. Emisión de Documento Tributario (Boleta 39, Factura 33) o Voucher (Res. Ex. N° 176)

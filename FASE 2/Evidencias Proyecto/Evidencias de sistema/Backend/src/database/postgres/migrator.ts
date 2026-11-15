@@ -71,11 +71,22 @@ export class PostgresMigrator {
 
       logger.info('PostgresMigrator', `Applying migration: ${file}`);
 
-      await this.client.withTransaction(async (client) => {
+      // La marca va antes que el SQL: si otra caja aplica la misma migracion, este INSERT espera a
+      // que esa transaccion termine y, si confirmo, no inserta nada y la migracion se salta.
+      const aplicada = await this.client.withTransaction(async (client) => {
+        const marca = await client.query(
+          'INSERT INTO _migrations (name) VALUES ($1) ON CONFLICT (name) DO NOTHING RETURNING id',
+          [file]
+        );
+        if (!marca.rowCount) return false;
         await client.query(sql);
-        await client.query('INSERT INTO _migrations (name) VALUES ($1)', [file]);
+        return true;
       });
 
+      if (!aplicada) {
+        logger.info('PostgresMigrator', `Migration ${file} was applied by another node meanwhile`);
+        continue;
+      }
       newlyApplied.push(file);
       logger.info('PostgresMigrator', `Successfully applied migration: ${file}`);
     }

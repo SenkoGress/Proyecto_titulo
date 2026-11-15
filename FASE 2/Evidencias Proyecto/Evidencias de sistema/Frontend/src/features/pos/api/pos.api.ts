@@ -23,7 +23,8 @@ export async function obtenerEstadoPos() {
 
 // registrar venta
 export async function registrarVenta(peticion: PeticionCheckout) {
-  const { data } = await httpClient.post<RespuestaCheckout>(endpoints.pos.checkout, peticion)
+  // con tarjeta el servidor espera a que el cliente pague en la maquina (hasta 2 minutos)
+  const { data } = await httpClient.post<RespuestaCheckout>(endpoints.pos.checkout, peticion, { timeout: 150000 })
   return data.data
 }
 

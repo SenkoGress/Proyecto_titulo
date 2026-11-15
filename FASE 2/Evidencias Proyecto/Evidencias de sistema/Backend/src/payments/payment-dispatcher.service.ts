@@ -15,6 +15,7 @@ import {
   PaymentInitResponse,
   PaymentTransactionResult
 } from './types';
+import { configPagos } from './pagos.config';
 
 export class PaymentDispatcherService {
   private pgClient: PostgresClient;
@@ -48,6 +49,8 @@ export class PaymentDispatcherService {
         usedFallback: false
       };
     } catch (err) {
+      // Con una maquina real, una falla no puede terminar en un cobro aprobado por el simulador
+      if (configPagos().modo !== 'simulado') throw err;
       // Modo contingencia: conmutacion automatica a simulador local ante caida del proveedor externo
       logger.warn('PaymentDispatcher', `Gateway ${req.gateway} failed during initiation. Activating graceful degradation mock.`, {
         error: err instanceof Error ? err.message : String(err)
@@ -104,14 +107,39 @@ export class PaymentDispatcherService {
       txResult = await gateway.confirmPayment(req);
       txResult.amount = saleAmount;
     } catch (err) {
-      logger.warn('PaymentDispatcher', `Gateway ${req.gateway} confirmation failed. Applying offline contingency voucher.`, {
-        error: err instanceof Error ? err.message : String(err)
-      });
-
-      txResult = await this.fallbackGateway.confirmPayment(req);
-      txResult.amount = saleAmount;
-      txResult.usedFallback = true;
+      const detalle = err instanceof Error ? err.message : String(err);
+      if (configPagos().modo !== 'simulado') {
+        txResult = rechazado(req.saleId, req.gateway, req.token, saleAmount, detalle);
+      } else {
+        logger.warn('PaymentDispatcher', `Gateway ${req.gateway} confirmation failed. Applying offline contingency voucher.`, {
+          error: detalle
+        });
+        txResult = await this.fallbackGateway.confirmPayment(req);
+        txResult.amount = saleAmount;
+        txResult.usedFallback = true;
+      }
     }
+
+    await this.registrarPago(txResult);
+    const duration = Date.now() - startTime;
+    logger.info('PaymentDispatcher', `Payment transaction ${txResult.transactionId} completed in ${duration}ms with status ${txResult.status}`);
+    return txResult;
+  }
+
+  /**
+   * Cobra en la maquina antes de que exista la venta: el checkout solo escribe la venta y descuenta
+   * stock si el resultado es APPROVED. Fuera del modo simulado, una falla se propaga con su motivo.
+   */
+  public async cobrar(req: { saleId: string; tenantId: string; amount: number; gateway: PaymentGatewayType }): Promise<PaymentTransactionResult> {
+    const inicio = await this.initiatePayment(req);
+    const gateway = inicio.usedFallback ? this.fallbackGateway : this.gateways.get(req.gateway)!;
+    const resultado = await gateway.confirmPayment({ token: inicio.token, saleId: req.saleId, tenantId: req.tenantId, gateway: req.gateway });
+    return { ...resultado, gateway: req.gateway, amount: Math.round(req.amount), usedFallback: inicio.usedFallback };
+  }
+
+  /** Guarda el resultado del cobro y marca la venta como PAGADA si se aprobo. */
+  public async registrarPago(txResult: PaymentTransactionResult): Promise<void> {
+    const req = { saleId: txResult.saleId, gateway: txResult.gateway };
 
     // 3. Persistir en SQLite local de inmediato
     try {
@@ -171,11 +199,6 @@ export class PaymentDispatcherService {
     } catch (pgErr) {
       logger.warn('PaymentDispatcher', 'Cloud PostgreSQL unreachable for payment persistence; will sync via push.', { pgErr });
     }
-
-    const duration = Date.now() - startTime;
-    logger.info('PaymentDispatcher', `Payment transaction ${txResult.transactionId} completed in ${duration}ms with status ${txResult.status}`);
-
-    return txResult;
   }
 
   public async getTransactionsBySale(saleId: string): Promise<any[]> {
@@ -198,3 +221,17 @@ export class PaymentDispatcherService {
 }
 
 export const defaultPaymentDispatcher = new PaymentDispatcherService();
+
+function rechazado(saleId: string, gateway: PaymentGatewayType, token: string, amount: number, motivo: string): PaymentTransactionResult {
+  return {
+    transactionId: uuidv4(),
+    saleId,
+    gateway,
+    token,
+    amount,
+    status: 'REJECTED',
+    metadataResponse: { gateway, error: motivo },
+    usedFallback: false,
+    createdAt: new Date().toISOString()
+  };
+}

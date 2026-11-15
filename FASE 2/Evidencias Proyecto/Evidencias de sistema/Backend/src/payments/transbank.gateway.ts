@@ -8,11 +8,44 @@ import {
   PaymentTransactionResult
 } from './types';
 import { logger } from '../utils/logger';
+import { configPagos, esperar } from './pagos.config';
+
+/** Lo que entrega el SDK de POS Integrado al terminar una venta (transbank-pos-sdk). */
+export interface RespuestaVentaPos {
+  responseCode: number;
+  responseMessage?: string;
+  successful?: boolean;
+  authorizationCode?: string;
+  amount?: number;
+  last4Digits?: string | number;
+  operationNumber?: string | number;
+  cardType?: string;
+  cardBrand?: string;
+  commerceCode?: string | number;
+  terminalId?: string;
+}
+
+/** La parte del SDK que se usa; permite reemplazar la maquina en las pruebas. */
+export interface MaquinaPos {
+  connect(puerto: string): Promise<unknown>;
+  autoconnect(): Promise<unknown>;
+  sale(monto: number, ticket: string): Promise<RespuestaVentaPos>;
+}
 
 export class TransbankGateway implements IPaymentGateway {
   public gatewayType: PaymentGatewayType = 'Transbank';
 
+  private maquina: MaquinaPos | null = null;
+  private conectada = false;
+  private resultados = new Map<string, PaymentTransactionResult>();
+
+  /** maquina inyectable para las pruebas; en produccion es el POS Integrado del SDK oficial. */
+  constructor(maquina?: MaquinaPos) {
+    this.maquina = maquina ?? null;
+  }
+
   public async initiatePayment(req: PaymentInitRequest): Promise<PaymentInitResponse> {
+    if (configPagos().modo !== 'simulado') return this.venderEnMaquina(req);
     if (req.simulateFailure) {
       throw new Error('Transbank Webpay API Timeout / Service Unavailable (503)');
     }
@@ -29,6 +62,12 @@ export class TransbankGateway implements IPaymentGateway {
   }
 
   public async confirmPayment(req: PaymentConfirmRequest): Promise<PaymentTransactionResult> {
+    if (configPagos().modo !== 'simulado') {
+      const resultado = this.resultados.get(req.token);
+      if (!resultado) throw new Error(`No hay una venta en la maquina Transbank con el ticket ${req.token}`);
+      this.resultados.delete(req.token);
+      return resultado;
+    }
     if (req.simulateFailure) {
       throw new Error('Transbank confirmation timeout / network disconnect');
     }
@@ -56,6 +95,89 @@ export class TransbankGateway implements IPaymentGateway {
       },
       usedFallback: false,
       createdAt: new Date().toISOString()
+    };
+  }
+
+  /**
+   * POS Integrado: la caja le manda el monto al terminal por USB o serie y el SDK espera a que el
+   * cliente pague; la promesa se resuelve con la respuesta del terminal. Transbank no ofrece un
+   * ambiente de pruebas para el POS Integrado, asi que en sandbox responde un terminal simulado con
+   * la misma forma que el SDK y el resultado pasa por la misma lectura que en produccion.
+   */
+  private async venderEnMaquina(req: PaymentInitRequest): Promise<PaymentInitResponse> {
+    const { modo } = configPagos();
+    // El terminal acepta un ticket de hasta 6 caracteres
+    const ticket = req.saleId.replace(/-/g, '').slice(0, 6).toUpperCase();
+
+    const respuesta = modo === 'sandbox'
+      ? await this.terminalDePrueba(req.amount)
+      : await this.vender(Math.round(req.amount), ticket);
+
+    const aprobada = Number(respuesta.responseCode) === 0;
+    logger.info('TransbankGateway', `Terminal respondio ${respuesta.responseCode} (${respuesta.responseMessage ?? ''}) para el ticket ${ticket}`);
+
+    this.resultados.set(ticket, {
+      transactionId: String(respuesta.operationNumber ?? ticket),
+      saleId: req.saleId,
+      gateway: this.gatewayType,
+      token: ticket,
+      amount: Number(respuesta.amount) || Math.round(req.amount),
+      status: aprobada ? 'APPROVED' : 'REJECTED',
+      authorizationCode: respuesta.authorizationCode,
+      metadataResponse: {
+        gateway: 'Transbank',
+        modo,
+        response_code: respuesta.responseCode,
+        response_message: respuesta.responseMessage,
+        card_type: respuesta.cardType,
+        card_brand: respuesta.cardBrand,
+        card_last4: respuesta.last4Digits !== undefined ? String(respuesta.last4Digits) : undefined,
+        terminal_id: respuesta.terminalId
+      },
+      usedFallback: false,
+      createdAt: new Date().toISOString()
+    });
+    return { token: ticket, gateway: this.gatewayType, status: 'PENDING' };
+  }
+
+  private async vender(monto: number, ticket: string): Promise<RespuestaVentaPos> {
+    const maquina = await this.conectar();
+    try {
+      return await maquina.sale(monto, ticket);
+    } catch (err) {
+      // Un cable desconectado deja el puerto inservible: la proxima venta vuelve a conectar
+      this.conectada = false;
+      throw err;
+    }
+  }
+
+  private async conectar(): Promise<MaquinaPos> {
+    if (!this.maquina) {
+      // Se carga recien aqui: abre el puerto serie y solo hace falta con una maquina real
+      const { POSIntegrado } = require('transbank-pos-sdk');
+      this.maquina = new POSIntegrado() as MaquinaPos;
+    }
+    if (!this.conectada) {
+      const { puerto } = configPagos().transbank;
+      await (puerto ? this.maquina.connect(puerto) : this.maquina.autoconnect());
+      this.conectada = true;
+    }
+    return this.maquina;
+  }
+
+  private async terminalDePrueba(monto: number): Promise<RespuestaVentaPos> {
+    await esperar(1500);
+    return {
+      responseCode: 0,
+      responseMessage: 'Aprobado',
+      successful: true,
+      authorizationCode: String(100000 + Math.floor(Math.random() * 900000)),
+      amount: Math.round(monto),
+      last4Digits: '6623',
+      operationNumber: String(Date.now()).slice(-6),
+      cardType: 'DB',
+      cardBrand: 'TR',
+      terminalId: 'SANDBOX'
     };
   }
 }

@@ -74,6 +74,28 @@ function configurarEntorno() {
   // una sala de ventas y cualquiera que llegue a el no deberia operar sin identificarse.
   process.env.NODE_ENV = process.env.NODE_ENV || 'production';
   process.env.JWT_SECRET = process.env.JWT_SECRET || claveDeSesion(carpetaBase);
+  cargarDatosDePago(carpetaBase);
+}
+
+/**
+ * Modo de cobro y credenciales de las maquinas de pago del comercio (PAGOS_MODO, MP_ACCESS_TOKEN,
+ * TBK_POS_PUERTO...). Viven en datos/pagos.json, junto a la base: son de cada local, no pueden ir en
+ * el instalador y no se sincronizan con la nube. Sin el archivo, la caja cobra en modo simulado.
+ */
+function cargarDatosDePago(carpetaBase) {
+  const archivo = path.join(carpetaBase, 'pagos.json');
+  let datos;
+  try {
+    datos = JSON.parse(fs.readFileSync(archivo, 'utf8'));
+  } catch (err) {
+    if (err.code !== 'ENOENT') console.error(`No se pudo leer ${archivo}: ${err.message}`);
+    return;
+  }
+  for (const [clave, valor] of Object.entries(datos)) {
+    if (/^(PAGOS|TBK|MP|SUMUP)_[A-Z_]+$/.test(clave) && process.env[clave] === undefined) {
+      process.env[clave] = String(valor);
+    }
+  }
 }
 
 /**

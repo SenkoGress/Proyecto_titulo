@@ -244,6 +244,36 @@ describe('Cumplimiento Normativo SII & Integración POS', () => {
       expect(json.data.dte.qrUrl).toContain('https://www.sii.cl/consulta_dte?');
     });
 
+    it('POST /api/v1/pos/checkout con tarjeta rechazada no registra la venta ni descuenta stock', async () => {
+      const entorno = { ...process.env };
+      // Produccion sin credenciales: Mercado Pago no puede cobrar y el simulador no debe aprobar
+      process.env.PAGOS_MODO = 'produccion';
+      delete process.env.MP_ACCESS_TOKEN;
+      try {
+        const prod = defaultSqliteClient.queryOne<any>('SELECT id, stock_actual FROM productos WHERE tenant_id = ? AND activo = 1 LIMIT 1', [tenantId]);
+        const ventasAntes = defaultSqliteClient.queryOne<{ n: number }>('SELECT COUNT(*) AS n FROM transacciones_venta')!.n;
+
+        const res = await fetch(`${baseUrl}/api/v1/pos/checkout`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tenant_id: tenantId,
+            usuario_id: usuarioId,
+            metodo_pago: 'MERCADOPAGO',
+            items: [{ producto_id: prod.id, cantidad: 1 }]
+          })
+        });
+        const json: any = await res.json();
+
+        expect(res.status).toBe(402);
+        expect(json.message).toContain('MP_ACCESS_TOKEN');
+        expect(defaultSqliteClient.queryOne<{ n: number }>('SELECT COUNT(*) AS n FROM transacciones_venta')!.n).toBe(ventasAntes);
+        expect(defaultSqliteClient.queryOne<any>('SELECT stock_actual FROM productos WHERE id = ?', [prod.id]).stock_actual).toBe(prod.stock_actual);
+      } finally {
+        process.env = entorno;
+      }
+    });
+
     it('POST /api/v1/pos/checkout con Tarjeta en MODELO_B emite Voucher no tributario (Res. 176)', async () => {
       // Asegurar que tenant está en MODELO_B
       defaultSqliteClient.execute(

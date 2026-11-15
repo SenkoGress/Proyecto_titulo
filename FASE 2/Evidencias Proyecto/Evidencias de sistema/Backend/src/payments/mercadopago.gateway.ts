@@ -8,11 +8,20 @@ import {
   PaymentTransactionResult
 } from './types';
 import { logger } from '../utils/logger';
+import { configPagos, esperar, exigir } from './pagos.config';
+
+const API = 'https://api.mercadopago.com';
+// Estados finales de una orden Point; processed es la unica aprobada
+const FINALES = ['processed', 'failed', 'canceled', 'expired', 'refunded'];
 
 export class MercadoPagoGateway implements IPaymentGateway {
   public gatewayType: PaymentGatewayType = 'MercadoPago';
 
+  /** fetch inyectable para las pruebas. */
+  constructor(private http: typeof fetch = fetch) {}
+
   public async initiatePayment(req: PaymentInitRequest): Promise<PaymentInitResponse> {
+    if (configPagos().modo !== 'simulado') return this.crearOrden(req);
     if (req.simulateFailure) {
       throw new Error('MercadoPago Point API 429 Too Many Requests / Network Disconnect');
     }
@@ -29,6 +38,7 @@ export class MercadoPagoGateway implements IPaymentGateway {
   }
 
   public async confirmPayment(req: PaymentConfirmRequest): Promise<PaymentTransactionResult> {
+    if (configPagos().modo !== 'simulado') return this.esperarOrden(req);
     if (req.simulateFailure) {
       throw new Error('MercadoPago payment capture failed');
     }
@@ -56,6 +66,82 @@ export class MercadoPagoGateway implements IPaymentGateway {
       usedFallback: false,
       createdAt: new Date().toISOString()
     };
+  }
+
+  /** Envia el monto a la maquina Point (Orders API). La orden queda esperando la tarjeta. */
+  private async crearOrden(req: PaymentInitRequest): Promise<PaymentInitResponse> {
+    const { modo, mercadoPago } = configPagos();
+    exigir({ MP_ACCESS_TOKEN: mercadoPago.accessToken, MP_TERMINAL_ID: mercadoPago.terminalId }, 'Mercado Pago');
+
+    const orden = await this.llamar('POST', '/v1/orders', {
+      type: 'point',
+      external_reference: req.saleId,
+      description: 'Venta GesTock',
+      transactions: { payments: [{ amount: String(Math.round(req.amount)) }] },
+      config: { point: { terminal_id: mercadoPago.terminalId, print_on_terminal: 'no_ticket' } }
+    }, { 'X-Idempotency-Key': req.saleId });
+
+    // Sin maquina fisica el sandbox no avanza solo: se le pide el resultado a Mercado Pago
+    if (modo === 'sandbox' && mercadoPago.resultadoSandbox) {
+      await this.llamar('POST', `/v1/orders/${orden.id}/events`, { status: mercadoPago.resultadoSandbox });
+    }
+
+    logger.info('MercadoPagoGateway', `Orden ${orden.id} enviada al terminal ${mercadoPago.terminalId}`);
+    return { token: orden.id, gateway: this.gatewayType, status: 'PENDING' };
+  }
+
+  /** Consulta la orden hasta que el cliente pague, la maquina la rechace o se agote la espera. */
+  private async esperarOrden(req: PaymentConfirmRequest): Promise<PaymentTransactionResult> {
+    const { esperaMaximaMs } = configPagos();
+    const limite = Date.now() + esperaMaximaMs;
+    let orden = await this.llamar('GET', `/v1/orders/${req.token}`);
+
+    while (!FINALES.includes(orden.status) && Date.now() < limite) {
+      await esperar(2000);
+      orden = await this.llamar('GET', `/v1/orders/${req.token}`);
+    }
+
+    if (!FINALES.includes(orden.status)) {
+      // Nadie pago a tiempo: se retira la orden de la maquina para que no cobre despues
+      await this.llamar('POST', `/v1/orders/${req.token}/cancel`, undefined,
+        { 'x-allow-cancelable-status': 'at_terminal' }).catch(() => undefined);
+      orden = { ...orden, status: 'expired', status_detail: 'sin respuesta del cliente' };
+    }
+
+    const pago = orden.transactions?.payments?.[0] ?? {};
+    return {
+      transactionId: pago.id || orden.id,
+      saleId: req.saleId,
+      gateway: this.gatewayType,
+      token: req.token,
+      amount: Number(pago.amount) || 0,
+      status: orden.status === 'processed' ? 'APPROVED' : 'REJECTED',
+      authorizationCode: pago.reference_id,
+      metadataResponse: {
+        gateway: 'MercadoPago',
+        order_status: orden.status,
+        status_detail: orden.status_detail,
+        payment_method: pago.payment_method?.id,
+        card_type: pago.payment_method?.type
+      },
+      usedFallback: false,
+      createdAt: new Date().toISOString()
+    };
+  }
+
+  private async llamar(metodo: string, ruta: string, cuerpo?: unknown, cabeceras: Record<string, string> = {}): Promise<any> {
+    const res = await this.http(`${API}${ruta}`, {
+      method: metodo,
+      headers: {
+        Authorization: `Bearer ${configPagos().mercadoPago.accessToken}`,
+        'Content-Type': 'application/json',
+        ...cabeceras
+      },
+      body: cuerpo === undefined ? undefined : JSON.stringify(cuerpo)
+    });
+    const texto = await res.text();
+    if (!res.ok) throw new Error(`Mercado Pago respondio ${res.status}: ${texto.slice(0, 300)}`);
+    return texto ? JSON.parse(texto) : {};
   }
 }
 

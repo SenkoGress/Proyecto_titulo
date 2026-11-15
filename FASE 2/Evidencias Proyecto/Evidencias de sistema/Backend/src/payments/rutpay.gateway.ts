@@ -8,6 +8,7 @@ import {
   PaymentTransactionResult
 } from './types';
 import { logger } from '../utils/logger';
+import { configPagos } from './pagos.config';
 
 /**
  * Pasarela de Pago RutPay (BancoEstado / PagoRUT / CuentaRUT)
@@ -18,6 +19,10 @@ export class RutPayGateway implements IPaymentGateway {
   public gatewayType: PaymentGatewayType = 'RutPay';
 
   public async initiatePayment(req: PaymentInitRequest): Promise<PaymentInitResponse> {
+    if (configPagos().modo !== 'simulado') {
+      // BancoEstado no publica una API de cobro para comercios: RutPay queda solo simulado
+      throw new Error('RutPay no tiene una API publica para cajas: solo funciona en modo simulado');
+    }
     if (req.simulateFailure) {
       throw new Error('RutPay BancoEstado API Timeout / Servicio no disponible (503)');
     }
