@@ -128,6 +128,19 @@ describe('SumUp Cloud API', () => {
     const fin = await new SumUpGateway(http).confirmPayment({ token: 'CTX-2', saleId: venta.saleId, tenantId: 't1', gateway: 'SumUp' });
     expect(fin.status).toBe('REJECTED');
   });
+
+  test('si nadie paga a tiempo, retira el cobro del lector y lo da por rechazado', async () => {
+    process.env.PAGOS_ESPERA_MAXIMA_MS = '1';
+    const { http, llamadas } = proveedorFalso([
+      { status: 404, body: { message: 'Not found' } },
+      { status: 202 },
+      { status: 404, body: { message: 'Not found' } },
+    ]);
+    const fin = await new SumUpGateway(http).confirmPayment({ token: 'CTX-3', saleId: venta.saleId, tenantId: 't1', gateway: 'SumUp' });
+    expect(llamadas[1]).toMatchObject({ metodo: 'POST', url: 'https://api.sumup.com/v0.1/merchants/MC123/readers/rdr_1/terminate' });
+    expect(fin.status).toBe('REJECTED');
+    expect(fin.metadataResponse.status).toBe('SIN_RESPUESTA');
+  }, 10000);
 });
 
 describe('Transbank POS Integrado', () => {

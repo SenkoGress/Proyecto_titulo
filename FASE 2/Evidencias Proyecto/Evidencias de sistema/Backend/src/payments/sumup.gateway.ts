@@ -122,6 +122,16 @@ export class SumUpGateway implements IPaymentGateway {
       await esperar(2000);
     }
 
+    if (estado === 'PENDING') {
+      // Nadie pago a tiempo: se retira el cobro del lector para que no se cobre despues de que la
+      // caja lo dio por rechazado. El aviso es asincrono, asi que se consulta una vez mas por si el
+      // cliente alcanzo a pagar justo antes.
+      await this.llamar('POST', `/v0.1/merchants/${sumUp.merchantCode}/readers/${sumUp.readerId}/terminate`).catch(() => undefined);
+      await esperar(3000);
+      tx = await this.llamar('GET', ruta).catch(() => null);
+      estado = String(tx?.status || 'PENDING').toUpperCase();
+    }
+
     return {
       transactionId: tx?.id || req.token,
       saleId: req.saleId,
