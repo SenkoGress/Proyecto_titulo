@@ -34,6 +34,8 @@ export type EstadoPos = {
   last_synced_at: string | null
   device_id: string
   tenant_id: string
+  // pasarelas que el local tiene configuradas en pagos.json
+  pasarelas_configuradas?: MetodoPago[]
 }
 
 // pasarelas de la tabla metodos_pago

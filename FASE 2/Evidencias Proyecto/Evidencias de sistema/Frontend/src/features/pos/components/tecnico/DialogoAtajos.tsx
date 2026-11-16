@@ -21,7 +21,7 @@ const atajos = [
   ['F3', 'Editar cantidad del ultimo producto'],
   ['F4', 'Cobrar la venta'],
   ['ESC', 'Limpiar el ticket (o salir de un campo)'],
-  ['1 al 5', 'Elegir medio de pago'],
+  ['1 en adelante', 'Elegir medio de pago'],
   ['Enter', 'Agregar el producto encontrado'],
 ]
 

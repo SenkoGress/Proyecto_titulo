@@ -3,12 +3,13 @@ import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Typography from '@mui/material/Typography'
 import { useCarritoStore } from '@/features/pos/stores/carritoStore'
-import { METODOS_PAGO } from '@/features/pos/metodosPago'
+import { useMetodosPago } from '@/features/pos/hooks/usePos'
 
-// medio de pago con tecla [1] a [5]
+// medio de pago con una tecla por boton
 export function MediosPago() {
   const metodoPago = useCarritoStore((estado) => estado.metodoPago)
   const cambiarMetodoPago = useCarritoStore((estado) => estado.cambiarMetodoPago)
+  const metodos = useMetodosPago()
 
   return (
     <Box>
@@ -17,7 +18,7 @@ export function MediosPago() {
       </Typography>
 
       <Box sx={{ display: 'grid', gap: 1, gridTemplateColumns: '1fr 1fr', mt: 0.5 }}>
-        {METODOS_PAGO.map((metodo, indice) => (
+        {metodos.map((metodo, indice) => (
           <Button
             key={metodo.valor}
             variant={metodoPago === metodo.valor ? 'contained' : 'outlined'}

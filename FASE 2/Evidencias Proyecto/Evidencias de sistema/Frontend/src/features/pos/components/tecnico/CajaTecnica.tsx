@@ -15,7 +15,7 @@ import { ID_BUSCADOR, idCampoCantidad } from '@/features/pos/components/tecnico/
 import { useCobrarVenta } from '@/features/pos/hooks/useCobrarVenta'
 import { useAtajosTeclado, type AccionesAtajos } from '@/features/pos/hooks/useAtajosTeclado'
 import { useCarritoStore } from '@/features/pos/stores/carritoStore'
-import { METODOS_PAGO } from '@/features/pos/metodosPago'
+import { useMetodosPago } from '@/features/pos/hooks/usePos'
 
 // caja en modo tecnico: tabla + panel de cobro
 export function CajaTecnica() {
@@ -24,6 +24,7 @@ export function CajaTecnica() {
   const hayVenta = useCarritoStore((estado) => estado.lineas.length > 0)
   const cambiarMetodoPago = useCarritoStore((estado) => estado.cambiarMetodoPago)
   const [ayudaAbierta, setAyudaAbierta] = useState(false)
+  const metodos = useMetodosPago()
   const [verCatalogo, setVerCatalogo] = useState(false)
 
   // ir al buscador
@@ -50,7 +51,7 @@ export function CajaTecnica() {
     cobrar,
     limpiar,
     elegirMetodo: (indice) => {
-      const metodo = METODOS_PAGO[indice]
+      const metodo = metodos[indice]
       if (metodo) cambiarMetodoPago(metodo.valor)
     },
   }

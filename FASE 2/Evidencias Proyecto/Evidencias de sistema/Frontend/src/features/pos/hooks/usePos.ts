@@ -1,4 +1,5 @@
 // src/features/pos/hooks/usePos.ts
+import { metodosVisibles } from '@/features/pos/utils/metodosVisibles'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   obtenerEstadoPos,
@@ -24,6 +25,12 @@ export function useEstadoPos() {
     queryFn: obtenerEstadoPos,
     refetchInterval: INTERVALO_REFRESCO_MS,
   })
+}
+
+// medios de pago que el local tiene conectados
+export function useMetodosPago() {
+  const estado = useEstadoPos()
+  return metodosVisibles(estado.data?.pasarelas_configuradas)
 }
 
 // registrar venta y refrescar stock
