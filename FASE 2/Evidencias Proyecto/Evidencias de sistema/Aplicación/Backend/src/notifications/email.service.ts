@@ -87,7 +87,8 @@ export class EmailService {
 
     try {
       const info = await this.obtenerTransporte().sendMail({
-        from: this.remitente,
+        // Con nombre visible, la bandeja muestra "GesTock" y no la direccion de la cuenta
+        from: this.remitente!.includes('<') ? this.remitente : { name: 'GesTock', address: this.remitente! },
         to: mensaje.para,
         subject: mensaje.asunto,
         text: mensaje.texto,
