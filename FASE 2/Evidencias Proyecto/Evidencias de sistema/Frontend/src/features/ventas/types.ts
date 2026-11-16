@@ -78,5 +78,7 @@ export type RespuestaDevolucion = {
     folio_nc: number
     monto_total: number
     total_devuelto: number
+    // el proveedor no permite devolver el pago desde la caja: la nota de credito se emite igual
+    reverso_tarjeta: { pasarela: string; monto: number; manual: boolean } | null
   }
 }

@@ -22,6 +22,7 @@ import { formatFecha } from '@/shared/utils/formatFecha'
 import { useDevolucion } from '@/features/ventas/hooks/useVentas'
 import { obtenerMensajeError } from '@/lib/api/apiError'
 import { AvisoEsperaPago } from '@/features/pos/components/compartidos/AvisoEsperaPago'
+import { avisoReversoManual, hayQueDevolverAMano } from '@/features/ventas/utils/reversoManual'
 import type { FilaVenta } from '@/features/ventas/utils/filaVenta'
 
 type Props = {
@@ -87,6 +88,8 @@ export function DialogoDevolucion({ venta, onCerrar }: Props) {
     })
   }
 
+  const aDevolverAMano = hayQueDevolverAMano(devolucion.data?.data.reverso_tarjeta ?? null)
+
   const puedeConfirmar = aDevolver.length > 0 && !devolucion.isPending && (esTotal || sinIdentificar.length === 0)
 
   return (
@@ -101,8 +104,17 @@ export function DialogoDevolucion({ venta, onCerrar }: Props) {
 
       <DialogContent dividers>
         {devolucion.isSuccess ? (
-          <Alert severity="success">
-            <AlertTitle sx={{ fontWeight: 700 }}>Devolucion registrada</AlertTitle>
+          <Alert severity={aDevolverAMano ? 'warning' : 'success'}>
+            <AlertTitle sx={{ fontWeight: 700 }}>
+              {aDevolverAMano ? 'Falta entregarle la plata' : 'Devolucion registrada'}
+            </AlertTitle>
+
+            {aDevolverAMano && (
+              <Typography variant="body2" sx={{ fontWeight: 700, mb: 1 }}>
+                {avisoReversoManual(devolucion.data.data.reverso_tarjeta)}
+              </Typography>
+            )}
+
             {devolucion.data.message}
 
             <Typography variant="body2" sx={{ mt: 1 }}>

@@ -10,6 +10,7 @@ import IconButton from '@mui/material/IconButton'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 import Alert from '@mui/material/Alert'
+import AlertTitle from '@mui/material/AlertTitle'
 import Skeleton from '@mui/material/Skeleton'
 import Tooltip from '@mui/material/Tooltip'
 import ReceiptLongOutlined from '@mui/icons-material/ReceiptLongOutlined'
@@ -92,7 +93,9 @@ export function DialogoComprobante({ venta, ajusteRedondeo, onCerrar }: Props) {
 
         {!venta.dte && (
           <Alert severity="warning" sx={{ mb: 2 }}>
-            La venta quedó registrada, pero el backend no devolvió documento tributario.
+            <AlertTitle sx={{ fontWeight: 700 }}>Esta venta quedo sin boleta</AlertTitle>
+            La venta y el cobro quedaron registrados. Entregale el comprobante de abajo y avisale
+            al administrador: esta venta necesita su boleta y no se puede emitir desde la caja.
           </Alert>
         )}
 
