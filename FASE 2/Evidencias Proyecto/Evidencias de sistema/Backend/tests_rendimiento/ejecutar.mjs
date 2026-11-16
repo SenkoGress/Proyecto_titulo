@@ -263,6 +263,11 @@ async function main() {
   for (let i = 0; i < 20; i += 1) await obtener('/api/v1/pos/products')
 
   const medidas = []
+  // la venta exige un turno abierto; si ya lo estaba, esta llamada no cambia nada
+  if (ESCRITURA && ctx.usuarioId) {
+    await enviar('/api/v1/caja/abrir', { usuario_id: ctx.usuarioId, monto_apertura: 20000 })
+  }
+
   for (const e of escenarios(ctx)) {
     const m = await cargar(e.accion, e.peticiones, e.concurrencia)
     e.cerrar?.()
