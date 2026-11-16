@@ -1,0 +1,71 @@
+﻿==============================================================================
+GesTock - Reporte de pruebas de rendimiento
+Fecha:     16-11-2026, 1:46:47 p. m.
+Backend:   http://127.0.0.1:3100
+Tenant:    00000000-0000-0000-0000-000000000001
+Catalogo:  25 productos
+Equipo:    win32 x64, Node v24.20.0
+Escritura: si (registra ventas reales)
+==============================================================================
+
+El p95 se compara con el desempeno de referencia del RNF. Un escenario "SOBRE" no es una
+falla de la prueba: es una medicion que queda registrada y hay que explicar. Solo se
+considera falla un error de la operacion o un maximo sobre el tope de regresion (10000 ms).
+
+DENTRO  Catalogo de caja (GET /pos/products)
+------------------------------------------------------------------------------
+  Requisito:    RNF-REND-03 (referencia 200 ms)
+  Carga:        200 operaciones, 10 en paralelo
+  Completadas:  200 de 200
+  Latencia:     p50 9.2 ms · p95 11.3 ms · p99 18.4 ms · max 20.5 ms
+  Caudal:       1029.7 operaciones por segundo
+
+DENTRO  Inventario con proveedor y ultimo ingreso (GET /pos/inventory)
+------------------------------------------------------------------------------
+  Requisito:    RNF-REND-03 (referencia 200 ms)
+  Carga:        200 operaciones, 10 en paralelo
+  Completadas:  200 de 200
+  Latencia:     p50 44.8 ms · p95 61.9 ms · p99 73.1 ms · max 79.3 ms
+  Caudal:       214.3 operaciones por segundo
+
+DENTRO  Historial de ventas de mostrador (GET /pos/transactions)
+------------------------------------------------------------------------------
+  Requisito:    RNF-REND-03 (referencia 200 ms)
+  Carga:        150 operaciones, 10 en paralelo
+  Completadas:  150 de 150
+  Latencia:     p50 7.8 ms · p95 12.6 ms · p99 13.9 ms · max 15.0 ms
+  Caudal:       1160.5 operaciones por segundo
+
+DENTRO  Semaforo de vencimientos (GET /pos/vencimientos)
+------------------------------------------------------------------------------
+  Requisito:    RNF-REND-03 (referencia 200 ms)
+  Carga:        150 operaciones, 10 en paralelo
+  Completadas:  150 de 150
+  Latencia:     p50 7.8 ms · p95 9.7 ms · p99 12.0 ms · max 12.4 ms
+  Caudal:       1220.9 operaciones por segundo
+
+DENTRO  Busqueda indexada por codigo de barra (SQLite)
+------------------------------------------------------------------------------
+  Requisito:    RNF-REND-02 (referencia 10 ms)
+  Carga:        2000 operaciones, 1 en paralelo
+  Completadas:  2000 de 2000
+  Latencia:     p50 0.0 ms · p95 0.0 ms · p99 0.0 ms · max 0.1 ms
+  Caudal:       133463.2 operaciones por segundo
+
+DENTRO  Venta transaccional, una caja (POST /pos/checkout)
+------------------------------------------------------------------------------
+  Requisito:    RNF-REND-01 (referencia 15 ms)
+  Carga:        80 operaciones, 1 en paralelo
+  Completadas:  80 de 80
+  Latencia:     p50 15.5 ms · p95 23.2 ms · p99 49.7 ms · max 49.7 ms
+  En servidor:  p50 4.0 ms, p95 8.0 ms (lo que el propio servidor declara, sin el viaje HTTP)
+  Caudal:       61.1 operaciones por segundo
+
+SOBRE   Venta transaccional, cuatro cajas a la vez (POST /pos/checkout)
+------------------------------------------------------------------------------
+  Requisito:    RNF-REND-01 (referencia 15 ms)
+  Carga:        80 operaciones, 4 en paralelo
+  Completadas:  80 de 80
+  Latencia:     p50 21.3 ms · p95 75.4 ms · p99 91.1 ms · max 91.1 ms
+  En servidor:  p50 4.0 ms, p95 38.0 ms (lo que el propio servidor declara, sin el viaje HTTP)
+  Caudal:       118.8 operaciones por segundo

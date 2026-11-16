@@ -50,12 +50,17 @@ Proyecto_titulo/
 ├── FASE 2/
 │   ├── Evidencias Proyecto/
 │   │   ├── Evidencias de sistema/
-│   │   │   ├── Backend/                   # Código fuente y pruebas de la API REST (Express/TS)
-│   │   │   ├── Frontend/                  # Código fuente y pruebas de la interfaz (React 19/Vite)
-│   │   │   ├── Escritorio/                # Proceso principal de la aplicación Electron
-│   │   │   ├── Semillas/                  # Catálogo de demostración
-│   │   │   ├── Dockerfile
-│   │   │   └── docker-compose.yml
+│   │   │   ├── Aplicación/
+│   │   │   │   ├── Backend/               # Código fuente y pruebas de la API REST (Express/TS)
+│   │   │   │   ├── Frontend/              # Código fuente y pruebas de la interfaz (React 19/Vite)
+│   │   │   │   ├── Escritorio/            # Proceso principal de la aplicación Electron
+│   │   │   │   ├── Dockerfile
+│   │   │   │   └── docker-compose.yml
+│   │   │   └── Base de datos/
+│   │   │       ├── Migraciones SQLite/     # Esquema del terminal del local (001 a 023)
+│   │   │       ├── Migraciones PostgreSQL/ # Esquema de la nube (001 a 023)
+│   │   │       ├── Diagramas/              # Diagramas entidad-relación
+│   │   │       └── Semillas/               # Catálogo de demostración
 │   │   └── Evidencias de documentación/
 │   │       ├── Arquitectura Sistema.docx  # Documento de Arquitectura de Software (DAS 4+1)
 │   │       ├── Manual De Funcionalidades.docx
@@ -82,7 +87,7 @@ Proyecto_titulo/
 #### 1. Backend API (Servidor Express & Base de Datos)
 ```bash
 # 1. Navegar al directorio del Backend
-cd "FASE 2/Evidencias Proyecto/Evidencias de sistema/Backend"
+cd "FASE 2/Evidencias Proyecto/Evidencias de sistema/Aplicación/Backend"
 
 # 2. Configurar variables de entorno
 cp .env.example .env
@@ -98,7 +103,7 @@ npm run dev
 #### 2. Frontend SPA (Punto de Venta React 19)
 ```bash
 # 1. En una nueva terminal, navegar al directorio del Frontend
-cd "FASE 2/Evidencias Proyecto/Evidencias de sistema/Frontend"
+cd "FASE 2/Evidencias Proyecto/Evidencias de sistema/Aplicación/Frontend"
 
 # 2. Configurar variables de entorno
 cp .env.example .env
@@ -113,7 +118,7 @@ npm run dev
 
 #### 3. Ejecución de Pruebas Automatizadas
 ```bash
-cd "FASE 2/Evidencias Proyecto/Evidencias de sistema/Backend"
+cd "FASE 2/Evidencias Proyecto/Evidencias de sistema/Aplicación/Backend"
 
 # Ejecutar las 101 pruebas de integración (16 suites) sobre pg-mem
 npm test
