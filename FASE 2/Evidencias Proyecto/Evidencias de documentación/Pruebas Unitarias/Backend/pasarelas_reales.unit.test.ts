@@ -4,7 +4,7 @@ import { SumUpGateway } from '../../backend/src/payments/sumup.gateway';
 import { MaquinaPos, RespuestaVentaPos, TransbankGateway } from '../../backend/src/payments/transbank.gateway';
 import { PaymentDispatcherService } from '../../backend/src/payments/payment-dispatcher.service';
 import { IPaymentGateway } from '../../backend/src/payments/payment-gateway.interface';
-import { PaymentGatewayType } from '../../backend/src/payments/types';
+import { PaymentGatewayType, ReversoManual } from '../../backend/src/payments/types';
 
 /**
  * Las conexiones reales con las maquinas de pago, con el proveedor reemplazado por respuestas
@@ -243,7 +243,7 @@ describe('Reverso del cobro en la devolucion', () => {
     const tbk = new TransbankGateway(m as MaquinaPos);
 
     await tbk.reembolsar({ ...base, metadata: { operation_number: '4128' }, monto: 5000 });
-    await expect(tbk.reembolsar({ ...base, metadata: { operation_number: '4128' }, monto: 1890 })).rejects.toThrow(/venta completa/);
+    await expect(tbk.reembolsar({ ...base, metadata: { operation_number: '4128' }, monto: 1890 })).rejects.toThrow(ReversoManual);
     expect(m.anulaciones).toEqual(['4128']);
   });
 });

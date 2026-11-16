@@ -149,4 +149,60 @@ describe('Venta con tarjeta por el SDK oficial de Transbank POS Integrado', () =
     expect(stock()).toBe(antes);
     expect(defaultSqliteClient.queryOne<{ n: number }>('SELECT COUNT(*) AS n FROM transacciones_venta')!.n).toBe(ventas);
   });
+
+  test('una devolucion parcial con Transbank emite la nota de credito y deja el reverso como manual', async () => {
+    terminal.codigoVenta = '00';
+    const res = await fetch(`${base}/api/v1/pos/checkout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tenant_id: tenantId, usuario_id: usuarioId, metodo_pago: 'TRANSBANK', items: [{ producto_id: productoId, cantidad: 2 }] }),
+    });
+    const venta: any = await res.json();
+    expect(res.status).toBe(201);
+    const antes = stock();
+    const anulacionesAntes = terminal.recibidos.filter((m) => m.startsWith('1200')).length;
+
+    const dev = await fetch(`${base}/api/v1/pos/devolucion`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tenant_id: tenantId, usuario_id: usuarioId, venta_id: venta.data.saleId, items_devolucion: [{ producto_id: productoId, cantidad: 1 }] }),
+    });
+    const json: any = await dev.json();
+
+    expect(dev.status).toBe(200);
+    expect(json.data.folio_nc).toBeGreaterThan(0);
+    expect(json.data.reverso_tarjeta).toMatchObject({ pasarela: 'Transbank', monto: 1890, manual: true });
+    expect(json.message).toContain('portal de Transbank');
+    expect(stock()).toBe(antes + 1);
+    // El terminal no recibio ninguna anulacion: no se le puede pedir una parcial
+    expect(terminal.recibidos.filter((m) => m.startsWith('1200')).length).toBe(anulacionesAntes);
+    const reverso = defaultSqliteClient.queryOne<any>(
+      'SELECT estado_transaccion, monto FROM payment_transactions WHERE sale_id = ?', [json.data.devolucion_id]);
+    expect(reverso).toMatchObject({ estado_transaccion: 'PENDING', monto: -1890 });
+  });
+
+  test('una venta con RutPay se devuelve con su nota de credito aunque RutPay no reverse desde la caja', async () => {
+    // RutPay solo cobra en modo simulado; la devolucion se hace despues, ya en produccion
+    process.env.PAGOS_MODO = 'simulado';
+    const res = await fetch(`${base}/api/v1/pos/checkout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tenant_id: tenantId, usuario_id: usuarioId, metodo_pago: 'RUTPAY', items: [{ producto_id: productoId, cantidad: 1 }] }),
+    });
+    const venta: any = await res.json();
+    expect(res.status).toBe(201);
+    process.env.PAGOS_MODO = 'produccion';
+
+    const dev = await fetch(`${base}/api/v1/pos/devolucion`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tenant_id: tenantId, usuario_id: usuarioId, venta_id: venta.data.saleId }),
+    });
+    const json: any = await dev.json();
+
+    expect(dev.status).toBe(200);
+    expect(json.data.folio_nc).toBeGreaterThan(0);
+    expect(json.data.reverso_tarjeta).toMatchObject({ pasarela: 'RutPay', manual: true });
+    expect(json.message).toContain('efectivo o por transferencia');
+  });
 });

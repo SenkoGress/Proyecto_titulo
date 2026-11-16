@@ -13,7 +13,8 @@ import {
   PaymentGatewayType,
   PaymentInitRequest,
   PaymentInitResponse,
-  PaymentTransactionResult
+  PaymentTransactionResult,
+  ReversoManual
 } from './types';
 import { configPagos } from './pagos.config';
 
@@ -152,19 +153,28 @@ export class PaymentDispatcherService {
     const metadata = pago.metadata_response ? JSON.parse(pago.metadata_response) : {};
     const gateway = this.gateways.get(pago.pasarela);
     let detalle: Record<string, unknown>;
-    if (gateway?.reembolsar) {
-      detalle = await gateway.reembolsar({
-        token: pago.transaction_token,
-        transactionId: pago.id,
-        metadata,
-        monto: Math.round(monto),
-        totalCobrado: Number(pago.monto),
-        idReverso
-      });
-    } else if (configPagos().modo === 'simulado') {
-      detalle = { simulado: true };
-    } else {
-      throw new Error(`${pago.pasarela} no permite reversar el cobro desde la caja`);
+    let manual: string | null = null;
+    try {
+      if (gateway?.reembolsar) {
+        detalle = await gateway.reembolsar({
+          token: pago.transaction_token,
+          transactionId: pago.id,
+          metadata,
+          monto: Math.round(monto),
+          totalCobrado: Number(pago.monto),
+          idReverso
+        });
+      } else if (configPagos().modo === 'simulado') {
+        detalle = { simulado: true };
+      } else {
+        throw new ReversoManual(`${pago.pasarela} no permite devolver el pago desde la caja: devuelve el dinero en efectivo o por transferencia`);
+      }
+    } catch (err) {
+      // Una falla del proveedor corta la devolucion para reintentar; una imposibilidad por diseño no,
+      // porque el cliente igual tiene derecho a su nota de credito
+      if (!(err instanceof ReversoManual)) throw err;
+      manual = err.message;
+      detalle = { motivo: manual };
     }
 
     return {
@@ -173,8 +183,8 @@ export class PaymentDispatcherService {
       gateway: pago.pasarela,
       token: pago.transaction_token,
       amount: -Math.round(monto),
-      status: 'APPROVED',
-      metadataResponse: { tipo: 'REVERSO', venta_original: ventaId, pago_original: pago.id, ...detalle },
+      status: manual ? 'PENDING' : 'APPROVED',
+      metadataResponse: { tipo: manual ? 'REVERSO_MANUAL' : 'REVERSO', venta_original: ventaId, pago_original: pago.id, ...detalle },
       usedFallback: false,
       createdAt: new Date().toISOString()
     };

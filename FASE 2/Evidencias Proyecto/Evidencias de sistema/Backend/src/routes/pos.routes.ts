@@ -1535,7 +1535,7 @@ router.post('/devolucion', async (req: Request, res: Response): Promise<void> =>
 
     res.status(200).json({
       success: true,
-      message: `Devolución procesada exitosamente. Se emitió la Nota de Crédito DTE 61 N° ${ncResponse.folio} y el stock fue restituido.${reverso ? ` El pago se devolvio a la tarjeta (${reverso.gateway}).` : ''}`,
+      message: `Devolución procesada exitosamente. Se emitió la Nota de Crédito DTE 61 N° ${ncResponse.folio} y el stock fue restituido.${!reverso ? '' : reverso.status === 'PENDING' ? ` El pago con ${reverso.gateway} no se devolvio automaticamente: ${reverso.metadataResponse.motivo}.` : ` El pago se devolvio a la tarjeta (${reverso.gateway}).`}`,
       data: {
         devolucion_id: returnSaleId,
         folio_nc: ncResponse.folio,
@@ -1544,7 +1544,7 @@ router.post('/devolucion', async (req: Request, res: Response): Promise<void> =>
         nota_credito: ncResponse,
         dte_nc: ncResponse,
         items_devueltos: itemsADevolver,
-        reverso_tarjeta: reverso ? { pasarela: reverso.gateway, monto: -reverso.amount, detalle: reverso.metadataResponse } : null
+        reverso_tarjeta: reverso ? { pasarela: reverso.gateway, monto: -reverso.amount, manual: reverso.status === 'PENDING', detalle: reverso.metadataResponse } : null
       }
     });
   } catch (error) {

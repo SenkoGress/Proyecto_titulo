@@ -25,6 +25,17 @@ export interface PaymentConfirmRequest {
   simulateFailure?: boolean;
 }
 
+/**
+ * El proveedor no puede devolver el dinero desde la caja, por como funciona y no por una falla:
+ * la devolucion sigue, con su nota de credito, y el dinero se devuelve a mano o por el portal.
+ */
+export class ReversoManual extends Error {
+  constructor(motivo: string) {
+    super(motivo);
+    this.name = 'ReversoManual';
+  }
+}
+
 export interface ReembolsoRequest {
   /** Token con que se cobro: orden de Mercado Pago, ticket de Transbank, checkout de SumUp. */
   token: string;

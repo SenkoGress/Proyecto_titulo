@@ -6,7 +6,8 @@ import {
   PaymentInitRequest,
   PaymentInitResponse,
   PaymentTransactionResult,
-  ReembolsoRequest
+  ReembolsoRequest,
+  ReversoManual
 } from './types';
 import { logger } from '../utils/logger';
 import { configPagos, esperar } from './pagos.config';
@@ -152,7 +153,7 @@ export class TransbankGateway implements IPaymentGateway {
     const { modo } = configPagos();
     if (modo === 'simulado') return { simulado: true };
     if (req.monto < req.totalCobrado) {
-      throw new Error('el POS Integrado de Transbank solo anula la venta completa; una devolucion parcial se reversa desde el portal de Transbank');
+      throw new ReversoManual('el POS Integrado de Transbank solo anula la venta completa: devuelve la diferencia desde el portal de Transbank o en efectivo');
     }
     const operacion = req.metadata.operation_number;
     if (!operacion) throw new Error('el cobro no guardo el numero de operacion del terminal');
@@ -160,6 +161,10 @@ export class TransbankGateway implements IPaymentGateway {
     const respuesta = modo === 'sandbox'
       ? { responseCode: 0, responseMessage: 'Aprobado', authorizationCode: '000000' }
       : await this.anular(String(operacion));
+    // Codigo 8: el terminal no anula ventas con debito; no es una falla que se arregle reintentando
+    if (Number(respuesta.responseCode) === 8) {
+      throw new ReversoManual('el terminal de Transbank no anula ventas con debito: devuelve el dinero desde el portal de Transbank o en efectivo');
+    }
     if (Number(respuesta.responseCode) !== 0) {
       throw new Error(`el terminal no anulo la venta: ${respuesta.responseMessage ?? `codigo ${respuesta.responseCode}`}`);
     }
