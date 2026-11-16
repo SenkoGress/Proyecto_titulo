@@ -2,6 +2,28 @@ import { IOcrProvider } from './ocr-provider.interface';
 import { ExtractedInvoiceData, InvoiceInput } from './types';
 import { logger } from '../utils/logger';
 
+/**
+ * El peso chileno no tiene decimales. A veces el modelo lee "48.766" como 48,766 con decimales y
+ * devuelve 48.766: un monto con decimales es un punto de miles mal leido, y se corrige aqui.
+ */
+export function pesos(valor: unknown): number {
+  const n = Number(valor) || 0;
+  return Number.isInteger(n) ? n : Math.round(n * 1000);
+}
+
+function enPesos(datos: ExtractedInvoiceData): ExtractedInvoiceData {
+  const d = datos as any;
+  for (const campo of ['total', 'total_factura', 'monto_neto', 'iva']) {
+    if (d[campo] !== undefined && d[campo] !== null) d[campo] = pesos(d[campo]);
+  }
+  for (const item of Array.isArray(d.items) ? d.items : []) {
+    for (const campo of ['precio_unitario', 'subtotal']) {
+      if (item[campo] !== undefined && item[campo] !== null) item[campo] = pesos(item[campo]);
+    }
+  }
+  return datos;
+}
+
 export class GeminiOcrProvider implements IOcrProvider {
   // Lista en orden de preferencia: si uno devuelve 503 por saturacion se prueba el siguiente.
   // Medido el 14-10 con la factura real: flash-lite respondio 3 de 3 en ~4,4 s, mientras 3.6 y 3.8
@@ -83,7 +105,7 @@ folio_factura, rut_proveedor, razon_social, fecha_emision, total, e items (sku, 
       const parsed = JSON.parse(cleanJson || '{}') as ExtractedInvoiceData;
 
       return {
-        ...parsed,
+        ...enPesos(parsed),
         metodo_ingreso: 'OCR_GEMINI_AI'
       };
     };

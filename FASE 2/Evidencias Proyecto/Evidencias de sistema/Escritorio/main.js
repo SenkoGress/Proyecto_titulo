@@ -78,22 +78,29 @@ function configurarEntorno() {
 }
 
 /**
- * Modo de cobro y credenciales de las maquinas de pago del comercio (PAGOS_MODO, MP_ACCESS_TOKEN,
- * TBK_POS_PUERTO...). Viven en datos/pagos.json, junto a la base: son de cada local, no pueden ir en
- * el instalador y no se sincronizan con la nube. Sin el archivo, la caja cobra en modo simulado.
+ * Datos propios de cada local, que no pueden ir en el instalador ni se sincronizan con la nube.
+ * Viven junto a la base, en dos archivos con el mismo formato (clave y valor):
+ *   pagos.json          modo de cobro y credenciales de las maquinas (PAGOS_MODO, MP_ACCESS_TOKEN...)
+ *   configuracion.json  la nube (PG..., DATABASE_URL), el correo (SMTP_...) y la lectura de
+ *                       facturas (GEMINI_...)
+ * Sin pagos.json la caja cobra en modo simulado; sin configuracion.json usa la nube local por
+ * defecto y no envia correo ni lee facturas con IA.
  */
 function cargarDatosDePago(carpetaBase) {
-  const archivo = path.join(carpetaBase, 'pagos.json');
-  let datos;
-  try {
-    datos = JSON.parse(fs.readFileSync(archivo, 'utf8'));
-  } catch (err) {
-    if (err.code !== 'ENOENT') console.error(`No se pudo leer ${archivo}: ${err.message}`);
-    return;
-  }
-  for (const [clave, valor] of Object.entries(datos)) {
-    if (/^(PAGOS|TBK|MP|SUMUP)_[A-Z_]+$/.test(clave) && process.env[clave] === undefined) {
-      process.env[clave] = String(valor);
+  const permitida = /^((PAGOS|TBK|MP|SUMUP|SMTP|GEMINI|PG|INVOICE)_?[A-Z_]*|DATABASE_URL|ENABLE_MOCK_OCR)$/;
+  for (const nombre of ['pagos.json', 'configuracion.json']) {
+    const archivo = path.join(carpetaBase, nombre);
+    let datos;
+    try {
+      datos = JSON.parse(fs.readFileSync(archivo, 'utf8').replace(/^﻿/, ''));
+    } catch (err) {
+      if (err.code !== 'ENOENT') console.error(`No se pudo leer ${archivo}: ${err.message}`);
+      continue;
+    }
+    for (const [clave, valor] of Object.entries(datos)) {
+      if (permitida.test(clave) && process.env[clave] === undefined && String(valor) !== '') {
+        process.env[clave] = String(valor);
+      }
     }
   }
 }

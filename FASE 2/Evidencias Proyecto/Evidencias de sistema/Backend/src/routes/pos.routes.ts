@@ -4,6 +4,7 @@ import { defaultPgClient } from '../database/postgres/client';
 import { defaultSqliteClient, SqliteClient } from '../database/sqlite/client';
 import { defaultPaymentDispatcher } from '../payments/payment-dispatcher.service';
 import { PaymentTransactionResult } from '../payments/types';
+import { configPagos } from '../payments/pagos.config';
 import { defaultPosSyncEngine, TOPE_REINTENTOS_VENTA } from '../sync/pos-sync-engine.service';
 import { aplicarRedondeoChileno } from '../utils/pricing';
 import { logger } from '../utils/logger';
@@ -26,6 +27,19 @@ import { detalleError } from '../utils/detalle-error';
 
 const router = Router();
 const sqlite = defaultSqliteClient;
+
+/**
+ * Modo de cobro y maquinas que el local tiene configuradas, para que la caja muestre solo esas.
+ * En modo simulado no se informa ninguna: todas aprueban sin salir del equipo.
+ */
+function estadoPagos(): { modo_pagos: string; pasarelas_configuradas?: string[] } {
+  const { modo, mercadoPago, sumUp } = configPagos();
+  if (modo === 'simulado') return { modo_pagos: modo };
+  const pasarelas = ['TRANSBANK'];
+  if (mercadoPago.accessToken && mercadoPago.terminalId) pasarelas.push('MERCADOPAGO');
+  if (sumUp.apiKey && sumUp.merchantCode && sumUp.readerId && sumUp.affiliateKey && sumUp.appId) pasarelas.push('SUMUP');
+  return { modo_pagos: modo, pasarelas_configuradas: pasarelas };
+}
 
 /**
  * GET /api/v1/pos/products
@@ -678,7 +692,8 @@ router.get('/status', async (req: Request, res: Response): Promise<void> => {
       pending_dirty_count: pendingDirtyCount,
       last_synced_at: lastSyncResult?.last_synced_at || null,
       device_id: 'POS-LOCAL-DEVICE-01',
-      tenant_id: tenantId
+      tenant_id: tenantId,
+      ...estadoPagos()
     });
   } catch (error) {
     logger.error('PosRoutes', 'Error checking POS status', error);
