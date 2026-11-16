@@ -34,6 +34,12 @@ describe('Cumplimiento Normativo SII & Integración POS', () => {
         resolve();
       });
     });
+    // La venta exige un turno abierto
+    await fetch(`${baseUrl}/api/v1/caja/abrir`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tenant_id: tenantId, usuario_id: usuarioId, monto_apertura: 20000 })
+    });
   });
 
   afterAll(async () => {

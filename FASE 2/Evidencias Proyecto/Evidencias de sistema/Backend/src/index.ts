@@ -22,6 +22,7 @@ import {
   corsMiddleware,
   generalRateLimiter,
   mutationRateLimiter,
+  loginRateLimiter,
   validateTenantAndAuth,
   rbacAuthMiddleware,
   globalErrorHandler
@@ -56,6 +57,8 @@ app.use(corsMiddleware);
 app.use('/api', generalRateLimiter);
 
 // Limitador estricto para transacciones criticas de venta, pagos y DTEs
+// Intentos de ingreso fallidos, contados por direccion y no por cabeceras que el cliente elige
+app.use('/api/v1/auth/login', loginRateLimiter);
 app.use('/api/v1/pos/checkout', mutationRateLimiter);
 app.use('/api/v1/pos/sync', mutationRateLimiter);
 app.use('/api/v1/dte', mutationRateLimiter);
@@ -179,8 +182,8 @@ if (process.env.NODE_ENV !== 'test') {
 }
 
 export const server = process.env.NODE_ENV !== 'test'
-  ? app.listen(PORT, () => {
-      logger.info('Server', `Gestock backend server running on port ${PORT}`);
+  ? app.listen(Number(PORT), process.env.HOST || '0.0.0.0', () => {
+      logger.info('Server', `Gestock backend server running on ${process.env.HOST || '0.0.0.0'}:${PORT}`);
     })
   : null;
 

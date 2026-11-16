@@ -190,6 +190,29 @@ export class PaymentDispatcherService {
     };
   }
 
+  /**
+   * Devuelve un cobro recien aprobado cuya venta no llego a guardarse. No lanza: informa si el
+   * dinero volvio, porque de eso depende lo que la caja le dice al cajero.
+   */
+  public async devolverCobro(cobro: PaymentTransactionResult, idReverso: string): Promise<{ devuelto: boolean; detalle: string }> {
+    if (cobro.usedFallback || configPagos().modo === 'simulado') return { devuelto: true, detalle: 'cobro simulado' };
+    const gateway = this.gateways.get(cobro.gateway);
+    if (!gateway?.reembolsar) return { devuelto: false, detalle: `${cobro.gateway} no permite devolver desde la caja.` };
+    try {
+      await gateway.reembolsar({
+        token: cobro.token,
+        transactionId: cobro.transactionId,
+        metadata: cobro.metadataResponse as Record<string, any>,
+        monto: cobro.amount,
+        totalCobrado: cobro.amount,
+        idReverso
+      });
+      return { devuelto: true, detalle: '' };
+    } catch (err) {
+      return { devuelto: false, detalle: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
   /** Guarda el resultado del cobro y marca la venta como PAGADA si se aprobo. */
   public async registrarPago(txResult: PaymentTransactionResult, marcarPagada = true): Promise<void> {
     const req = { saleId: txResult.saleId, gateway: txResult.gateway };

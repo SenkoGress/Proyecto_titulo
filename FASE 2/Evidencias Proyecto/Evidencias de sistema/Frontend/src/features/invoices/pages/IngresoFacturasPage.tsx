@@ -11,6 +11,7 @@ import { FacturaIlegible } from '@/features/invoices/components/compartidos/Fact
 import { noSePudoLeer } from '@/features/invoices/utils/lecturaFactura'
 import { DialogoIngresoExitoso } from '@/features/invoices/components/compartidos/DialogoIngresoExitoso'
 import Alert from '@mui/material/Alert'
+import Button from '@mui/material/Button'
 import AlertTitle from '@mui/material/AlertTitle'
 import { formatFechaSola } from '@/shared/utils/formatFecha'
 import { facturaYaIngresada } from '@/features/invoices/utils/facturaDuplicada'
@@ -19,6 +20,13 @@ import { RevisionFacturaTecnica } from '@/features/invoices/components/tecnico/R
 import { useConfirmarFactura,
   useFacturas } from '@/features/invoices/hooks/useInvoices'
 import { recalcularFila } from '@/features/invoices/utils/calculosFactura'
+import { DialogoDatosProveedor } from '@/features/invoices/components/compartidos/DialogoDatosProveedor'
+import {
+  camposParaConfirmar,
+  datosDesdeFactura,
+  faltanDatos,
+  type DatosProveedorFactura,
+} from '@/features/invoices/utils/datosProveedor'
 import type { ItemFactura, PrevisualizacionFactura, ResultadoEscaneo } from '@/features/invoices/types'
 
 // fila en blanco para cuando el ocr se salto un producto de la factura
@@ -39,6 +47,17 @@ function filaVacia(): ItemFactura {
   }
 }
 
+// los datos que el usuario ya completo, con los nombres de la previsualizacion
+function camposVista(datos: DatosProveedorFactura) {
+  return {
+    giro_proveedor: datos.giro,
+    direccion_proveedor: datos.direccion,
+    telefono_proveedor: datos.telefono,
+    email_proveedor: datos.email,
+    dias_visita_proveedor: datos.dias_visita,
+  }
+}
+
 // paso 1 subir, paso 2 revisar lo que leyo la ia y confirmar (visual o tecnico)
 export function IngresoFacturasPage() {
   const esModoTecnico = useEsModoTecnico()
@@ -49,6 +68,8 @@ export function IngresoFacturasPage() {
   const [ilegible, setIlegible] = useState<string | null>(null)
   const [items, setItems] = useState<ItemFactura[]>([])
   const [totalDeclarado, setTotalDeclarado] = useState(0)
+  const [proveedor, setProveedor] = useState<DatosProveedorFactura | null>(null)
+  const [pidiendoProveedor, setPidiendoProveedor] = useState(false)
 
   const confirmar = useConfirmarFactura()
 
@@ -68,6 +89,9 @@ export function IngresoFacturasPage() {
     setPreview(resultado.preview)
     setItems(resultado.preview.items)
     setTotalDeclarado(resultado.preview.total_factura)
+    // proveedor nuevo al que le faltan datos: se piden ahora, antes de revisar los productos
+    setProveedor(datosDesdeFactura(resultado.preview))
+    setPidiendoProveedor(faltanDatos(resultado.preview))
   }
 
   function cambiarFila(indice: number, cambios: Partial<ItemFactura>) {
@@ -88,6 +112,8 @@ export function IngresoFacturasPage() {
     setEncolada(null)
     setIlegible(null)
     setItems([])
+    setProveedor(null)
+    setPidiendoProveedor(false)
     confirmar.reset()
   }
 
@@ -98,6 +124,7 @@ export function IngresoFacturasPage() {
     confirmar.mutate({
       datos: {
         ...preview.raw_data,
+        ...(proveedor ? camposParaConfirmar(proveedor) : {}),
         total: totalDeclarado,
         items: items.map((item) => ({
           sku: item.sku,
@@ -156,6 +183,35 @@ export function IngresoFacturasPage() {
           ingreso el {formatFechaSola(duplicada.fecha_ingreso)}. Si la confirmas de nuevo, el stock vuelve
           a subir por una compra que ya esta contada.
         </Alert>
+      )}
+
+      {preview?.es_proveedor_nuevo && proveedor && (
+        <Alert
+          severity={faltanDatos({ ...preview, ...camposVista(proveedor) }) ? 'info' : 'success'}
+          sx={{ mb: 2 }}
+          action={
+            <Button color="inherit" size="small" onClick={() => setPidiendoProveedor(true)}>
+              Datos del proveedor
+            </Button>
+          }
+        >
+          {faltanDatos({ ...preview, ...camposVista(proveedor) })
+            ? `${preview.razon_social} es un proveedor nuevo y le faltan datos de contacto.`
+            : `Los datos de ${preview.razon_social} estan completos.`}
+        </Alert>
+      )}
+
+      {preview && proveedor && pidiendoProveedor && (
+        <DialogoDatosProveedor
+          razonSocial={preview.razon_social}
+          rut={preview.rut_proveedor}
+          datos={proveedor}
+          onGuardar={(datos) => {
+            setProveedor(datos)
+            setPidiendoProveedor(false)
+          }}
+          onCerrar={() => setPidiendoProveedor(false)}
+        />
       )}
 
       {preview &&

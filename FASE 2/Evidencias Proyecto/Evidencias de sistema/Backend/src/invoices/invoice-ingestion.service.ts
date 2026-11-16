@@ -48,6 +48,7 @@ export interface ScannedInvoicePreview {
   giro_proveedor?: string;
   direccion_proveedor?: string;
   telefono_proveedor?: string;
+  email_proveedor?: string;
   dias_visita_proveedor?: string;
   es_proveedor_nuevo?: boolean;
   fecha_emision: string;
@@ -137,7 +138,9 @@ export class InvoiceIngestionService {
     );
 
     const es_proveedor_nuevo = !existingSupplier;
-    const dias_visita_proveedor = existingSupplier?.dias_visita_proveedores || invoiceData.dias_visita_proveedor || 'Lunes';
+    // Lo que la factura no trae queda vacio para que el usuario lo complete: un telefono o un correo
+    // inventado terminaria recibiendo las ordenes de compra
+    const dias_visita_proveedor = existingSupplier?.dias_visita_proveedores || invoiceData.dias_visita_proveedor || '';
 
     const processedItems: ScannedItemPreview[] = invoiceData.items.map((item) => {
       const itemCantidad = Number(item.cantidad) || 0;
@@ -182,9 +185,10 @@ export class InvoiceIngestionService {
       folio_factura: invoiceData.folio_factura,
       rut_proveedor: invoiceData.rut_proveedor,
       razon_social: invoiceData.razon_social,
-      giro_proveedor: invoiceData.giro_proveedor || 'Distribución y Comercio Mayorista',
-      direccion_proveedor: invoiceData.direccion_proveedor || 'Dirección Comercial',
-      telefono_proveedor: invoiceData.telefono_proveedor || '+56 2 2345 6789',
+      giro_proveedor: invoiceData.giro_proveedor || '',
+      direccion_proveedor: invoiceData.direccion_proveedor || '',
+      telefono_proveedor: invoiceData.telefono_proveedor || '',
+      email_proveedor: (invoiceData as any).email_proveedor || '',
       dias_visita_proveedor,
       es_proveedor_nuevo,
       fecha_emision: invoiceData.fecha_emision,
@@ -520,11 +524,11 @@ export class InvoiceIngestionService {
             tenantId,
             invoiceData.rut_proveedor,
             invoiceData.razon_social,
-            'contacto@proveedor.cl',
-            invoiceData.giro_proveedor || 'Distribuidora Mayorista',
-            invoiceData.direccion_proveedor || 'Casa Matriz',
-            invoiceData.telefono_proveedor || '+56 2 2345 6789',
-            invoiceData.dias_visita_proveedor || 'Lunes',
+            (invoiceData as any).email_proveedor || null,
+            invoiceData.giro_proveedor || null,
+            invoiceData.direccion_proveedor || null,
+            invoiceData.telefono_proveedor || null,
+            invoiceData.dias_visita_proveedor || null,
             invoiceData.folio_factura
           ]
         );
@@ -715,16 +719,17 @@ export class InvoiceIngestionService {
         } else {
           defaultSqliteClient.execute(
             `INSERT INTO proveedores (id, tenant_id, rut_proveedor, nombre_proveedores, email, whatsapp_contacto, giro, direccion, telefono, dias_visita_proveedores, origen_creacion, factura_origen_folio)
-             VALUES (?, ?, ?, ?, 'contacto@proveedor.cl', '+56911223344', ?, ?, ?, ?, 'FACTURA', ?)`,
+             VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, 'FACTURA', ?)`,
             [
               supplierId,
               tenantId,
               invoiceData.rut_proveedor,
               invoiceData.razon_social,
-              invoiceData.giro_proveedor || 'Distribución Mayorista',
-              invoiceData.direccion_proveedor || 'Casa Matriz',
-              invoiceData.telefono_proveedor || '+56 2 2345 6789',
-              invoiceData.dias_visita_proveedor || 'Lunes',
+              (invoiceData as any).email_proveedor || null,
+              invoiceData.giro_proveedor || null,
+              invoiceData.direccion_proveedor || null,
+              invoiceData.telefono_proveedor || null,
+              invoiceData.dias_visita_proveedor || null,
               invoiceData.folio_factura
             ]
           );

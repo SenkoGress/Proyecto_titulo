@@ -69,6 +69,9 @@ function configurarEntorno() {
   process.env.FRONTEND_DIST =
     process.env.FRONTEND_DIST || path.join(raizAplicacion, 'front-end', 'dist');
   process.env.PORT = String(PUERTO);
+  // La caja se usa en este equipo: no hay motivo para aceptar conexiones de la red del local
+  process.env.HOST = '127.0.0.1';
+  process.env.LOG_FILE = process.env.LOG_FILE || path.join(carpetaBase, 'gestock.log');
 
   // El perimetro estricto queda activo en la aplicacion instalada: el equipo del local esta en
   // una sala de ventas y cualquiera que llegue a el no deberia operar sin identificarse.

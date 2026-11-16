@@ -160,7 +160,7 @@ export class SiiEnvioService {
   }
 
   /** El folio cae en el rango de un CAF autorizado, o en uno provisionado por el equipo. */
-  private folioEsProvisional(tenantId: string, tipoDte: number, folio: number): boolean {
+  public folioEsProvisional(tenantId: string, tipoDte: number, folio: number): boolean {
     const caf = this.sqliteClient.queryOne<{ origen: string }>(
       `SELECT origen FROM sii_caf
         WHERE tenant_id = ? AND tipo_dte = ? AND folio_desde <= ? AND folio_hasta >= ?

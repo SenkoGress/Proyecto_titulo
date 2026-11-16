@@ -70,6 +70,14 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
+    // Las claves de demostracion son publicas: estan en el repositorio. En produccion no abren
+    // ninguna cuenta, tampoco una que haya quedado en la nube
+    if (process.env.NODE_ENV === 'production' && process.env.SEED_DEMO_USERS !== 'true'
+      && ['admin123', 'cajero123'].includes(password)) {
+      res.status(401).json({ success: false, message: 'El correo o la clave no son correctos' });
+      return;
+    }
+
     // 3. Comparar clave con Bcrypt
     const match = bcrypt.compareSync(password, user.password_hash);
     if (!match) {

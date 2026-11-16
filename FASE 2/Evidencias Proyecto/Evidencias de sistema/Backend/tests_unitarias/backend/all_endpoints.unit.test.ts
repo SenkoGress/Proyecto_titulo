@@ -502,6 +502,8 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (7
     });
 
     test('42. POST /api/v1/pos/checkout procesa venta en caja con bolsa de $1.000', async () => {
+      // La venta exige un turno abierto; si otra prueba ya lo abrio, esta llamada no cambia nada
+      await requestApi('POST', '/api/v1/caja/abrir', { tenant_id: DEMO_TENANT, usuario_id: DEMO_USER, monto_apertura: 20000 });
       const res = await requestApi('POST', '/api/v1/pos/checkout', {
         tenant_id: DEMO_TENANT,
         usuario_id: DEMO_USER,

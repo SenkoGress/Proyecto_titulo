@@ -60,6 +60,7 @@ export type PrevisualizacionFactura = {
   direccion_proveedor?: string
   telefono_proveedor?: string
   dias_visita_proveedor?: string
+  email_proveedor?: string
   es_proveedor_nuevo?: boolean
   fecha_emision: string
   monto_neto: number

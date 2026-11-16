@@ -71,6 +71,23 @@ export const generalRateLimiter = rateLimit({
 });
 
 /**
+ * Ingreso: 20 intentos fallidos por direccion cada 15 minutos. Los ingresos correctos no cuentan,
+ * para no dejar fuera a un local con varios turnos.
+ */
+export const loginRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: process.env.NODE_ENV === 'test' ? 100000 : 20,
+  skipSuccessfulRequests: true,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req: Request) => ipKeyGenerator(req.ip || '127.0.0.1'),
+  message: {
+    success: false,
+    message: 'Demasiados intentos de ingreso fallidos. Espera unos minutos y vuelve a intentar.'
+  }
+});
+
+/**
  * Limitador para operaciones criticas de mutacion (ventas, pagos, DTEs, sync)
  */
 export const mutationRateLimiter = rateLimit({

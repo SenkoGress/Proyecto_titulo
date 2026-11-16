@@ -1,3 +1,5 @@
+import { appendFile } from 'fs';
+
 export enum LogLevel {
   DEBUG = 'DEBUG',
   INFO = 'INFO',
@@ -16,6 +18,16 @@ export interface LogEntry {
 
 class Logger {
   private isTest = process.env.NODE_ENV === 'test';
+
+  /**
+   * Avisos y errores quedan tambien en LOG_FILE, si esta definido. La aplicacion de escritorio no
+   * tiene consola: sin el archivo, una falla en el local no deja rastro.
+   */
+  private alArchivo(linea: string): void {
+    const archivo = process.env.LOG_FILE;
+    if (!archivo) return;
+    appendFile(archivo, linea + '\n', () => undefined);
+  }
 
   private format(entry: LogEntry): string {
     const metaStr = entry.meta ? ` | meta: ${JSON.stringify(entry.meta)}` : '';
@@ -45,6 +57,7 @@ class Logger {
       meta
     };
     console.warn(this.format(entry));
+    this.alArchivo(this.format(entry));
   }
 
   public error(context: string, message: string, error?: Error | unknown, meta?: Record<string, unknown>): void {
@@ -57,6 +70,7 @@ class Logger {
       error
     };
     console.error(this.format(entry));
+    this.alArchivo(this.format(entry));
   }
 
   public debug(context: string, message: string, meta?: Record<string, unknown>): void {

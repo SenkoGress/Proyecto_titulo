@@ -32,13 +32,13 @@ const sqlite = defaultSqliteClient;
  * Modo de cobro y maquinas que el local tiene configuradas, para que la caja muestre solo esas.
  * En modo simulado no se informa ninguna: todas aprueban sin salir del equipo.
  */
-function estadoPagos(): { modo_pagos: string; pasarelas_configuradas?: string[] } {
+function estadoPagos(): { modo: string; modo_pagos: string; pasarelas_configuradas?: string[] } {
   const { modo, mercadoPago, sumUp } = configPagos();
-  if (modo === 'simulado') return { modo_pagos: modo };
+  if (modo === 'simulado') return { modo, modo_pagos: modo };
   const pasarelas = ['TRANSBANK'];
   if (mercadoPago.accessToken && mercadoPago.terminalId) pasarelas.push('MERCADOPAGO');
   if (sumUp.apiKey && sumUp.merchantCode && sumUp.readerId && sumUp.affiliateKey && sumUp.appId) pasarelas.push('SUMUP');
-  return { modo_pagos: modo, pasarelas_configuradas: pasarelas };
+  return { modo, modo_pagos: modo, pasarelas_configuradas: pasarelas };
 }
 
 /**
@@ -733,10 +733,11 @@ router.post('/checkout', async (req: Request, res: Response): Promise<void> => {
   // una peticion armada a mano vendia a cualquier precio, una cantidad negativa sumaba stock, y un
   // id de otro comercio le descontaba existencias a ese comercio.
   const lineas: any[] = [];
+  const pedidoPorProducto = new Map<string, { nombre: string; disponible: number; pedida: number }>();
   for (const item of items) {
     const cantidad = Number(item?.cantidad);
-    const producto = sqlite.queryOne<{ precio_venta: number }>(
-      'SELECT precio_venta FROM productos WHERE id = ? AND tenant_id = ? AND activo = 1',
+    const producto = sqlite.queryOne<{ precio_venta: number; nombre: string; stock_actual: number }>(
+      'SELECT precio_venta, nombre, stock_actual FROM productos WHERE id = ? AND tenant_id = ? AND activo = 1',
       [item?.producto_id, tenant_id]
     );
     if (!producto) {
@@ -748,11 +749,49 @@ router.post('/checkout', async (req: Request, res: Response): Promise<void> => {
       return;
     }
     lineas.push({ ...item, cantidad, precio_unitario: Number(producto.precio_venta) });
+    const pedido = pedidoPorProducto.get(item.producto_id);
+    pedidoPorProducto.set(item.producto_id, {
+      nombre: producto.nombre,
+      disponible: Number(producto.stock_actual),
+      pedida: (pedido?.pedida ?? 0) + cantidad
+    });
+  }
+
+  // La caja no vende lo que no tiene: un stock negativo descuadra el inventario y la reposicion
+  const sinStock = [...pedidoPorProducto.entries()]
+    .filter(([, pedido]) => pedido.pedida > pedido.disponible)
+    .map(([producto_id, pedido]) => ({ producto_id, ...pedido }));
+  if (sinStock.length > 0) {
+    const detalle = sinStock
+      .map((pedido) => `${pedido.nombre} (quedan ${Math.max(0, pedido.disponible)}, se piden ${pedido.pedida})`)
+      .join('; ');
+    res.status(409).json({
+      success: false,
+      error: 'STOCK_INSUFICIENTE',
+      message: `No hay stock suficiente: ${detalle}. Ajusta la cantidad o corrige el stock en Inventario.`,
+      productos: sinStock
+    });
+    return;
+  }
+
+  // Sin turno abierto no hay fondo inicial declarado y la diferencia del cierre no significa nada
+  const turno = sqlite.queryOne<{ id: string }>(
+    "SELECT id FROM cierres_caja WHERE tenant_id = ? AND estado = 'ABIERTA' LIMIT 1",
+    [tenant_id]
+  );
+  if (!turno) {
+    res.status(400).json({
+      success: false,
+      error: 'TURNO_CERRADO',
+      message: 'La caja esta cerrada. Abre la caja con su fondo inicial antes de vender.'
+    });
+    return;
   }
 
   const startTime = Date.now();
   const saleId = uuidv4();
   const folio = `POS-${Date.now()}`;
+  let cobroAprobado: PaymentTransactionResult | null = null;
 
   try {
     let total = 0;
@@ -790,6 +829,7 @@ router.post('/checkout', async (req: Request, res: Response): Promise<void> => {
     }
 
     // 2. Ejecutar venta transaccional en SQLite
+    cobroAprobado = cobro;
     const checkoutResult = sqlite.withTransaction(() => {
 
       // Buscar metodo_pago_id o usar un UUID determinista si no existe
@@ -851,6 +891,8 @@ router.post('/checkout', async (req: Request, res: Response): Promise<void> => {
       return { saleId, folio, total, unidades };
     });
 
+    // La venta existe: desde aqui un error ya no deja un cobro sin venta
+    cobroAprobado = null;
     // El cobro ya aprobado se guarda ahora que la venta existe
     let paymentStatus = 'APPROVED';
     let paymentTransactionId = null;
@@ -964,7 +1006,9 @@ router.post('/checkout', async (req: Request, res: Response): Promise<void> => {
       success: true,
       data: {
         ...checkoutResult,
-        dte: dteResult,
+        dte: dteResult && dteResult.folio
+          ? { ...dteResult, folio_provisional: defaultSiiEnvio.folioEsProvisional(tenant_id, Number(dteResult.tipoDte), Number(dteResult.folio)) }
+          : dteResult,
         contiene_alcohol: hasAlcohol,
         verificacion_edad_alcohol: hasAlcohol,
         payment_method: metodo_pago,
@@ -977,6 +1021,25 @@ router.post('/checkout', async (req: Request, res: Response): Promise<void> => {
     });
   } catch (error) {
     logger.error('PosRoutes', 'Checkout transaction failed in SQLite', error);
+    if (cobroAprobado) {
+      // La tarjeta ya se cobro y la venta no quedo: se devuelve, para que reintentar no cobre dos veces
+      const devolucion = await defaultPaymentDispatcher.devolverCobro(cobroAprobado, uuidv4());
+      logger.error('PosRoutes', `Cobro aprobado sin venta: ${devolucion.devuelto ? 'devuelto' : 'NO se pudo devolver'}`, undefined, {
+        saleId,
+        pasarela: cobroAprobado.gateway,
+        monto: cobroAprobado.amount,
+        detalle: devolucion.detalle
+      });
+      res.status(500).json({
+        success: false,
+        error: devolucion.devuelto ? 'COBRO_DEVUELTO' : 'COBRO_SIN_VENTA',
+        cobro_devuelto: devolucion.devuelto,
+        message: devolucion.devuelto
+          ? 'La venta no se pudo guardar y el cobro con tarjeta se devolvio. Puedes cobrar de nuevo.'
+          : `La venta no se pudo guardar y la tarjeta SI se cobro (${cobroAprobado.gateway}, $${cobroAprobado.amount}). NO cobres de nuevo: devuelve el dinero al cliente y avisa al administrador. ${devolucion.detalle}`
+      });
+      return;
+    }
     res.status(500).json({
       success: false,
       message: 'Checkout failed due to transaction error',
