@@ -21,6 +21,7 @@ import { MontoRecibido } from '@/features/pos/components/tecnico/MontoRecibido'
 import { VerificacionEdad } from '@/features/pos/components/compartidos/VerificacionEdad'
 import { SelectorComprobante } from '@/features/pos/components/compartidos/SelectorComprobante'
 import { BotonBolsa } from '@/features/pos/components/compartidos/BotonBolsa'
+import { AvisoEsperaPago } from '@/features/pos/components/compartidos/AvisoEsperaPago'
 
 type Props = {
   onCobrar: () => void
@@ -96,6 +97,8 @@ export function PanelCobro({ onCobrar, onCancelar, cobrando, errorCobro }: Props
       {metodoPago === 'EFECTIVO' && hayProductos && <MontoRecibido total={total} />}
 
       {contieneAlcohol && <VerificacionEdad />}
+
+      {cobrando && <AvisoEsperaPago metodoPago={metodoPago} />}
 
       {Boolean(errorCobro) && <Alert severity="error">{obtenerMensajeError(errorCobro)}</Alert>}
 

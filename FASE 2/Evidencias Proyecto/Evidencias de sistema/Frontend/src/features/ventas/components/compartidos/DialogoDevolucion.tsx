@@ -20,6 +20,8 @@ import RemoveOutlined from '@mui/icons-material/RemoveOutlined'
 import { formatoClp } from '@/shared/utils/formatoClp'
 import { formatFecha } from '@/shared/utils/formatFecha'
 import { useDevolucion } from '@/features/ventas/hooks/useVentas'
+import { obtenerMensajeError } from '@/lib/api/apiError'
+import { AvisoEsperaPago } from '@/features/pos/components/compartidos/AvisoEsperaPago'
 import type { FilaVenta } from '@/features/ventas/utils/filaVenta'
 
 type Props = {
@@ -187,9 +189,15 @@ export function DialogoDevolucion({ venta, onCerrar }: Props) {
               </Typography>
             </Box>
 
+            {devolucion.isPending && (
+              <Box sx={{ mt: 2 }}>
+                <AvisoEsperaPago metodoPago={venta.medio_pago_tipo} accion="DEVOLUCION" />
+              </Box>
+            )}
+
             {devolucion.isError && (
               <Alert severity="error" sx={{ mt: 2 }}>
-                {devolucion.error.message}
+                {obtenerMensajeError(devolucion.error)}
               </Alert>
             )}
           </>

@@ -20,6 +20,7 @@ import { CalculadoraVuelto } from '@/features/pos/components/visual/CalculadoraV
 import { VerificacionEdad } from '@/features/pos/components/compartidos/VerificacionEdad'
 import { SelectorComprobante } from '@/features/pos/components/compartidos/SelectorComprobante'
 import { BotonBolsa } from '@/features/pos/components/compartidos/BotonBolsa'
+import { AvisoEsperaPago } from '@/features/pos/components/compartidos/AvisoEsperaPago'
 
 type Props = {
   onCobrar: () => void
@@ -153,6 +154,8 @@ export function PanelTicket({ onCobrar, cobrando, errorCobro }: Props) {
         {metodoPago === 'EFECTIVO' && hayProductos && <CalculadoraVuelto total={total} />}
 
         {contieneAlcohol && <VerificacionEdad />}
+
+        {cobrando && <AvisoEsperaPago metodoPago={metodoPago} />}
 
         {Boolean(errorCobro) && <Alert severity="error">{obtenerMensajeError(errorCobro)}</Alert>}
 
