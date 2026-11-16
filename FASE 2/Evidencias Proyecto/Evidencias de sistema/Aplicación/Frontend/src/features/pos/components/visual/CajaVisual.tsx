@@ -7,13 +7,18 @@ import { useCobrarVenta } from '@/features/pos/hooks/useCobrarVenta'
 
 // caja en modo visual: tarjetas + ticket
 export function CajaVisual() {
-  const { cobrar, cerrarComprobante, ventaLista, cobrando, errorCobro } = useCobrarVenta()
+  const { cobrar, cerrarComprobante, ventaLista, cobrando, errorCobro, empezarDeNuevo } = useCobrarVenta()
 
   return (
     <Box sx={{ display: 'flex', gap: 2, height: '100%' }}>
       <CatalogoProductos />
 
-      <PanelTicket onCobrar={cobrar} cobrando={cobrando} errorCobro={errorCobro} />
+      <PanelTicket
+        onCobrar={cobrar}
+        cobrando={cobrando}
+        errorCobro={errorCobro}
+        onEmpezarDeNuevo={empezarDeNuevo}
+      />
 
       {ventaLista && (
         <DialogoComprobante

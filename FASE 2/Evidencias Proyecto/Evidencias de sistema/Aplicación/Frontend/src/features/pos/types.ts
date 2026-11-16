@@ -36,7 +36,11 @@ export type EstadoPos = {
   tenant_id: string
   // pasarelas que el local tiene configuradas en pagos.json
   pasarelas_configuradas?: MetodoPago[]
+  // como cobra la caja con tarjeta: en simulado aprueba sin cobrarle a nadie
+  modo?: ModoPagos
 }
+
+export type ModoPagos = 'simulado' | 'sandbox' | 'produccion'
 
 // pasarelas de la tabla metodos_pago
 export type MetodoPago = 'EFECTIVO' | 'TRANSBANK' | 'MERCADOPAGO' | 'SUMUP' | 'RUTPAY'
@@ -86,6 +90,8 @@ export type DteEmitido = {
   tipoDte?: number
   qrUrl?: string
   tedXml?: string
+  // el folio lo genero la caja porque el local no ha cargado un CAF del SII
+  folio_provisional?: boolean
   totales?: {
     neto: number
     iva: number

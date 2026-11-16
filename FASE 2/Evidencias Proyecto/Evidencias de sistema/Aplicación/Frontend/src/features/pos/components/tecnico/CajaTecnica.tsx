@@ -19,7 +19,7 @@ import { useMetodosPago } from '@/features/pos/hooks/usePos'
 
 // caja en modo tecnico: tabla + panel de cobro
 export function CajaTecnica() {
-  const { cobrar, cerrarComprobante, ventaLista, cobrando, errorCobro } = useCobrarVenta()
+  const { cobrar, cerrarComprobante, ventaLista, cobrando, errorCobro, empezarDeNuevo } = useCobrarVenta()
   const limpiar = useCarritoStore((estado) => estado.limpiar)
   const hayVenta = useCarritoStore((estado) => estado.lineas.length > 0)
   const cambiarMetodoPago = useCarritoStore((estado) => estado.cambiarMetodoPago)
@@ -94,6 +94,7 @@ export function CajaTecnica() {
         onCancelar={limpiar}
         cobrando={cobrando}
         errorCobro={errorCobro}
+        onEmpezarDeNuevo={empezarDeNuevo}
       />
 
       {ventaLista && (

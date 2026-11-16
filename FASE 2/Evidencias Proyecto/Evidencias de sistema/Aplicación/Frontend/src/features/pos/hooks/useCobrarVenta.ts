@@ -68,6 +68,13 @@ export function useCobrarVenta() {
     )
   }
 
+  // con el cobro ya hecho y la venta perdida, la unica salida segura es partir un ticket nuevo:
+  // si no, el boton queda bloqueado y el cajero no puede atender al siguiente cliente
+  function empezarDeNuevo() {
+    useCarritoStore.getState().limpiar()
+    registrarVenta.reset()
+  }
+
   // cerrar comprobante
   function cerrarComprobante() {
     setVentaLista(null)
@@ -77,6 +84,7 @@ export function useCobrarVenta() {
   return {
     cobrar,
     cerrarComprobante,
+    empezarDeNuevo,
     ventaLista,
     cobrando: registrarVenta.isPending,
     errorCobro: registrarVenta.error,

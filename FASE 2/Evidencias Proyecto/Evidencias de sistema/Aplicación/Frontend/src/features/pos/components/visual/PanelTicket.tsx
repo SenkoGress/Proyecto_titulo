@@ -4,13 +4,11 @@ import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Button from '@mui/material/Button'
 import Divider from '@mui/material/Divider'
-import Alert from '@mui/material/Alert'
 import CircularProgress from '@mui/material/CircularProgress'
 import { alpha } from '@mui/material/styles'
 import DeleteSweepIcon from '@mui/icons-material/DeleteSweep'
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
 import { formatoClp } from '@/shared/utils/formatoClp'
-import { obtenerMensajeError } from '@/lib/api/apiError'
 import { useCarritoStore } from '@/features/pos/stores/carritoStore'
 import { useTotalesCarrito } from '@/features/pos/hooks/useTotalesCarrito'
 import { LineaTicket } from '@/features/pos/components/visual/LineaTicket'
@@ -21,17 +19,22 @@ import { VerificacionEdad } from '@/features/pos/components/compartidos/Verifica
 import { SelectorComprobante } from '@/features/pos/components/compartidos/SelectorComprobante'
 import { BotonBolsa } from '@/features/pos/components/compartidos/BotonBolsa'
 import { AvisoEsperaPago } from '@/features/pos/components/compartidos/AvisoEsperaPago'
+import { AvisoErrorVenta } from '@/features/pos/components/compartidos/AvisoErrorVenta'
+import { cobroSinVenta } from '@/features/pos/utils/errorVenta'
 
 type Props = {
   onCobrar: () => void
   cobrando: boolean
+  onEmpezarDeNuevo?: () => void
   errorCobro: unknown
 }
 
 // ticket de la venta (derecha)
-export function PanelTicket({ onCobrar, cobrando, errorCobro }: Props) {
+export function PanelTicket({ onCobrar, cobrando, errorCobro, onEmpezarDeNuevo }: Props) {
   const lineas = useCarritoStore((estado) => estado.lineas)
   const metodoPago = useCarritoStore((estado) => estado.metodoPago)
+  // con el cobro hecho y la venta perdida, cobrar de nuevo le cobra dos veces al cliente
+  const tarjetaYaCobrada = cobroSinVenta(errorCobro)
   const limpiar = useCarritoStore((estado) => estado.limpiar)
   const edadVerificada = useCarritoStore((estado) => estado.edadVerificada)
   const tipoComprobante = useCarritoStore((estado) => estado.tipoComprobante)
@@ -157,7 +160,7 @@ export function PanelTicket({ onCobrar, cobrando, errorCobro }: Props) {
 
         {cobrando && <AvisoEsperaPago metodoPago={metodoPago} />}
 
-        {Boolean(errorCobro) && <Alert severity="error">{obtenerMensajeError(errorCobro)}</Alert>}
+        {Boolean(errorCobro) && <AvisoErrorVenta error={errorCobro} onEmpezarDeNuevo={onEmpezarDeNuevo} />}
 
         {/* cobrar */}
         <Button
@@ -165,7 +168,7 @@ export function PanelTicket({ onCobrar, cobrando, errorCobro }: Props) {
           size="large"
           fullWidth
           endIcon={cobrando ? <CircularProgress size={18} color="inherit" /> : <ArrowForwardIcon />}
-          disabled={!hayProductos || cobrando || bloqueadoPorAlcohol || faltanDatosFactura}
+          disabled={!hayProductos || cobrando || bloqueadoPorAlcohol || faltanDatosFactura || tarjetaYaCobrada}
           onClick={onCobrar}
           sx={{ py: 1.5, fontSize: '1.05rem' }}
         >

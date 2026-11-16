@@ -6,11 +6,13 @@ import { anchoVistaPx, tamanoLetraPx } from '@/shared/utils/papelTermico'
 import { formatoClp } from '@/shared/utils/formatoClp'
 import { etiquetaDocumentoVenta } from '@/shared/utils/etiquetasEstado'
 import type { EmisorFiscal } from '@/features/dte/types'
-import type { VentaRegistrada } from '@/features/pos/types'
+import type { ModoPagos, VentaRegistrada } from '@/features/pos/types'
+import { leyendaVoucher } from '@/features/pos/utils/modoPagos'
 
 type Props = {
   venta: VentaRegistrada
   emisor: EmisorFiscal | undefined
+  modo?: ModoPagos
 }
 
 // comprobante del pago con tarjeta bajo el modelo B: no es boleta, pero igual hay que poder
@@ -18,6 +20,10 @@ type Props = {
 // total y las unidades, como cualquier voucher de pasarela
 export function VoucherImpreso({ venta, emisor }: Props) {
   const anchoPapel = usePapelStore((estado) => estado.ancho)
+
+  // el papel tiene que decir que el pago no fue real: si no, un voucher de prueba se ve
+  // exactamente igual a uno de verdad
+  const leyenda = leyendaVoucher(modo)
 
   return (
     <Box
@@ -93,6 +99,10 @@ export function VoucherImpreso({ venta, emisor }: Props) {
       </Box>
 
       <Divider sx={{ my: 0.75, borderStyle: 'dashed' }} />
+
+      {leyenda && (
+        <Box sx={{ textAlign: 'center', fontWeight: 700, mb: 0.75 }}>{leyenda}</Box>
+      )}
 
       <Box sx={{ textAlign: 'center', fontSize: '0.85em' }}>
         {venta.dte?.mensajeLegal ??

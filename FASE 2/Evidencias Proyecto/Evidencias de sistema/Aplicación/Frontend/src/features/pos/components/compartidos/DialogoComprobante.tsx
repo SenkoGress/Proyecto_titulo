@@ -20,6 +20,7 @@ import DownloadOutlined from '@mui/icons-material/DownloadOutlined'
 import SendOutlined from '@mui/icons-material/SendOutlined'
 import { etiquetaDocumentoVenta } from '@/shared/utils/etiquetasEstado'
 import { useComprobante, useConfigDte, useEnviarComprobante } from '@/features/dte/hooks/useConfigDte'
+import { useEstadoPos } from '@/features/pos/hooks/usePos'
 import { descargarXmlDte } from '@/features/dte/api/dte.api'
 import { TicketImpreso } from '@/features/pos/components/compartidos/TicketImpreso'
 import { VoucherImpreso } from '@/features/pos/components/compartidos/VoucherImpreso'
@@ -41,6 +42,7 @@ export function DialogoComprobante({ venta, ajusteRedondeo, onCerrar }: Props) {
   const dteId = venta.dte?.esTributarioDte ? venta.dte.dteId : undefined
 
   const comprobante = useComprobante(dteId)
+  const estadoPos = useEstadoPos()
   const configDte = useConfigDte()
   const envio = useEnviarComprobante()
 
@@ -91,6 +93,15 @@ export function DialogoComprobante({ venta, ajusteRedondeo, onCerrar }: Props) {
           </Alert>
         )}
 
+        {venta.dte?.folio_provisional && (
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            <AlertTitle sx={{ fontWeight: 700 }}>Folio provisional</AlertTitle>
+            Este folio lo genero la caja porque el local todavia no carga folios autorizados del SII.
+            El documento sirve para entregarselo al cliente, pero no se puede enviar al servicio:
+            hay que reemitirlo cuando lleguen los folios.
+          </Alert>
+        )}
+
         {!venta.dte && (
           <Alert severity="warning" sx={{ mb: 2 }}>
             <AlertTitle sx={{ fontWeight: 700 }}>Esta venta quedo sin boleta</AlertTitle>
@@ -115,7 +126,7 @@ export function DialogoComprobante({ venta, ajusteRedondeo, onCerrar }: Props) {
         )}
 
         {/* sin dte tributario el cliente igual se lleva algo en la mano */}
-        {!dteId && <VoucherImpreso venta={venta} emisor={configDte.data?.emisor} />}
+        {!dteId && <VoucherImpreso venta={venta} emisor={configDte.data?.emisor} modo={estadoPos.data?.modo} />}
 
         {errorXml && (
           <Alert severity="error" sx={{ mt: 2 }}>

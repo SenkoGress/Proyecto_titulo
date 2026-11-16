@@ -4,14 +4,12 @@ import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Button from '@mui/material/Button'
 import Chip from '@mui/material/Chip'
-import Alert from '@mui/material/Alert'
 import Divider from '@mui/material/Divider'
 import CircularProgress from '@mui/material/CircularProgress'
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'
 import PointOfSaleIcon from '@mui/icons-material/PointOfSale'
 import HighlightOffIcon from '@mui/icons-material/HighlightOff'
 import { formatoClp } from '@/shared/utils/formatoClp'
-import { obtenerMensajeError } from '@/lib/api/apiError'
 import { useCarritoStore } from '@/features/pos/stores/carritoStore'
 import { useTotalesCarrito } from '@/features/pos/hooks/useTotalesCarrito'
 import { ClienteRut } from '@/features/pos/components/tecnico/ClienteRut'
@@ -22,17 +20,22 @@ import { VerificacionEdad } from '@/features/pos/components/compartidos/Verifica
 import { SelectorComprobante } from '@/features/pos/components/compartidos/SelectorComprobante'
 import { BotonBolsa } from '@/features/pos/components/compartidos/BotonBolsa'
 import { AvisoEsperaPago } from '@/features/pos/components/compartidos/AvisoEsperaPago'
+import { AvisoErrorVenta } from '@/features/pos/components/compartidos/AvisoErrorVenta'
+import { cobroSinVenta } from '@/features/pos/utils/errorVenta'
 
 type Props = {
   onCobrar: () => void
   onCancelar: () => void
   cobrando: boolean
+  onEmpezarDeNuevo?: () => void
   errorCobro: unknown
 }
 
 // panel derecho: boleta, totales y pago
-export function PanelCobro({ onCobrar, onCancelar, cobrando, errorCobro }: Props) {
+export function PanelCobro({ onCobrar, onCancelar, cobrando, errorCobro, onEmpezarDeNuevo }: Props) {
   const metodoPago = useCarritoStore((estado) => estado.metodoPago)
+  // con el cobro hecho y la venta perdida, cobrar de nuevo le cobra dos veces al cliente
+  const tarjetaYaCobrada = cobroSinVenta(errorCobro)
   const edadVerificada = useCarritoStore((estado) => estado.edadVerificada)
   const tipoComprobante = useCarritoStore((estado) => estado.tipoComprobante)
   const receptorEmpresa = useCarritoStore((estado) => estado.receptorEmpresa)
@@ -100,14 +103,14 @@ export function PanelCobro({ onCobrar, onCancelar, cobrando, errorCobro }: Props
 
       {cobrando && <AvisoEsperaPago metodoPago={metodoPago} />}
 
-      {Boolean(errorCobro) && <Alert severity="error">{obtenerMensajeError(errorCobro)}</Alert>}
+      {Boolean(errorCobro) && <AvisoErrorVenta error={errorCobro} onEmpezarDeNuevo={onEmpezarDeNuevo} />}
 
       {/* cobrar */}
       <Button
         variant="contained"
         size="large"
         startIcon={cobrando ? <CircularProgress size={18} color="inherit" /> : <PointOfSaleIcon />}
-        disabled={!hayProductos || cobrando || bloqueadoPorAlcohol || faltanDatosFactura}
+        disabled={!hayProductos || cobrando || bloqueadoPorAlcohol || faltanDatosFactura || tarjetaYaCobrada}
         onClick={onCobrar}
         sx={{ py: 1.5, fontSize: '1.05rem' }}
       >

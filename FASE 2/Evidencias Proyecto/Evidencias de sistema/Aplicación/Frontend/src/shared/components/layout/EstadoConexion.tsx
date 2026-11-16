@@ -3,12 +3,14 @@ import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import CircularProgress from '@mui/material/CircularProgress'
 import Tooltip from '@mui/material/Tooltip'
+import Chip from '@mui/material/Chip'
 import { obtenerColoresMenu } from '@/app/theme/theme'
 import { useModoTema } from '@/shared/stores/temaStore'
 import { useEstadoPos } from '@/features/pos/hooks/usePos'
 import { useEsModoTecnico } from '@/shared/stores/modoVistaStore'
 import { formatFecha, haceCuanto } from '@/shared/utils/formatFecha'
 import type { EstadoPos } from '@/features/pos/types'
+import { avisoModoPagos } from '@/features/pos/utils/modoPagos'
 
 // texto y color por estado
 const textos: Record<EstadoPos['status'], { titulo: string; color: string }> = {
@@ -37,6 +39,10 @@ export function EstadoConexion() {
   // sin respuesta = desconectado
   const estado = data ? textos[data.status] : textos.OFFLINE
 
+  // el modo de cobro no se ve en ninguna parte, y en simulado la tarjeta aprueba sin cobrar.
+  // Va aca y no en el aviso de espera porque en simulado el cobro es instantaneo: no se alcanza a leer
+  const modo = avisoModoPagos(data?.modo)
+
   return (
     <Box sx={{ px: 2, py: 1, flexShrink: 0 }}>
       <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
@@ -45,6 +51,17 @@ export function EstadoConexion() {
           {estado.titulo}
         </Typography>
       </Box>
+
+      {modo && (
+        <Tooltip title={modo.detalle}>
+          <Chip
+            size="small"
+            color={modo.tono}
+            label={modo.texto}
+            sx={{ mt: 0.75, height: 20, fontSize: 10, fontWeight: 700, cursor: 'help' }}
+          />
+        </Tooltip>
+      )}
 
       <Typography variant="caption" sx={{ color: coloresMenu.textoApagado, display: 'block' }}>
         {data ? data.device_id : 'Terminal local'}
