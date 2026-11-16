@@ -18,7 +18,7 @@ type Props = {
 // comprobante del pago con tarjeta bajo el modelo B: no es boleta, pero igual hay que poder
 // entregarle algo al cliente. El checkout no devuelve el detalle de la venta, asi que lleva el
 // total y las unidades, como cualquier voucher de pasarela
-export function VoucherImpreso({ venta, emisor }: Props) {
+export function VoucherImpreso({ venta, emisor, modo }: Props) {
   const anchoPapel = usePapelStore((estado) => estado.ancho)
 
   // el papel tiene que decir que el pago no fue real: si no, un voucher de prueba se ve
