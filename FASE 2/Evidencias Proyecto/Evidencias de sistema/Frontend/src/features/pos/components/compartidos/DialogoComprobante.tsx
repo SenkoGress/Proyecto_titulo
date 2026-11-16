@@ -1,0 +1,201 @@
+// src/features/pos/components/compartidos/DialogoComprobante.tsx
+import { useState } from 'react'
+import Dialog from '@mui/material/Dialog'
+import DialogTitle from '@mui/material/DialogTitle'
+import DialogContent from '@mui/material/DialogContent'
+import DialogActions from '@mui/material/DialogActions'
+import Box from '@mui/material/Box'
+import Button from '@mui/material/Button'
+import IconButton from '@mui/material/IconButton'
+import TextField from '@mui/material/TextField'
+import Typography from '@mui/material/Typography'
+import Alert from '@mui/material/Alert'
+import AlertTitle from '@mui/material/AlertTitle'
+import Skeleton from '@mui/material/Skeleton'
+import Tooltip from '@mui/material/Tooltip'
+import ReceiptLongOutlined from '@mui/icons-material/ReceiptLongOutlined'
+import CloseOutlined from '@mui/icons-material/CloseOutlined'
+import PrintOutlined from '@mui/icons-material/PrintOutlined'
+import DownloadOutlined from '@mui/icons-material/DownloadOutlined'
+import SendOutlined from '@mui/icons-material/SendOutlined'
+import { etiquetaDocumentoVenta } from '@/shared/utils/etiquetasEstado'
+import { useComprobante, useConfigDte, useEnviarComprobante } from '@/features/dte/hooks/useConfigDte'
+import { useEstadoPos } from '@/features/pos/hooks/usePos'
+import { descargarXmlDte } from '@/features/dte/api/dte.api'
+import { TicketImpreso } from '@/features/pos/components/compartidos/TicketImpreso'
+import { VoucherImpreso } from '@/features/pos/components/compartidos/VoucherImpreso'
+import { imprimirTicket } from '@/features/pos/utils/imprimirTicket'
+import type { VentaRegistrada } from '@/features/pos/types'
+
+type Props = {
+  venta: VentaRegistrada
+  ajusteRedondeo: number
+  onCerrar: () => void
+}
+
+function esCorreoValido(correo: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo.trim())
+}
+
+// comprobante fiscal de la venta recien cobrada
+export function DialogoComprobante({ venta, ajusteRedondeo, onCerrar }: Props) {
+  const dteId = venta.dte?.esTributarioDte ? venta.dte.dteId : undefined
+
+  const comprobante = useComprobante(dteId)
+  const estadoPos = useEstadoPos()
+  const configDte = useConfigDte()
+  const envio = useEnviarComprobante()
+
+  const [correo, setCorreo] = useState('')
+  const [errorXml, setErrorXml] = useState<string | null>(null)
+
+  // con tarjeta en modelo B no hay dte, pero el voucher tambien se imprime
+  const hayQueImprimir = Boolean(comprobante.data) || !dteId
+
+  const descargarXml = async () => {
+    if (!dteId) return
+    setErrorXml(null)
+
+    try {
+      const xml = await descargarXmlDte(dteId)
+      const blob = new Blob([xml], { type: 'application/xml' })
+      const url = URL.createObjectURL(blob)
+
+      const enlace = document.createElement('a')
+      enlace.href = url
+      enlace.download = `DTE_${venta.dte?.tipoDte}_F${venta.dte?.folio}.xml`
+      enlace.click()
+
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      setErrorXml(error instanceof Error ? error.message : 'No se pudo descargar el XML')
+    }
+  }
+
+  return (
+    <Dialog open onClose={onCerrar} maxWidth="sm" fullWidth>
+      <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <ReceiptLongOutlined color="primary" />
+        <Box sx={{ flexGrow: 1 }}>Comprobante de venta</Box>
+        <IconButton size="small" onClick={onCerrar} aria-label="Cerrar">
+          <CloseOutlined fontSize="small" />
+        </IconButton>
+      </DialogTitle>
+
+      <DialogContent dividers>
+        {/* pagos con tarjeta bajo modelo B: el voucher reemplaza a la boleta */}
+        {venta.dte && !venta.dte.esTributarioDte && (
+          <Alert severity="info" sx={{ mb: 2 }}>
+            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+              {etiquetaDocumentoVenta(venta.dte.tipoDocumento).texto}
+            </Typography>
+            {venta.dte.mensajeLegal}
+          </Alert>
+        )}
+
+        {venta.dte?.folio_provisional && (
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            <AlertTitle sx={{ fontWeight: 700 }}>Folio provisional</AlertTitle>
+            Este folio lo genero la caja porque el local todavia no carga folios autorizados del SII.
+            El documento sirve para entregarselo al cliente, pero no se puede enviar al servicio:
+            hay que reemitirlo cuando lleguen los folios.
+          </Alert>
+        )}
+
+        {!venta.dte && (
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            <AlertTitle sx={{ fontWeight: 700 }}>Esta venta quedo sin boleta</AlertTitle>
+            La venta y el cobro quedaron registrados. Entregale el comprobante de abajo y avisale
+            al administrador: esta venta necesita su boleta y no se puede emitir desde la caja.
+          </Alert>
+        )}
+
+        {dteId && comprobante.isPending && <Skeleton variant="rounded" height={380} />}
+
+        {dteId && comprobante.isError && (
+          <Alert severity="error">No se pudo cargar el comprobante: {comprobante.error.message}</Alert>
+        )}
+
+        {comprobante.data && (
+          <TicketImpreso
+            comprobante={comprobante.data}
+            emisor={configDte.data?.emisor}
+            metodoPago={venta.payment_method}
+            ajusteRedondeo={ajusteRedondeo}
+          />
+        )}
+
+        {/* sin dte tributario el cliente igual se lleva algo en la mano */}
+        {!dteId && <VoucherImpreso venta={venta} emisor={configDte.data?.emisor} modo={estadoPos.data?.modo} />}
+
+        {errorXml && (
+          <Alert severity="error" sx={{ mt: 2 }}>
+            {errorXml}
+          </Alert>
+        )}
+
+        {/* envio al cliente */}
+        <Box sx={{ mt: 2, display: 'flex', gap: 1, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+          <TextField
+            label="Correo del cliente"
+            type="email"
+            size="small"
+            value={correo}
+            onChange={(evento) => setCorreo(evento.target.value)}
+            placeholder="cliente@ejemplo.cl"
+            sx={{ flexGrow: 1, minWidth: 220 }}
+          />
+
+          <Button
+            variant="outlined"
+            startIcon={<SendOutlined />}
+            disabled={!esCorreoValido(correo) || envio.isPending}
+            onClick={() => envio.mutate({ correo: correo.trim(), dteId, ventaId: venta.saleId })}
+            sx={{ mt: 0.25 }}
+          >
+            {envio.isPending ? 'Enviando...' : 'Enviar'}
+          </Button>
+        </Box>
+
+        {envio.isSuccess && (
+          <Alert severity="success" sx={{ mt: 1.5 }}>
+            {envio.data.message}
+            <Typography variant="caption" sx={{ display: 'block', mt: 0.5 }}>
+              Ojo: hoy el backend solo simula el envío, todavía no despacha el correo de verdad.
+            </Typography>
+          </Alert>
+        )}
+
+        {envio.isError && (
+          <Alert severity="error" sx={{ mt: 1.5 }}>
+            {envio.error.message}
+          </Alert>
+        )}
+      </DialogContent>
+
+      <DialogActions sx={{ px: 3, py: 2, gap: 1, flexWrap: 'wrap' }}>
+        <Tooltip title={hayQueImprimir ? '' : 'No hay comprobante que imprimir'}>
+          <span>
+            <Button startIcon={<PrintOutlined />} onClick={imprimirTicket} disabled={!hayQueImprimir}>
+              Imprimir ticket (80mm)
+            </Button>
+          </span>
+        </Tooltip>
+
+        <Tooltip title={dteId ? '' : 'Solo los documentos tributarios tienen XML'}>
+          <span>
+            <Button startIcon={<DownloadOutlined />} onClick={descargarXml} disabled={!dteId}>
+              Descargar XML DTE
+            </Button>
+          </span>
+        </Tooltip>
+
+        <Box sx={{ flexGrow: 1 }} />
+
+        <Button variant="contained" onClick={onCerrar} autoFocus>
+          Nueva venta
+        </Button>
+      </DialogActions>
+    </Dialog>
+  )
+}
