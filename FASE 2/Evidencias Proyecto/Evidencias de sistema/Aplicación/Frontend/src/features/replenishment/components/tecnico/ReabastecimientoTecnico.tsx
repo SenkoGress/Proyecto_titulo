@@ -19,7 +19,7 @@ import { PanelEnvioOrdenes } from '@/features/replenishment/components/compartid
 import { TarjetasResumenRop } from '@/features/replenishment/components/compartidos/TarjetasResumenRop'
 import { TablaAlertasRop } from '@/features/replenishment/components/tecnico/TablaAlertasRop'
 import { TablaPropuestasOrdenes } from '@/features/replenishment/components/tecnico/TablaPropuestasOrdenes'
-import { DialogoPedidoWhatsApp } from '@/features/proveedores/components/visual/DialogoPedidoWhatsApp'
+import { DialogoPedidoCorreo } from '@/features/proveedores/components/visual/DialogoPedidoCorreo'
 import { armarFichasProveedores } from '@/features/proveedores/utils/fichaProveedor'
 import type { FichaProveedor } from '@/features/proveedores/utils/fichaProveedor'
 
@@ -104,12 +104,12 @@ export function ReabastecimientoTecnico() {
       </Box>
 
       <Typography variant="caption" color="text.secondary">
-        No hay despacho automatico: el backend no tiene webhooks, ni integracion EDI/ERP, ni WhatsApp Cloud API. El
-        unico canal de salida real es el correo. Tampoco existe endpoint para guardar una orden de compra creada
+        No hay despacho automatico: el backend no tiene webhooks ni integracion EDI/ERP. El unico canal de salida
+        es el correo. Tampoco existe endpoint para guardar una orden de compra creada
         desde aca: las que se ven las propone el algoritmo cada vez que se consulta.
       </Typography>
 
-      {pidiendo && <DialogoPedidoWhatsApp ficha={pidiendo} onCerrar={() => setPidiendo(null)} />}
+      {pidiendo && <DialogoPedidoCorreo ficha={pidiendo} onCerrar={() => setPidiendo(null)} />}
     </Box>
   )
 }

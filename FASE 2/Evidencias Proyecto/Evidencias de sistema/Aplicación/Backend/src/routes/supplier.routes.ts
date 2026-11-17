@@ -5,6 +5,9 @@ import { defaultPgClient } from '../database/postgres/client';
 import { calculateNextVisit } from '../utils/supplier.utils';
 import { logger } from '../utils/logger';
 import { detalleError } from '../utils/detalle-error';
+import { defaultEmailService } from '../notifications/email.service';
+import { redactarPedidoProveedor } from '../notifications/pedido-proveedor';
+import { defaultTenantConfigService } from '../config/tenant-config.service';
 
 const router = Router();
 
@@ -232,6 +235,62 @@ router.put('/:id', async (req: Request, res: Response): Promise<void> => {
       message: 'Error al actualizar proveedor',
       error: detalleError(error)
     });
+  }
+});
+
+/**
+ * POST /api/v1/suppliers/:id/pedido-correo
+ * Envia al correo del proveedor el pedido que el usuario reviso en pantalla. La respuesta del
+ * proveedor llega al correo del local, no a la cuenta que despacha.
+ */
+router.post('/:id/pedido-correo', async (req: Request, res: Response): Promise<void> => {
+  const tenantId = req.body?.tenant_id || '00000000-0000-0000-0000-000000000001';
+  const mensaje = typeof req.body?.mensaje === 'string' ? req.body.mensaje.trim() : '';
+
+  try {
+    if (!mensaje || mensaje.length > 4000) {
+      res.status(400).json({ success: false, message: 'El pedido debe tener un mensaje de hasta 4000 caracteres' });
+      return;
+    }
+
+    const proveedor = defaultSqliteClient.queryOne<{ nombre_proveedores: string; email: string | null }>(
+      'SELECT nombre_proveedores, email FROM proveedores WHERE id = ? AND tenant_id = ?',
+      [req.params.id, tenantId]
+    );
+    if (!proveedor) {
+      res.status(404).json({ success: false, message: 'Proveedor no encontrado' });
+      return;
+    }
+    if (!proveedor.email || !proveedor.email.trim()) {
+      res.status(400).json({
+        success: false,
+        message: 'Este proveedor no tiene un correo guardado. Agregalo en su ficha para enviarle el pedido.'
+      });
+      return;
+    }
+    if (!defaultEmailService.estaConfigurado()) {
+      res.status(503).json({
+        success: false,
+        message: 'Este equipo no tiene configurado el envio de correo, asi que no puede mandar el pedido.'
+      });
+      return;
+    }
+
+    const correoDelLocal = await defaultTenantConfigService.getOrderNotificationEmail(tenantId);
+    const envio = await defaultEmailService.enviar({
+      para: proveedor.email.trim(),
+      responderA: correoDelLocal || undefined,
+      ...redactarPedidoProveedor(proveedor.nombre_proveedores, mensaje)
+    });
+
+    if (!envio.enviado) {
+      res.status(502).json({ success: false, message: envio.mensaje });
+      return;
+    }
+    res.status(200).json({ success: true, message: `Pedido enviado a ${proveedor.email.trim()}` });
+  } catch (error) {
+    logger.error('SupplierRoutes', 'No se pudo enviar el pedido por correo', error);
+    res.status(500).json({ success: false, message: 'Error al enviar el pedido', error: detalleError(error) });
   }
 });
 

@@ -13,7 +13,7 @@ type Props = {
   cantidadOrdenes: number
 }
 
-// despacho de las ordenes sugeridas por correo (el backend no tiene envio por whatsapp)
+// despacho de las ordenes sugeridas por correo, que es el unico canal de salida
 export function PanelEnvioOrdenes({ cantidadOrdenes }: Props) {
   const config = useCorreo()
   const envio = useEnviarOrdenesPorCorreo()
@@ -75,8 +75,8 @@ export function PanelEnvioOrdenes({ cantidadOrdenes }: Props) {
       )}
 
       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5 }}>
-        El unico canal que existe es el correo (no hay WhatsApp Cloud API ni plantillas HSM), y por ahora el envio
-        esta simulado: el backend registra las ordenes como enviadas pero no despacha el mensaje.
+        El unico canal de salida es el correo. Las ordenes se envian de verdad al correo del local y quedan
+        registradas como enviadas.
       </Typography>
     </Paper>
   )

@@ -27,7 +27,7 @@ export function ProveedoresPage() {
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
         {esModoTecnico
           ? 'Directorio mayorista, días de visita y disparadores automáticos por punto de reorden (ROP).'
-          : 'Compras mayoristas, reposición por WhatsApp y facturas leídas con IA de cada proveedor.'}
+          : 'Compras mayoristas, pedidos por correo y facturas leídas con IA de cada proveedor.'}
       </Typography>
 
       {esModoTecnico ? <LogisticaRop /> : <DirectorioProveedores />}

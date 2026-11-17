@@ -17,7 +17,7 @@ import {
   TODAS_CATEGORIAS,
 } from '@/features/notificaciones/components/BarraFiltrosNotificaciones'
 import { FilaNotificacion } from '@/features/notificaciones/components/FilaNotificacion'
-import { DialogoPedidoWhatsApp } from '@/features/proveedores/components/visual/DialogoPedidoWhatsApp'
+import { DialogoPedidoCorreo } from '@/features/proveedores/components/visual/DialogoPedidoCorreo'
 import { useProveedores } from '@/features/proveedores/hooks/useProveedores'
 import { useInventario } from '@/features/inventario/hooks/useInventario'
 import { armarFichasProveedores } from '@/features/proveedores/utils/fichaProveedor'
@@ -129,7 +129,7 @@ export function NotificacionesPage() {
         </Typography>
       </Box>
 
-      {pidiendo && <DialogoPedidoWhatsApp ficha={pidiendo} onCerrar={() => setPidiendo(null)} />}
+      {pidiendo && <DialogoPedidoCorreo ficha={pidiendo} onCerrar={() => setPidiendo(null)} />}
     </Box>
   )
 }

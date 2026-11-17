@@ -11,12 +11,12 @@ import Divider from '@mui/material/Divider'
 import IconButton from '@mui/material/IconButton'
 import Tooltip from '@mui/material/Tooltip'
 import { alpha, useTheme } from '@mui/material/styles'
-import WhatsAppIcon from '@mui/icons-material/WhatsApp'
+import EmailOutlined from '@mui/icons-material/EmailOutlined'
 import ReceiptLongOutlined from '@mui/icons-material/ReceiptLongOutlined'
 import EditOutlined from '@mui/icons-material/EditOutlined'
 import { formatoClp } from '@/shared/utils/formatoClp'
 import { colorProveedor, siglaProveedor } from '@/features/proveedores/utils/marcaProveedor'
-import { esCelularChileno } from '@/features/proveedores/utils/pedidoWhatsApp'
+import { tieneCorreo } from '@/features/proveedores/utils/pedidoCorreo'
 import type { FichaProveedor } from '@/features/proveedores/utils/fichaProveedor'
 
 type Props = {
@@ -66,7 +66,7 @@ function Estado({ color, texto }: { color: 'warning' | 'success' | 'info'; texto
 
 // tarjeta de proveedor del directorio visual
 export function TarjetaProveedor({ ficha, onPedir, onVerFacturas, onEditar }: Props) {
-  const puedeWhatsApp = esCelularChileno(ficha.telefono)
+  const puedePedir = tieneCorreo(ficha.email)
 
   return (
     <Card variant="outlined" sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -134,7 +134,7 @@ export function TarjetaProveedor({ ficha, onPedir, onVerFacturas, onEditar }: Pr
 
         <Divider sx={{ mb: 1 }} />
 
-        <Dato etiqueta="Telefono / WhatsApp" valor={ficha.telefono} />
+        <Dato etiqueta="Telefono" valor={ficha.telefono} />
         <Dato etiqueta="Correo" valor={ficha.email ?? 'Sin correo'} />
         <Dato etiqueta="Dias de visita" valor={ficha.dias_visita_proveedores} />
         <Dato etiqueta="Proxima visita" valor={ficha.proxima_visita.displayText} />
@@ -172,17 +172,16 @@ export function TarjetaProveedor({ ficha, onPedir, onVerFacturas, onEditar }: Pr
       </CardContent>
 
       <CardActions sx={{ px: 2, pb: 2, gap: 1 }}>
-        <Tooltip title={puedeWhatsApp ? '' : 'El telefono guardado no es un celular chileno valido para WhatsApp'}>
+        <Tooltip title={puedePedir ? '' : 'Este proveedor no tiene un correo guardado'}>
           <span style={{ flex: 1 }}>
             <Button
               fullWidth
               variant="contained"
-              color="success"
-              startIcon={<WhatsAppIcon />}
+              startIcon={<EmailOutlined />}
               onClick={() => onPedir(ficha)}
-              disabled={!puedeWhatsApp}
+              disabled={!puedePedir}
             >
-              Pedir por WhatsApp
+              Pedir por correo
             </Button>
           </span>
         </Tooltip>

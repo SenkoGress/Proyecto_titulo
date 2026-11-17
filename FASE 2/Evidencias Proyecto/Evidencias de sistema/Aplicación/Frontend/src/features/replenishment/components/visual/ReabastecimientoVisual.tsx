@@ -16,7 +16,7 @@ import { PanelEnvioOrdenes } from '@/features/replenishment/components/compartid
 import { TarjetasResumenRop } from '@/features/replenishment/components/compartidos/TarjetasResumenRop'
 import { TarjetaOrdenProveedor } from '@/features/replenishment/components/visual/TarjetaOrdenProveedor'
 import { ListaBajoStock } from '@/features/replenishment/components/visual/ListaBajoStock'
-import { DialogoPedidoWhatsApp } from '@/features/proveedores/components/visual/DialogoPedidoWhatsApp'
+import { DialogoPedidoCorreo } from '@/features/proveedores/components/visual/DialogoPedidoCorreo'
 import { armarFichasProveedores } from '@/features/proveedores/utils/fichaProveedor'
 import type { FichaProveedor } from '@/features/proveedores/utils/fichaProveedor'
 
@@ -92,11 +92,11 @@ export function ReabastecimientoVisual() {
       </Box>
 
       <Typography variant="caption" color="text.secondary">
-        El pedido por WhatsApp abre el mensaje ya escrito, pero no queda registrado en el sistema: el backend no
-        tiene donde guardar una orden de compra creada a mano.
+        El pedido por correo se envia al proveedor con el mensaje que revisas, pero no queda registrado en el
+        sistema: el backend no tiene donde guardar una orden de compra creada a mano.
       </Typography>
 
-      {pidiendo && <DialogoPedidoWhatsApp ficha={pidiendo} onCerrar={() => setPidiendo(null)} />}
+      {pidiendo && <DialogoPedidoCorreo ficha={pidiendo} onCerrar={() => setPidiendo(null)} />}
     </Box>
   )
 }

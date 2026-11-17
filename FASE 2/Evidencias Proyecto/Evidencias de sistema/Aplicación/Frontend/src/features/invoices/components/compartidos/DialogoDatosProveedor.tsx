@@ -55,7 +55,7 @@ export function DialogoDatosProveedor({ razonSocial, rut, datos, onGuardar, onCe
           />
 
           <TextField
-            label="Telefono / WhatsApp"
+            label="Telefono"
             value={form.telefono}
             onChange={(evento) => cambiar('telefono', evento.target.value)}
             placeholder="+56 9 1234 5678"

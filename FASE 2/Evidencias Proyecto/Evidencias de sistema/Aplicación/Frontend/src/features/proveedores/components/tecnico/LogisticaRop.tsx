@@ -16,7 +16,7 @@ import { PanelRegistroRop } from '@/features/proveedores/components/tecnico/Pane
 import { PanelCalendarioVisitas } from '@/features/proveedores/components/tecnico/PanelCalendarioVisitas'
 import { PanelEnvioOrdenes } from '@/features/replenishment/components/compartidos/PanelEnvioOrdenes'
 import { DialogoProveedor } from '@/features/proveedores/components/visual/DialogoProveedor'
-import { DialogoPedidoWhatsApp } from '@/features/proveedores/components/visual/DialogoPedidoWhatsApp'
+import { DialogoPedidoCorreo } from '@/features/proveedores/components/visual/DialogoPedidoCorreo'
 import { armarFichasProveedores } from '@/features/proveedores/utils/fichaProveedor'
 import { filtrarProveedores, TODOS_LOS_RUBROS } from '@/features/proveedores/utils/filtrarProveedores'
 import { calcularMetricas, indexarOrdenesSugeridas } from '@/features/proveedores/utils/metricasProveedores'
@@ -132,7 +132,7 @@ export function LogisticaRop() {
       </Box>
 
       {formAbierto && <DialogoProveedor editando={editando} onCerrar={() => setFormAbierto(false)} />}
-      {pidiendo && <DialogoPedidoWhatsApp ficha={pidiendo} onCerrar={() => setPidiendo(null)} />}
+      {pidiendo && <DialogoPedidoCorreo ficha={pidiendo} onCerrar={() => setPidiendo(null)} />}
     </Box>
   )
 }

@@ -32,3 +32,12 @@ export async function actualizarProveedor(id: string, cambios: EdicionProveedor)
   )
   return data
 }
+
+// el pedido que el usuario reviso en pantalla, enviado al correo del proveedor
+export async function enviarPedidoPorCorreo(id: string, mensaje: string) {
+  const { data } = await httpClient.post<{ success: boolean; message: string }>(
+    endpoints.proveedores.pedidoCorreo(id),
+    { tenant_id: tenantActual(), mensaje },
+  )
+  return data
+}

@@ -6,6 +6,8 @@ export interface MensajeCorreo {
   asunto: string;
   texto: string;
   html?: string;
+  /** A quien llega la respuesta: el correo del local, cuando escribe a un tercero. */
+  responderA?: string;
 }
 
 export interface ResultadoEnvio {
@@ -90,6 +92,7 @@ export class EmailService {
         // Con nombre visible, la bandeja muestra "GesTock" y no la direccion de la cuenta
         from: this.remitente!.includes('<') ? this.remitente : { name: 'GesTock', address: this.remitente! },
         to: mensaje.para,
+        replyTo: mensaje.responderA,
         subject: mensaje.asunto,
         text: mensaje.texto,
         html: mensaje.html

@@ -8,7 +8,7 @@ import Button from '@mui/material/Button'
 import Divider from '@mui/material/Divider'
 import Tooltip from '@mui/material/Tooltip'
 import EventOutlined from '@mui/icons-material/EventOutlined'
-import WhatsAppIcon from '@mui/icons-material/WhatsApp'
+import EmailOutlined from '@mui/icons-material/EmailOutlined'
 import { formatoClp } from '@/shared/utils/formatoClp'
 import { alternativas } from '@/features/replenishment/utils/ordenesPorProveedor'
 import { esOrdenSinProveedor } from '@/features/replenishment/utils/sinProveedor'
@@ -118,11 +118,10 @@ export function TarjetaOrdenProveedor({ orden, onPedir }: Props) {
       ) : (
         <Button
           variant="contained"
-          color="success"
-          startIcon={<WhatsAppIcon />}
+          startIcon={<EmailOutlined />}
           onClick={() => onPedir(orden.proveedor_id)}
         >
-          Pedir por WhatsApp
+          Pedir por correo
         </Button>
       )}
     </Paper>

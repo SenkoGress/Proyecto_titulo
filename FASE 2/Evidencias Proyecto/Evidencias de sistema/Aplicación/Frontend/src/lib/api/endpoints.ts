@@ -52,6 +52,7 @@ export const endpoints = {
     listar: `${API_V1}/suppliers`,
     crear: `${API_V1}/suppliers`,
     actualizar: (id: string) => `${API_V1}/suppliers/${id}`,
+    pedidoCorreo: (id: string) => `${API_V1}/suppliers/${id}/pedido-correo`,
   },
   dte: {
     config: `${API_V1}/dte/config`,

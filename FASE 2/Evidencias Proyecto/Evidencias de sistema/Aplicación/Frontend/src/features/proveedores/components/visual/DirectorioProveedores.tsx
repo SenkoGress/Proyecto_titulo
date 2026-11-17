@@ -12,7 +12,7 @@ import { BarraHerramientasProveedores } from '@/features/proveedores/components/
 import { TarjetaProveedor } from '@/features/proveedores/components/visual/TarjetaProveedor'
 import { DialogoProveedor } from '@/features/proveedores/components/visual/DialogoProveedor'
 import { DialogoFacturasProveedor } from '@/features/proveedores/components/visual/DialogoFacturasProveedor'
-import { DialogoPedidoWhatsApp } from '@/features/proveedores/components/visual/DialogoPedidoWhatsApp'
+import { DialogoPedidoCorreo } from '@/features/proveedores/components/visual/DialogoPedidoCorreo'
 import { armarFichasProveedores } from '@/features/proveedores/utils/fichaProveedor'
 import { filtrarProveedores, TODOS_LOS_RUBROS } from '@/features/proveedores/utils/filtrarProveedores'
 import type { FichaProveedor } from '@/features/proveedores/utils/fichaProveedor'
@@ -107,7 +107,7 @@ export function DirectorioProveedores() {
         onCerrar={() => setViendoFacturas(null)}
       />
 
-      {pidiendo && <DialogoPedidoWhatsApp ficha={pidiendo} onCerrar={() => setPidiendo(null)} />}
+      {pidiendo && <DialogoPedidoCorreo ficha={pidiendo} onCerrar={() => setPidiendo(null)} />}
     </Box>
   )
 }

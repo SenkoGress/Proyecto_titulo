@@ -2,6 +2,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   actualizarProveedor,
+  enviarPedidoPorCorreo,
   crearProveedor,
   obtenerProveedores,
 } from '@/features/proveedores/api/proveedores.api'
@@ -51,5 +52,13 @@ export function useActualizarProveedor() {
     onSuccess: () => {
       clienteQuery.invalidateQueries({ queryKey: ['proveedores'] })
     },
+  })
+}
+
+// pedido al proveedor por correo
+export function useEnviarPedidoPorCorreo() {
+  return useMutation({
+    mutationFn: (variables: { id: string; mensaje: string }) =>
+      enviarPedidoPorCorreo(variables.id, variables.mensaje),
   })
 }

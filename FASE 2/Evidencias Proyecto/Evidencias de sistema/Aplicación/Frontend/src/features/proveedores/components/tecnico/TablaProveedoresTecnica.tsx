@@ -12,10 +12,10 @@ import Chip from '@mui/material/Chip'
 import IconButton from '@mui/material/IconButton'
 import Tooltip from '@mui/material/Tooltip'
 import EditOutlined from '@mui/icons-material/EditOutlined'
-import WhatsAppIcon from '@mui/icons-material/WhatsApp'
+import EmailOutlined from '@mui/icons-material/EmailOutlined'
 import { formatoClp } from '@/shared/utils/formatoClp'
 import { ChipsDiasVisita } from '@/features/proveedores/components/tecnico/ChipsDiasVisita'
-import { esCelularChileno } from '@/features/proveedores/utils/pedidoWhatsApp'
+import { tieneCorreo } from '@/features/proveedores/utils/pedidoCorreo'
 import type { OrdenSugerida } from '@/features/replenishment/types'
 import type { FichaProveedor } from '@/features/proveedores/utils/fichaProveedor'
 
@@ -140,19 +140,19 @@ export function TablaProveedoresTecnica({ fichas, ordenesPorProveedor, onEditar,
                   <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'flex-end' }}>
                     <Tooltip
                       title={
-                        esCelularChileno(ficha.telefono)
-                          ? 'Armar pedido por WhatsApp'
-                          : 'El telefono guardado no es un celular chileno'
+                        tieneCorreo(ficha.email)
+                          ? 'Armar pedido por correo'
+                          : 'Este proveedor no tiene un correo guardado'
                       }
                     >
                       <span>
                         <IconButton
                           size="small"
-                          color="success"
+                          color="primary"
                           onClick={() => onPedir(ficha)}
-                          disabled={!esCelularChileno(ficha.telefono)}
+                          disabled={!tieneCorreo(ficha.email)}
                         >
-                          <WhatsAppIcon fontSize="small" />
+                          <EmailOutlined fontSize="small" />
                         </IconButton>
                       </span>
                     </Tooltip>

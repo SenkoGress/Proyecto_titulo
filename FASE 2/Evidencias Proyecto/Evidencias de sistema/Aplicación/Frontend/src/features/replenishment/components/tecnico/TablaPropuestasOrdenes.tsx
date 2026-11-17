@@ -13,7 +13,7 @@ import Button from '@mui/material/Button'
 import Tooltip from '@mui/material/Tooltip'
 import Skeleton from '@mui/material/Skeleton'
 import EventOutlined from '@mui/icons-material/EventOutlined'
-import WhatsAppIcon from '@mui/icons-material/WhatsApp'
+import EmailOutlined from '@mui/icons-material/EmailOutlined'
 import { formatoClp } from '@/shared/utils/formatoClp'
 import { esOrdenSinProveedor } from '@/features/replenishment/utils/sinProveedor'
 import { alternativas, lineasDePropuesta, motivoEleccion } from '@/features/replenishment/utils/ordenesPorProveedor'
@@ -159,14 +159,13 @@ export function TablaPropuestasOrdenes({ ordenes, cargando, onPedir }: Props) {
                     title={
                       esOrdenSinProveedor(orden)
                         ? 'Asignale un proveedor en Inventario para poder pedirlo'
-                        : `Armar el pedido por WhatsApp a ${orden.proveedor_nombre}`
+                        : `Armar el pedido por correo a ${orden.proveedor_nombre}`
                     }
                   >
                     <span>
                       <Button
                         size="small"
-                        color="success"
-                        startIcon={<WhatsAppIcon />}
+                        startIcon={<EmailOutlined />}
                         disabled={esOrdenSinProveedor(orden)}
                         onClick={() => onPedir(orden.proveedor_id)}
                       >
