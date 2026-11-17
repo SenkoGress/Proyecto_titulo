@@ -6,6 +6,7 @@ import { tenantActual } from '@/features/auth/utils/identidad'
 import type {
   CambioDeClave,
   CambioDeUsuario,
+  ClaveRestablecida,
   Credenciales,
   NuevoUsuario,
   RespuestaBaja,
@@ -55,6 +56,23 @@ export async function editarUsuario(variables: { id: string; cambios: CambioDeUs
 // dar de baja: el backend elimina al que no vendio nunca y desactiva al que tiene historial
 export async function darDeBajaUsuario(id: string) {
   const { data } = await httpClient.delete<RespuestaBaja>(endpoints.auth.usuario(id))
+  return data
+}
+
+// sin sesion: el administrador pide un codigo a su correo y con el define una clave nueva
+export async function pedirCodigoDeClave(email: string) {
+  const { data } = await httpClient.post<{ success: boolean; message: string }>(
+    endpoints.auth.claveOlvidada,
+    { tenant_id: env.tenantId, email },
+  )
+  return data
+}
+
+export async function restablecerClave(cambio: ClaveRestablecida) {
+  const { data } = await httpClient.post<{ success: boolean; message: string }>(
+    endpoints.auth.claveRestablecer,
+    { tenant_id: env.tenantId, ...cambio },
+  )
   return data
 }
 

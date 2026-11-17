@@ -7,6 +7,8 @@ import {
   editarUsuario,
   iniciarSesion,
   obtenerUsuarios,
+  pedirCodigoDeClave,
+  restablecerClave,
 } from '@/features/auth/api/auth.api'
 import { useSesionStore } from '@/features/auth/stores/sesionStore'
 
@@ -57,6 +59,14 @@ export function useDarDeBajaUsuario() {
 // cada uno cambia su propia clave
 export function useCambiarClave() {
   return useMutation({ mutationFn: cambiarClave })
+}
+
+export function usePedirCodigoDeClave() {
+  return useMutation({ mutationFn: pedirCodigoDeClave })
+}
+
+export function useRestablecerClave() {
+  return useMutation({ mutationFn: restablecerClave })
 }
 
 // al salir se borra la cache: el siguiente usuario no deberia ver datos del anterior

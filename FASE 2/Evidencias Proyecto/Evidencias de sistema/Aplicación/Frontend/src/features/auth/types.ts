@@ -46,6 +46,12 @@ export type CambioDeClave = {
   password_nueva: string
 }
 
+export type ClaveRestablecida = {
+  email: string
+  codigo: string
+  password_nueva: string
+}
+
 export type RespuestaSesion = {
   success: boolean
   data: {

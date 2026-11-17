@@ -445,15 +445,21 @@ function patchExistingDatabaseFixes(): void {
     );
 
     // 4. Agregar columnas offline-first a factura_ingresos si no existen en SQLite
-    try {
-      defaultSqliteClient.execute("ALTER TABLE factura_ingresos ADD COLUMN is_dirty INTEGER NOT NULL DEFAULT 0");
-    } catch {}
-    try {
-      defaultSqliteClient.execute("ALTER TABLE factura_ingresos ADD COLUMN sync_attempts INTEGER NOT NULL DEFAULT 0");
-    } catch {}
-    try {
-      defaultSqliteClient.execute("ALTER TABLE factura_ingresos ADD COLUMN sync_status TEXT DEFAULT 'SYNCED'");
-    } catch {}
+    // Se pregunta antes de agregar: en una base nueva ya existen, y el ALTER fallido dejaba tres
+    // errores en el log de una instalacion recien hecha
+    const columnasFactura = new Set(
+      defaultSqliteClient.query<{ name: string }>('PRAGMA table_info(factura_ingresos)').map((c) => c.name)
+    );
+    const faltantes: [string, string][] = [
+      ['is_dirty', 'INTEGER NOT NULL DEFAULT 0'],
+      ['sync_attempts', 'INTEGER NOT NULL DEFAULT 0'],
+      ['sync_status', "TEXT DEFAULT 'SYNCED'"]
+    ];
+    for (const [columna, tipo] of faltantes) {
+      if (columnasFactura.size > 0 && !columnasFactura.has(columna)) {
+        defaultSqliteClient.execute(`ALTER TABLE factura_ingresos ADD COLUMN ${columna} ${tipo}`);
+      }
+    }
 
     // 5. Normalizar identificadores de producto que no son UUID
     //

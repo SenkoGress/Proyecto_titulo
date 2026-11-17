@@ -7,6 +7,9 @@ import { defaultPgClient } from '../database/postgres/client';
 import { logger } from '../utils/logger';
 import { getJwtSecret } from '../config/auth.config';
 import { estadoVigente } from '../middleware/security.middleware';
+import { defaultEmailService } from '../notifications/email.service';
+import { redactarCodigoRecuperacion } from '../notifications/aviso-recuperacion';
+import { defaultRecuperacionClave } from '../auth/recuperacion-clave';
 
 const router = Router();
 const MIN_PASSWORD_LENGTH = 8;
@@ -346,28 +349,126 @@ router.put('/password', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const passwordHash = bcrypt.hashSync(password_nueva, 10);
-    defaultSqliteClient.execute(
-      "UPDATE usuarios SET password_hash = ?, updated_at = datetime('now') WHERE id = ?",
-      [passwordHash, user.id]
-    );
-
-    try {
-      const pgOnline = await defaultPgClient.healthCheck();
-      if (pgOnline) {
-        await defaultPgClient.query(
-          'UPDATE usuarios SET password_hash = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3',
-          [passwordHash, user.id, user.tenant_id]
-        );
-      }
-    } catch (err) {
-      logger.warn('AuthRoute', 'No se pudo replicar el cambio de contraseña en PostgreSQL', { error: String(err) });
-    }
+    await guardarClave(user, password_nueva);
 
     res.status(200).json({ success: true, message: 'Contraseña actualizada' });
   } catch (error) {
     logger.error('AuthRoute', 'Error en cambio de contraseña', error);
     res.status(500).json({ success: false, message: 'Error interno en cambio de contraseña' });
+  }
+});
+
+async function guardarClave(user: Pick<UserRow, 'id' | 'tenant_id'>, claveNueva: string): Promise<void> {
+  const passwordHash = bcrypt.hashSync(claveNueva, 10);
+  defaultSqliteClient.execute(
+    "UPDATE usuarios SET password_hash = ?, updated_at = datetime('now') WHERE id = ?",
+    [passwordHash, user.id]
+  );
+
+  try {
+    const pgOnline = await defaultPgClient.healthCheck();
+    if (pgOnline) {
+      await defaultPgClient.query(
+        'UPDATE usuarios SET password_hash = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3',
+        [passwordHash, user.id, user.tenant_id]
+      );
+    }
+  } catch (err) {
+    logger.warn('AuthRoute', 'No se pudo replicar el cambio de contraseña en PostgreSQL', { error: String(err) });
+  }
+}
+
+const TENANT_POR_DEFECTO = '00000000-0000-0000-0000-000000000001';
+
+/** Solo los administradores activos recuperan la clave por correo: a un cajero se la cambia el administrador. */
+function adminParaRecuperar(req: Request): UserRow | null {
+  const email = typeof req.body?.email === 'string' ? req.body.email.trim() : '';
+  if (!email) return null;
+  const tenant = req.body?.tenant_id || (req.headers['x-tenant-id'] as string) || TENANT_POR_DEFECTO;
+  const user = defaultSqliteClient.queryOne<UserRow>(
+    'SELECT id, tenant_id, nombre, email, password_hash, rol, activo FROM usuarios WHERE tenant_id = ? AND LOWER(email) = LOWER(?)',
+    [tenant, email]
+  );
+  return user && user.rol === 'admin' && estaActivo(user) ? user : null;
+}
+
+/**
+ * POST /api/v1/auth/password/olvide
+ * Envia un codigo de un solo uso al correo del administrador. La respuesta es la misma exista o no
+ * la cuenta, para no revelar que correos son de un administrador.
+ */
+router.post('/password/olvide', async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (typeof req.body?.email !== 'string' || !req.body.email.trim()) {
+      res.status(400).json({ success: false, message: 'Correo requerido' });
+      return;
+    }
+    if (!defaultEmailService.estaConfigurado()) {
+      res.status(503).json({
+        success: false,
+        message: 'Este equipo no tiene configurado el envio de correo, asi que no puede mandar el codigo.'
+      });
+      return;
+    }
+
+    const admin = adminParaRecuperar(req);
+    const codigo = admin ? defaultRecuperacionClave.emitir(admin.id) : null;
+    if (admin && codigo) {
+      const aviso = redactarCodigoRecuperacion(admin.nombre, codigo);
+      const envio = await defaultEmailService.enviar({ para: admin.email, ...aviso });
+      if (!envio.enviado) {
+        defaultRecuperacionClave.anular(admin.id);
+        res.status(502).json({
+          success: false,
+          message: 'No se pudo enviar el correo. Revisa la conexion a internet y vuelve a intentar.'
+        });
+        return;
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Si ese correo es de un administrador del local, le enviamos un codigo. Vence en 15 minutos.'
+    });
+  } catch (error) {
+    logger.error('AuthRoute', 'Error al pedir el codigo de recuperacion', error);
+    res.status(500).json({ success: false, message: 'Error interno al pedir el codigo' });
+  }
+});
+
+/**
+ * POST /api/v1/auth/password/restablecer
+ * Cambia la clave del administrador con el codigo que recibio por correo.
+ */
+router.post('/password/restablecer', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { codigo, password_nueva } = req.body || {};
+    if (!codigo || !password_nueva) {
+      res.status(400).json({ success: false, message: 'Codigo y clave nueva requeridos' });
+      return;
+    }
+    if (typeof password_nueva !== 'string' || password_nueva.length < MIN_PASSWORD_LENGTH) {
+      res.status(400).json({ success: false, message: `La contraseña debe tener al menos ${MIN_PASSWORD_LENGTH} caracteres` });
+      return;
+    }
+
+    const admin = adminParaRecuperar(req);
+    const canje = admin ? defaultRecuperacionClave.canjear(admin.id, String(codigo)) : 'invalido';
+    if (canje === 'bloqueado') {
+      res.status(429).json({ success: false, message: 'Demasiados intentos con ese codigo. Pide uno nuevo en un minuto.' });
+      return;
+    }
+    if (!admin || canje !== 'ok') {
+      res.status(400).json({ success: false, message: 'El codigo no es correcto o ya vencio' });
+      return;
+    }
+
+    await guardarClave(admin, password_nueva);
+    logger.info('AuthRoute', 'Clave restablecida con codigo de recuperacion', { usuario: admin.id });
+    res.status(200).json({ success: true, message: 'Clave actualizada. Ya puedes entrar con la nueva.' });
+  } catch (error) {
+    logger.error('AuthRoute', 'Error al restablecer la clave', error);
+    res.status(500).json({ success: false, message: 'Error interno al restablecer la clave' });
   }
 });
 

@@ -59,6 +59,8 @@ app.use('/api', generalRateLimiter);
 // Limitador estricto para transacciones criticas de venta, pagos y DTEs
 // Intentos de ingreso fallidos, contados por direccion y no por cabeceras que el cliente elige
 app.use('/api/v1/auth/login', loginRateLimiter);
+app.use('/api/v1/auth/password/olvide', loginRateLimiter);
+app.use('/api/v1/auth/password/restablecer', loginRateLimiter);
 app.use('/api/v1/pos/checkout', mutationRateLimiter);
 app.use('/api/v1/pos/sync', mutationRateLimiter);
 app.use('/api/v1/dte', mutationRateLimiter);
@@ -136,7 +138,7 @@ app.get('/health', async (_req: Request, res: Response): Promise<void> => {
 app.get('/api', (_req: Request, res: Response): void => {
   res.json({
     name: 'Gestock SaaS & Offline-First POS API',
-    version: '0.1.0',
+    version: '0.2.0',
     status: 'ONLINE',
     modules: [
       'Multi-Tenant Core',

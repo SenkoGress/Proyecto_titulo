@@ -11,11 +11,14 @@ import Visibility from '@mui/icons-material/Visibility'
 import VisibilityOff from '@mui/icons-material/VisibilityOff'
 import { obtenerMensajeError } from '@/lib/api/apiError'
 import { useIniciarSesion } from '@/features/auth/hooks/useAuth'
+import { DialogoRecuperarClave } from '@/features/auth/components/DialogoRecuperarClave'
 
 export function FormularioLogin() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [verClave, setVerClave] = useState(false)
+  const [recuperando, setRecuperando] = useState(false)
+  const [avisoClave, setAvisoClave] = useState('')
   const sesion = useIniciarSesion()
 
   const faltanDatos = !email.trim() || !password
@@ -38,6 +41,7 @@ export function FormularioLogin() {
       </Box>
 
       {sesion.error && <Alert severity="error">{obtenerMensajeError(sesion.error)}</Alert>}
+      {avisoClave && !sesion.error && <Alert severity="success">{avisoClave}</Alert>}
 
       <TextField
         label="Correo"
@@ -84,9 +88,30 @@ export function FormularioLogin() {
         {sesion.isPending ? 'Entrando...' : 'Entrar'}
       </Button>
 
+      {/* la onda de foco de MUI late mas chica que el boton: el foco se marca con el fondo completo */}
+      <Button
+        onClick={() => setRecuperando(true)}
+        disableFocusRipple
+        sx={{ justifySelf: 'center', '&.Mui-focusVisible': { bgcolor: 'action.focus' } }}
+      >
+        He olvidado mi contraseña
+      </Button>
+
       <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center' }}>
         Las cuentas las crea el administrador del local
       </Typography>
+
+      {recuperando && (
+        <DialogoRecuperarClave
+          correoInicial={email.trim()}
+          onCerrar={() => setRecuperando(false)}
+          onClaveCambiada={(mensaje) => {
+            setRecuperando(false)
+            setPassword('')
+            setAvisoClave(mensaje)
+          }}
+        />
+      )}
     </Box>
   )
 }

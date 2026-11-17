@@ -12,6 +12,8 @@ export const endpoints = {
     usuarios: `${API_V1}/auth/users`,
     usuario: (id: string) => `${API_V1}/auth/users/${id}`,
     clave: `${API_V1}/auth/password`,
+    claveOlvidada: `${API_V1}/auth/password/olvide`,
+    claveRestablecer: `${API_V1}/auth/password/restablecer`,
   },
   sistema: {
     info: '/api',
