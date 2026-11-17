@@ -138,7 +138,7 @@ app.get('/health', async (_req: Request, res: Response): Promise<void> => {
 app.get('/api', (_req: Request, res: Response): void => {
   res.json({
     name: 'Gestock SaaS & Offline-First POS API',
-    version: '0.2.0',
+    version: '0.2.1',
     status: 'ONLINE',
     modules: [
       'Multi-Tenant Core',

@@ -20,9 +20,9 @@ function resumir(codigo: string): Buffer {
 /**
  * Codigos de un solo uso para restablecer la clave del administrador.
  *
- * ponytail: viven en memoria, no en la base. Un codigo dura quince minutos y la caja es un solo
- * proceso, asi que reiniciar la aplicacion solo obliga a pedir otro. Si el servidor llegara a
- * correr en varias instancias, esto pasa a una tabla.
+ * Viven en memoria, no en la base. Un codigo dura quince minutos y la caja es un solo proceso,
+ * asi que reiniciar la aplicacion solo obliga a pedir otro. Si el servidor llegara a correr en
+ * varias instancias, esto pasa a una tabla.
  */
 export class RecuperacionClave {
   private readonly pendientes = new Map<string, CodigoPendiente>();

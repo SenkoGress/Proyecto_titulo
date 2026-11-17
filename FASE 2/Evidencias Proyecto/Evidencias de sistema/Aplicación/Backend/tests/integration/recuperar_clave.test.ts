@@ -14,6 +14,7 @@ describe('Recuperar la clave del administrador por correo', () => {
   let enviados: MensajeCorreo[] = [];
   let correoConfigurado = true;
   let correoSale = true;
+  let servidorResponde = true;
 
   const usuario = (id: string, email: string, rol: string) =>
     defaultSqliteClient.execute(
@@ -57,8 +58,12 @@ describe('Recuperar la clave del administrador por correo', () => {
     enviados = [];
     correoConfigurado = true;
     correoSale = true;
+    servidorResponde = true;
     // la configuracion de jest restaura los dobles entre pruebas: se arman en cada una
     jest.spyOn(defaultEmailService, 'estaConfigurado').mockImplementation(() => correoConfigurado);
+    jest.spyOn(defaultEmailService, 'verificar').mockImplementation(async () => (
+      { enviado: servidorResponde, destinatario: '', mensaje: '' }
+    ));
     jest.spyOn(defaultEmailService, 'enviar').mockImplementation(async (mensaje) => {
       if (correoSale) enviados.push(mensaje);
       return { enviado: correoSale, destinatario: mensaje.para, mensaje: '' };
@@ -125,15 +130,33 @@ describe('Recuperar la clave del administrador por correo', () => {
     expect((await post('login', { email, password: CLAVE_VIEJA })).status).toBe(200);
   });
 
-  test('sin correo configurado lo dice, y si el envio falla no deja un codigo vivo', async () => {
-    const email = 'tercero.recupera@prueba.cl';
+  test('sin correo configurado o sin servidor de correo responde igual para cualquier correo', async () => {
+    const admin = 'tercero.recupera@prueba.cl';
+    const nadie = 'no.existe@prueba.cl';
 
     correoConfigurado = false;
-    expect((await post('password/olvide', { email })).status).toBe(503);
+    expect((await post('password/olvide', { email: admin })).status).toBe(503);
+    expect((await post('password/olvide', { email: nadie })).status).toBe(503);
 
     correoConfigurado = true;
+    servidorResponde = false;
+    const conCuenta = await post('password/olvide', { email: admin });
+    const sinCuenta = await post('password/olvide', { email: nadie });
+    expect(conCuenta.status).toBe(502);
+    expect(sinCuenta.status).toBe(502);
+    expect(conCuenta.data).toEqual(sinCuenta.data);
+    expect(enviados).toHaveLength(0);
+  });
+
+  test('si el envio falla responde como siempre y no deja un codigo vivo', async () => {
+    const email = 'tercero.recupera@prueba.cl';
+
     correoSale = false;
-    expect((await post('password/olvide', { email })).status).toBe(502);
+    const fallido = await post('password/olvide', { email });
+    const nadie = await post('password/olvide', { email: 'no.existe@prueba.cl' });
+    expect(fallido.status).toBe(200);
+    expect(fallido.data).toEqual(nadie.data);
+    await new Promise((listo) => setImmediate(listo));
 
     // el codigo fallido se anulo: se puede pedir otro de inmediato, sin esperar el minuto
     correoSale = true;

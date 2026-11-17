@@ -395,7 +395,8 @@ function adminParaRecuperar(req: Request): UserRow | null {
 /**
  * POST /api/v1/auth/password/olvide
  * Envia un codigo de un solo uso al correo del administrador. La respuesta es la misma exista o no
- * la cuenta, para no revelar que correos son de un administrador.
+ * la cuenta, para no revelar que correos son de un administrador: por eso el servidor de correo se
+ * comprueba antes de mirar la cuenta, y el envio no se espera.
  */
 router.post('/password/olvide', async (req: Request, res: Response): Promise<void> => {
   try {
@@ -411,24 +412,30 @@ router.post('/password/olvide', async (req: Request, res: Response): Promise<voi
       return;
     }
 
+    const servidorDeCorreo = await defaultEmailService.verificar();
+    if (!servidorDeCorreo.enviado) {
+      res.status(502).json({
+        success: false,
+        message: 'No se pudo conectar con el servidor de correo. Revisa la conexion a internet y vuelve a intentar.'
+      });
+      return;
+    }
+
     const admin = adminParaRecuperar(req);
     const codigo = admin ? defaultRecuperacionClave.emitir(admin.id) : null;
     if (admin && codigo) {
       const aviso = redactarCodigoRecuperacion(admin.nombre, codigo);
-      const envio = await defaultEmailService.enviar({ para: admin.email, ...aviso });
-      if (!envio.enviado) {
-        defaultRecuperacionClave.anular(admin.id);
-        res.status(502).json({
-          success: false,
-          message: 'No se pudo enviar el correo. Revisa la conexion a internet y vuelve a intentar.'
-        });
-        return;
-      }
+      void defaultEmailService.enviar({ para: admin.email, ...aviso }).then((envio) => {
+        // sin codigo vivo, el administrador puede pedir otro de inmediato
+        if (!envio.enviado) defaultRecuperacionClave.anular(admin.id);
+      });
     }
 
     res.status(200).json({
       success: true,
-      message: 'Si ese correo es de un administrador del local, le enviamos un codigo. Vence en 15 minutos.'
+      message:
+        'Si ese correo es de un administrador del local, le enviamos un codigo que vence en 15 minutos. ' +
+        'Si pediste uno hace menos de un minuto, ese sigue vigente: revisa tu correo antes de pedir otro.'
     });
   } catch (error) {
     logger.error('AuthRoute', 'Error al pedir el codigo de recuperacion', error);
