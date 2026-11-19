@@ -1,6 +1,13 @@
 // src/features/pos/stores/carritoStore.ts
 import { create } from 'zustand'
 import type { MetodoPago, Producto, ReceptorEmpresa, TipoComprobante } from '@/features/pos/types'
+import { diasParaVencer, esFechaDeVencimientoValida } from '@/features/invoices/utils/vencimientoFactura'
+
+// d.s. 977/96: vencido es anterior a hoy. la fecha puede venir con hora, valen sus diez primeros caracteres
+function estaVencido(producto: Producto): boolean {
+  const fecha = producto.fecha_vencimiento?.slice(0, 10)
+  return esFechaDeVencimientoValida(fecha) && diasParaVencer(fecha, new Date()) < 0
+}
 
 // linea del ticket
 export type LineaCarrito = {
@@ -15,8 +22,11 @@ type CarritoState = {
   rutCliente: string | null // formato sii: 12345678-K
   tipoComprobante: TipoComprobante
   receptorEmpresa: ReceptorEmpresa | null // datos del cliente cuando es factura
+  porConfirmarVencido: Producto | null // producto vencido que espera la decision del cajero
 
   agregar: (producto: Producto) => void
+  confirmarVencido: () => void
+  descartarVencido: () => void
   quitarUno: (productoId: string) => void
   fijarCantidad: (productoId: string, cantidad: number) => void
   eliminarLinea: (productoId: string) => void
@@ -36,6 +46,7 @@ const ticketVacio = {
   rutCliente: null,
   tipoComprobante: 'BOLETA' as TipoComprobante,
   receptorEmpresa: null,
+  porConfirmarVencido: null,
 }
 
 // carrito de la venta actual
@@ -49,6 +60,8 @@ export const useCarritoStore = create<CarritoState>((set) => ({
 
       if (!existente) {
         if (producto.stock_actual <= 0) return {}
+        // un vencido no entra solo: se pregunta una vez, al agregarlo a la venta
+        if (estaVencido(producto)) return { porConfirmarVencido: producto }
         return { lineas: [...estado.lineas, { producto, cantidad: 1 }] }
       }
 
@@ -60,6 +73,16 @@ export const useCarritoStore = create<CarritoState>((set) => ({
         ),
       }
     }),
+
+  // el cajero decidio vender el vencido de todos modos
+  confirmarVencido: () =>
+    set((estado) => {
+      const producto = estado.porConfirmarVencido
+      if (!producto) return {}
+      return { porConfirmarVencido: null, lineas: [...estado.lineas, { producto, cantidad: 1 }] }
+    }),
+
+  descartarVencido: () => set({ porConfirmarVencido: null }),
 
   // restar uno (si llega a 0 se borra)
   quitarUno: (productoId) =>

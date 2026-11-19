@@ -115,6 +115,8 @@ export type VentaRegistrada = {
   is_dirty: number
   sync_status: string
   latency_ms: number
+  // d.s. 977/96: lo vencido que salio en esta venta; vacio si no hubo
+  productos_vencidos?: { producto_id: string; nombre: string; fecha_vencimiento: string; cantidad: number }[]
 }
 
 export type RespuestaCheckout = {

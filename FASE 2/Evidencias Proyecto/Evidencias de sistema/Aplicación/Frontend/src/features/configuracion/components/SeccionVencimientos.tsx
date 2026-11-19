@@ -34,14 +34,18 @@ export function SeccionVencimientos() {
             <strong>7 dias</strong> y de los que ya vencieron.
           </Typography>
           <Typography component="li" variant="body2">
+            En la caja, al agregar un producto <strong>vencido</strong> a una venta, el sistema lo avisa y el
+            cajero decide si lo retira o lo vende de todos modos.
+          </Typography>
+          <Typography component="li" variant="body2">
             Las facturas que quedaron en cola sin leer no se ingresan solas: esperan a que alguien las revise y
             declare los vencimientos.
           </Typography>
         </Box>
 
         <Alert severity="info">
-          El sistema avisa, pero <strong>no retira el producto por su cuenta</strong>. Sacarlo de la venta y
-          registrarlo como merma lo hace el local, desde Inventario.
+          El sistema avisa, pero <strong>no retira el producto ni bloquea su venta por su cuenta</strong>. Sacarlo
+          de la venta y registrarlo como merma lo hace el local, desde Inventario.
         </Alert>
       </Box>
     </Seccion>

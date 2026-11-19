@@ -11,6 +11,7 @@ import { CatalogoTecnico } from '@/features/pos/components/tecnico/CatalogoTecni
 import { PanelCobro } from '@/features/pos/components/tecnico/PanelCobro'
 import { DialogoAtajos } from '@/features/pos/components/tecnico/DialogoAtajos'
 import { DialogoComprobante } from '@/features/pos/components/compartidos/DialogoComprobante'
+import { DialogoProductoVencido } from '@/features/pos/components/compartidos/DialogoProductoVencido'
 import { ID_BUSCADOR, idCampoCantidad } from '@/features/pos/components/tecnico/ids'
 import { useCobrarVenta } from '@/features/pos/hooks/useCobrarVenta'
 import { useAtajosTeclado, type AccionesAtajos } from '@/features/pos/hooks/useAtajosTeclado'
@@ -105,6 +106,7 @@ export function CajaTecnica() {
         />
       )}
       <DialogoAtajos abierto={ayudaAbierta} onCerrar={() => setAyudaAbierta(false)} />
+      <DialogoProductoVencido />
     </Box>
   )
 }

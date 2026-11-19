@@ -3,6 +3,7 @@ import Box from '@mui/material/Box'
 import { CatalogoProductos } from '@/features/pos/components/visual/CatalogoProductos'
 import { PanelTicket } from '@/features/pos/components/visual/PanelTicket'
 import { DialogoComprobante } from '@/features/pos/components/compartidos/DialogoComprobante'
+import { DialogoProductoVencido } from '@/features/pos/components/compartidos/DialogoProductoVencido'
 import { useCobrarVenta } from '@/features/pos/hooks/useCobrarVenta'
 
 // caja en modo visual: tarjetas + ticket
@@ -27,6 +28,7 @@ export function CajaVisual() {
           onCerrar={cerrarComprobante}
         />
       )}
+      <DialogoProductoVencido />
     </Box>
   )
 }

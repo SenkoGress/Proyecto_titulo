@@ -1,5 +1,6 @@
 // src/features/pos/hooks/useAtajosTeclado.ts
 import { useEffect, useRef } from 'react'
+import { useCarritoStore } from '@/features/pos/stores/carritoStore'
 
 export type AccionesAtajos = {
   ayuda: () => void // F1
@@ -26,6 +27,9 @@ export function useAtajosTeclado(acciones: AccionesAtajos) {
 
   useEffect(() => {
     function alPresionar(evento: KeyboardEvent) {
+      // con el aviso de producto vencido abierto, la caja espera la decision: nada de cobrar ni limpiar
+      if (useCarritoStore.getState().porConfirmarVencido) return
+
       const a = accionesRef.current
       const escribiendo = estaEscribiendo(evento.target)
 
