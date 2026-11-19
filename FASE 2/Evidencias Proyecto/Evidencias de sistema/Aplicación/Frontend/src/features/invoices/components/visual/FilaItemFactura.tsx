@@ -7,6 +7,7 @@ import IconButton from '@mui/material/IconButton'
 import Tooltip from '@mui/material/Tooltip'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlined'
 import { formatoClp } from '@/shared/utils/formatoClp'
+import { CampoVencimiento } from '@/features/invoices/components/compartidos/CampoVencimiento'
 import type { ItemFactura } from '@/features/invoices/types'
 
 type Props = {
@@ -78,16 +79,9 @@ export function FilaItemFactura({ item, onCambiar, onEliminar }: Props) {
         {formatoClp(item.subtotal)}
       </TableCell>
 
-      {/* vencimiento: opcional, la factura casi nunca lo trae */}
+      {/* vencimiento: obligatorio, o la marca de que no vence */}
       <TableCell align="center">
-        <TextField
-          type="date"
-          value={item.fecha_vencimiento ?? ''}
-          size="small"
-          variant="standard"
-          onChange={(evento) => onCambiar({ fecha_vencimiento: evento.target.value || null })}
-          slotProps={{ htmlInput: { style: { fontSize: 13, width: 124 } } }}
-        />
+        <CampoVencimiento item={item} onCambiar={onCambiar} />
       </TableCell>
 
       {/* nuevo en el catalogo o ya existia */}

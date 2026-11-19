@@ -1109,11 +1109,11 @@ router.post('/sync', async (req: Request, res: Response): Promise<void> => {
     }
 
     // 4. Reintentar las facturas que quedaron sin digitalizar por falta de conexión (RF-43)
-    let colaFacturas = { procesadas: 0, fallidas: 0, pendientes: 0 };
+    let colaFacturas = { por_revisar: 0, fallidas: 0, pendientes: 0 };
     try {
       const resultadoCola = await defaultInvoiceQueue.procesarPendientes(tenantId);
       colaFacturas = {
-        procesadas: resultadoCola.procesadas,
+        por_revisar: resultadoCola.por_revisar,
         fallidas: resultadoCola.fallidas,
         pendientes: resultadoCola.pendientes
       };
@@ -1155,7 +1155,7 @@ router.post('/sync', async (req: Request, res: Response): Promise<void> => {
       respaldoCatalogo.productos_nuevos > 0
         ? `${contar(respaldoCatalogo.productos_nuevos, 'producto respaldado', 'productos respaldados')} en la nube`
         : null,
-      colaFacturas.procesadas > 0 ? `${contar(colaFacturas.procesadas, 'factura digitalizada', 'facturas digitalizadas')} desde la cola` : null,
+      colaFacturas.por_revisar > 0 ? `${contar(colaFacturas.por_revisar, 'factura leida', 'facturas leidas')} desde la cola, por revisar` : null,
       respaldoNube.respaldados > 0 ? `${contar(respaldoNube.respaldados, 'documento respaldado', 'documentos respaldados')} en la nube` : null
     ].filter(Boolean);
 

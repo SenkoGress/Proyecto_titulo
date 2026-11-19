@@ -148,7 +148,7 @@ export type ResultadoSync = {
   // la bajada del catalogo fallo: antes se tragaba como aviso y la pantalla decia que salio bien
   catalog_pull_error?: string | null
   pending_dirty_count?: number
-  invoice_queue?: { procesadas: number; fallidas: number; pendientes: number }
+  invoice_queue?: { por_revisar: number; fallidas: number; pendientes: number }
   invoice_document_backup?: RespaldoDocumentos
   cloud_online: boolean
 }

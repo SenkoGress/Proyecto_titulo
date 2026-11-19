@@ -16,6 +16,7 @@ import { defaultSqliteClient } from '../database/sqlite/client';
 import { TipoDTE } from '../dte/types';
 import { logger } from '../utils/logger';
 import { mesLocal } from '../utils/fecha-local';
+import { ESTADOS_DE_COLA_SQL } from '../invoices/estados-cola';
 
 export const dteRouter = Router();
 
@@ -549,7 +550,7 @@ dteRouter.get('/backup/export', (req: Request, res: Response) => {
     );
 
     const facturasCompra = defaultSqliteClient.query<any>(
-      `SELECT * FROM factura_ingresos WHERE tenant_id = ? ORDER BY fecha_ingreso ASC`,
+      `SELECT * FROM factura_ingresos WHERE tenant_id = ? AND estado NOT IN (${ESTADOS_DE_COLA_SQL}) ORDER BY fecha_ingreso ASC`,
       [tenantId]
     );
 

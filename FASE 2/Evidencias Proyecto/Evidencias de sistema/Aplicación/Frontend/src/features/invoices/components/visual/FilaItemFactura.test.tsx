@@ -120,6 +120,27 @@ describe('FilaItemFactura', () => {
     expect(onCambiar).toHaveBeenLastCalledWith({ fecha_vencimiento: null })
   })
 
+  // d.s. 977/96: sin fecha y sin la marca, el campo queda en error
+  it('marca en error el vencimiento que falta', () => {
+    montar()
+
+    const campo = document.querySelector('input[type=date]') as HTMLInputElement
+    expect(campo.getAttribute('aria-invalid')).toBe('true')
+  })
+
+  it('con la marca de que no vence borra la fecha y deja de estar en error', () => {
+    const { onCambiar } = montar({ item: item({ fecha_vencimiento: '2026-12-15' }) })
+
+    ;(document.querySelector('input[type=checkbox]') as HTMLInputElement).click()
+    expect(onCambiar).toHaveBeenLastCalledWith({ no_vence: true, fecha_vencimiento: null })
+
+    document.body.innerHTML = ''
+    montar({ item: item({ no_vence: true }) })
+    const campo = document.querySelector('input[type=date]') as HTMLInputElement
+    expect(campo.disabled).toBe(true)
+    expect(campo.getAttribute('aria-invalid')).toBe('false')
+  })
+
   it('permite sacar una linea que el motor invento', async () => {
     const usuario = userEvent.setup()
     const { onEliminar } = montar()

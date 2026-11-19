@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { defaultInvoiceIngestionService } from '../invoices/invoice-ingestion.service';
+import { defaultInvoiceIngestionService, VencimientoRequeridoError, TicketNoDisponibleError } from '../invoices/invoice-ingestion.service';
 import { defaultInvoiceQueue } from '../invoices/invoice-queue.service';
 import { defaultInvoiceFileStore } from '../invoices/invoice-file.store';
 import { esDocumentoIlegible } from '../ocr/extraccion';
@@ -8,6 +8,7 @@ import { defaultSqliteClient } from '../database/sqlite/client';
 import { InvoiceInput, ExtractedInvoiceData } from '../ocr/types';
 import { logger } from '../utils/logger';
 import { detalleError } from '../utils/detalle-error';
+import { ticketsEnConfirmacion } from '../invoices/estados-cola';
 
 const router = Router();
 
@@ -159,11 +160,63 @@ router.post('/process-pending', async (req: Request, res: Response): Promise<voi
 });
 
 /**
+ * GET /api/v1/invoices/pending/:id/preview
+ * Abre una factura que la cola ya leyo, para declarar los vencimientos y confirmarla
+ */
+router.get('/pending/:id/preview', async (req: Request, res: Response): Promise<void> => {
+  const tenantId = (req.query.tenant_id as string) || (req.headers['x-tenant-id'] as string);
+  if (!tenantId) {
+    res.status(400).json({ success: false, message: 'tenant_id query parameter is required' });
+    return;
+  }
+
+  try {
+    const vista = await defaultInvoiceQueue.abrirParaRevision(tenantId, String(req.params.id));
+    if (!vista) {
+      res.status(404).json({ success: false, message: 'Esa factura ya no esta esperando revision' });
+      return;
+    }
+    res.status(200).json({ success: true, data: vista });
+  } catch (error) {
+    logger.error('InvoiceRoutes', 'No se pudo abrir la factura de la cola', error);
+    res.status(500).json({ success: false, message: 'Error al abrir la factura de la cola', error: detalleError(error) });
+  }
+});
+
+/**
+ * DELETE /api/v1/invoices/pending/:id
+ * Descarta una factura leida que no se va a ingresar
+ */
+router.delete('/pending/:id', (req: Request, res: Response): void => {
+  const tenantId = (req.query.tenant_id as string) || (req.headers['x-tenant-id'] as string);
+  if (!tenantId) {
+    res.status(400).json({ success: false, message: 'tenant_id query parameter is required' });
+    return;
+  }
+
+  try {
+    // el ticket sigue en la cola hasta que la confirmacion termine, y puede terminar rechazada
+    if (ticketsEnConfirmacion.has(String(req.params.id))) {
+      res.status(409).json({ success: false, message: 'Esa factura se esta confirmando en este momento. Intentelo de nuevo en unos segundos.' });
+      return;
+    }
+    if (!defaultInvoiceQueue.descartar(tenantId, String(req.params.id))) {
+      res.status(404).json({ success: false, message: 'Esa factura ya no esta esperando revision' });
+      return;
+    }
+    res.status(200).json({ success: true, message: 'Factura descartada' });
+  } catch (error) {
+    logger.error('InvoiceRoutes', 'No se pudo descartar la factura de la cola', error);
+    res.status(500).json({ success: false, message: 'Error al descartar la factura', error: detalleError(error) });
+  }
+});
+
+/**
  * POST /api/v1/invoices/confirm
  * Paso 2: Confirmación explícita del usuario para autorizar la ingesta transaccional
  */
 router.post('/confirm', async (req: Request, res: Response): Promise<void> => {
-  const { invoice_data, documento } = req.body;
+  const { invoice_data, documento, cola_id } = req.body;
   const tenant_id = req.body.tenant_id || (req as any).tenant_id || (req.headers['x-tenant-id'] as string) || (req.query.tenant_id as string);
 
   if (!tenant_id || !invoice_data) {
@@ -177,16 +230,43 @@ router.post('/confirm', async (req: Request, res: Response): Promise<void> => {
   try {
     // "documento" es la referencia que devolvio el escaneo: vincula el respaldo tributario a la
     // factura. Si el cliente no lo reenvia, la ingesta funciona igual pero sin documento asociado.
+    // Una factura que viene de la cola usa el documento de su ticket, no el que diga el cliente,
+    // y el ticket se retira en la misma operacion en que la factura queda ingresada
+    let respaldo = documento;
+    if (cola_id) {
+      respaldo = defaultInvoiceQueue.documentoDelTicket(tenant_id, String(cola_id));
+      if (!respaldo) {
+        res.status(404).json({ success: false, message: 'Esa factura ya no esta esperando revision' });
+        return;
+      }
+    }
+
     const result = await defaultInvoiceIngestionService.confirmIngest(
       tenant_id,
       invoice_data as ExtractedInvoiceData,
-      documento
+      respaldo,
+      cola_id ? String(cola_id) : undefined
     );
     res.status(200).json({
       success: true,
       data: result
     });
   } catch (error) {
+    if (error instanceof VencimientoRequeridoError) {
+      res.status(400).json({
+        success: false,
+        code: 'VENCIMIENTO_REQUERIDO',
+        productos: error.productos,
+        message: error.message
+      });
+      return;
+    }
+
+    if (error instanceof TicketNoDisponibleError) {
+      res.status(404).json({ success: false, message: error.message });
+      return;
+    }
+
     // Una factura ya ingresada no es un error del sistema: es una compra ya contada. Se responde
     // 409 para que la interfaz lo distinga de un fallo y lo explique al usuario.
     if (esFacturaDuplicada(error)) {
@@ -242,6 +322,16 @@ router.post('/ingest', async (req: Request, res: Response): Promise<void> => {
       res.status(422).json({ success: false, ilegible: true, message: errorMsg });
       return;
     }
+    if (error instanceof VencimientoRequeridoError) {
+      res.status(400).json({
+        success: false,
+        code: 'VENCIMIENTO_REQUERIDO',
+        productos: error.productos,
+        message: error.message + ' Lea la factura con /scan, declare los vencimientos y confirmela con /confirm.'
+      });
+      return;
+    }
+
     // Una factura ya ingresada no es un error del sistema: es una compra ya contada. Se responde
     // 409 para que la interfaz lo distinga de un fallo y lo explique al usuario.
     if (esFacturaDuplicada(error)) {

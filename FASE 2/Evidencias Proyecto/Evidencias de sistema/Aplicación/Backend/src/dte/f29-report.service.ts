@@ -7,6 +7,7 @@ import { defaultSqliteClient } from '../database/sqlite/client';
 import { logger } from '../utils/logger';
 import { F29Statement, ResumenF29Item } from './types';
 import { mesLocal } from '../utils/fecha-local';
+import { ESTADOS_DE_COLA_SQL } from '../invoices/estados-cola';
 
 export class F29ReportService {
   /**
@@ -138,7 +139,8 @@ export class F29ReportService {
     const compras = defaultSqliteClient.query<any>(
       `SELECT total, fecha_ingreso 
        FROM factura_ingresos 
-       WHERE tenant_id = ? AND strftime('%Y-%m', fecha_ingreso) = ?`,
+       WHERE tenant_id = ? AND strftime('%Y-%m', fecha_ingreso) = ?
+         AND estado NOT IN (${ESTADOS_DE_COLA_SQL})`,
       [tenantId, targetMonth]
     );
 

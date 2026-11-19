@@ -6,7 +6,10 @@ import DialogActions from '@mui/material/DialogActions'
 import Button from '@mui/material/Button'
 import Typography from '@mui/material/Typography'
 import Box from '@mui/material/Box'
+import Alert from '@mui/material/Alert'
+import AlertTitle from '@mui/material/AlertTitle'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
+import { ListaAvisosVencimiento } from '@/features/invoices/components/compartidos/DialogoAlertaVencimiento'
 import { formatoClp } from '@/shared/utils/formatoClp'
 import type { ResultadoIngesta } from '@/features/invoices/types'
 
@@ -18,7 +21,7 @@ type Props = {
 // aviso de que la mercaderia ya quedo en el inventario
 export function DialogoIngresoExitoso({ resultado, onCerrar }: Props) {
   return (
-    <Dialog open={resultado !== null} onClose={onCerrar} maxWidth="xs" fullWidth>
+    <Dialog open={resultado !== null} onClose={onCerrar} maxWidth="sm" fullWidth>
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
         <CheckCircleIcon color="success" />
         Stock actualizado
@@ -33,6 +36,20 @@ export function DialogoIngresoExitoso({ resultado, onCerrar }: Props) {
             <Typography variant="body2" color="text.secondary">
               Factura {resultado.folio_factura} · {resultado.items_count} producto(s) ingresados
             </Typography>
+
+            {resultado.alerta_vencimiento && resultado.alerta_vencimiento.vencidos.length > 0 && (
+              <Alert severity="error" sx={{ mt: 2 }}>
+                <AlertTitle>Ingresaron vencidos: retiralos de la venta</AlertTitle>
+                <ListaAvisosVencimiento avisos={resultado.alerta_vencimiento.vencidos} />
+              </Alert>
+            )}
+
+            {resultado.alerta_vencimiento && resultado.alerta_vencimiento.por_vencer.length > 0 && (
+              <Alert severity="warning" sx={{ mt: 2 }}>
+                <AlertTitle>Vencen en 15 dias o menos</AlertTitle>
+                <ListaAvisosVencimiento avisos={resultado.alerta_vencimiento.por_vencer} />
+              </Alert>
+            )}
 
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>
               Motor: {resultado.ocr_provider} {resultado.used_fallback ? '(respaldo)' : ''} ·{' '}

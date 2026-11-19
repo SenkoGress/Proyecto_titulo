@@ -10,6 +10,8 @@ import { generateChileanBarcode } from '../utils/barcode.utils';
 import { logger } from '../utils/logger';
 import { normalizarFolio } from '../ocr/extraccion';
 import { defaultLotesService } from '../inventory/lotes.service';
+import { AlertaVencimiento, armarAlertaVencimiento, itemsSinVencimientoDeclarado } from '../inventory/vencimiento';
+import { ESTADO_PENDIENTE, ESTADO_FALLIDA, ESTADO_POR_REVISAR, ESTADOS_DE_COLA_SQL, ticketsEnConfirmacion } from './estados-cola';
 import { fechaLocal } from '../utils/fecha-local';
 
 export interface IngestionResult {
@@ -23,6 +25,8 @@ export interface IngestionResult {
   ocr_provider: string;
   duration_ms: number;
   persistido_local?: boolean;
+  /** Productos de esta factura ya vencidos o a quince dias o menos de vencer. */
+  alerta_vencimiento?: AlertaVencimiento;
 }
 
 export interface ScannedItemPreview {
@@ -62,6 +66,29 @@ export interface ScannedInvoicePreview {
   raw_data: ExtractedInvoiceData;
   /** Referencia al documento original ya almacenado; debe reenviarse en confirm para vincularlo. */
   documento?: DocumentoFactura;
+}
+
+/**
+ * El Reglamento Sanitario de los Alimentos (D.S. 977/96) exige controlar el vencimiento de lo que
+ * se vende. Por eso ninguna factura entra al stock sin que cada producto declare su fecha o que
+ * no vence.
+ */
+export class VencimientoRequeridoError extends Error {
+  constructor(public readonly productos: string[]) {
+    super(
+      `Falta declarar el vencimiento de ${productos.length} producto${productos.length === 1 ? '' : 's'}: ` +
+        'cada uno necesita una fecha en formato AAAA-MM-DD o la marca de que no vence, y no las dos a la vez.'
+    );
+    this.name = 'VencimientoRequeridoError';
+  }
+}
+
+/** El ticket de la cola ya no espera revision: otro lo confirmo, lo esta confirmando o lo descarto. */
+export class TicketNoDisponibleError extends Error {
+  constructor() {
+    super('Esa factura ya no esta esperando revision');
+    this.name = 'TicketNoDisponibleError';
+  }
 }
 
 /**
@@ -120,15 +147,30 @@ export class InvoiceIngestionService {
   /**
    * Paso 1: Escanear la factura y generar la previsualización completa sin modificar la base de datos.
    */
-  public async scanInvoice(tenantId: string, input: InvoiceInput): Promise<ScannedInvoicePreview> {
-    const startTime = Date.now();
-
+  public async scanInvoice(
+    tenantId: string,
+    input: InvoiceInput,
+    documentoGuardado?: DocumentoFactura
+  ): Promise<ScannedInvoicePreview> {
     // El documento se guarda antes de leerlo: es el respaldo tributario de la compra y debe
-    // conservarse tanto si el OCR acierta como si falla
-    const documento = this.persistirDocumento(tenantId, input);
+    // conservarse tanto si el OCR acierta como si falla. La cola ya lo guardo y lo reenvia.
+    const documento = documentoGuardado || this.persistirDocumento(tenantId, input);
 
     const ocrResult = await this.ocrDispatcher.processInvoice(input);
-    const invoiceData = ocrResult.data;
+    return this.armarVistaPrevia(tenantId, ocrResult.data, ocrResult.providerName, documento);
+  }
+
+  /**
+   * Cruza lo leido con el inventario de este momento. Se recalcula cada vez que se abre una
+   * factura, porque el stock y los precios pueden haber cambiado desde que se leyo.
+   */
+  public async armarVistaPrevia(
+    tenantId: string,
+    invoiceData: ExtractedInvoiceData,
+    proveedorOcr: string,
+    documento?: DocumentoFactura
+  ): Promise<ScannedInvoicePreview> {
+    const startTime = Date.now();
     const configuredMargin = await defaultTenantConfigService.getProfitMargin(tenantId);
 
     // Verificar si el proveedor ya existe en SQLite local
@@ -196,7 +238,7 @@ export class InvoiceIngestionService {
       iva_credito: tax.iva,
       total_factura: tax.total,
       items_count: processedItems.length,
-      ocr_provider: ocrResult.providerName,
+      ocr_provider: proveedorOcr,
       margin_used: configuredMargin,
       items: processedItems,
       raw_data: {
@@ -244,7 +286,7 @@ export class InvoiceIngestionService {
     const porSubir = defaultSqliteClient.query<any>(
       `SELECT * FROM factura_ingresos
         WHERE tenant_id = ? AND archivo_respaldado = 0 AND archivo_ruta IS NOT NULL
-          AND estado NOT IN ('PENDIENTE_OCR', 'FALLIDA_OCR')
+          AND estado NOT IN (${ESTADOS_DE_COLA_SQL})
         ORDER BY created_at ASC`,
       [tenantId]
     );
@@ -374,9 +416,9 @@ export class InvoiceIngestionService {
     }
 
     for (const fila of filas) {
-      if (fila.estado === 'PENDIENTE_OCR') {
+      if (fila.estado === ESTADO_PENDIENTE || fila.estado === ESTADO_POR_REVISAR) {
         clasificacion.en_proceso_ocr += 1;
-      } else if (fila.estado === 'FALLIDA_OCR') {
+      } else if (fila.estado === ESTADO_FALLIDA) {
         clasificacion.fallidos_ocr += 1;
       } else if (!this.fileStore.existe(fila.archivo_ruta)) {
         clasificacion.sin_archivo += 1;
@@ -435,9 +477,28 @@ export class InvoiceIngestionService {
   public async confirmIngest(
     tenantId: string,
     invoiceData: ExtractedInvoiceData,
-    documento?: DocumentoFactura
+    documento?: DocumentoFactura,
+    ticketCola?: string
   ): Promise<IngestionResult> {
-    return this.executeIngestTransaction(tenantId, invoiceData, invoiceData.metodo_ingreso || 'CONFIRMED_SCAN', false, documento);
+    const metodo = invoiceData.metodo_ingreso || 'CONFIRMED_SCAN';
+    if (!ticketCola) {
+      return this.executeIngestTransaction(tenantId, invoiceData, metodo, false, documento);
+    }
+
+    // Se reserva el ticket antes de la primera espera, para que nadie mas lo confirme ni lo descarte
+    const enRevision = defaultSqliteClient.queryOne<{ id: string }>(
+      'SELECT id FROM factura_ingresos WHERE id = ? AND tenant_id = ? AND estado = ?',
+      [ticketCola, tenantId, ESTADO_POR_REVISAR]
+    );
+    if (!enRevision || ticketsEnConfirmacion.has(ticketCola)) {
+      throw new TicketNoDisponibleError();
+    }
+    ticketsEnConfirmacion.add(ticketCola);
+    try {
+      return await this.executeIngestTransaction(tenantId, invoiceData, metodo, false, documento, ticketCola);
+    } finally {
+      ticketsEnConfirmacion.delete(ticketCola);
+    }
   }
 
   /**
@@ -459,9 +520,20 @@ export class InvoiceIngestionService {
     invoiceData: ExtractedInvoiceData,
     ocrProvider: string,
     usedFallback = false,
-    documento?: DocumentoFactura
+    documento?: DocumentoFactura,
+    ticketCola?: string
   ): Promise<IngestionResult> {
     const startTime = Date.now();
+
+    const sinVencimiento = itemsSinVencimientoDeclarado(invoiceData.items);
+    if (sinVencimiento.length > 0) {
+      throw new VencimientoRequeridoError(sinVencimiento);
+    }
+    // Con la marca de que no vence no hay fecha que guardar: una cadena vacia llegaria a la base
+    invoiceData = {
+      ...invoiceData,
+      items: invoiceData.items.map((item) => (item.no_vence ? { ...item, fecha_vencimiento: undefined } : item))
+    };
     const lotesParaLaNube: Array<{ productoId: string; cantidad: number; fechaVencimiento: string; codigoLote: string | null }> = [];
 
     // Una factura ya ingresada no se vuelve a aceptar: el stock y el credito fiscal de esa
@@ -693,6 +765,14 @@ export class InvoiceIngestionService {
       const totalQuantity = invoiceData.items.reduce((acc, curr) => acc + (Number(curr.cantidad) || 0), 0);
 
       defaultSqliteClient.withTransaction(() => {
+        // El ticket de la cola se retira junto con el ingreso: si quedara, la misma factura
+        // podria confirmarse dos veces
+        if (ticketCola) {
+          defaultSqliteClient.execute(
+            'DELETE FROM factura_ingresos WHERE id = ? AND tenant_id = ? AND estado = ?',
+            [ticketCola, tenantId, ESTADO_POR_REVISAR]
+          );
+        }
         // Reutilizar el ID del proveedor si ya existe para evitar errores de clave foránea en SQLite
         const existingSupplier = defaultSqliteClient.queryOne<{ id: string }>(
           'SELECT id FROM proveedores WHERE tenant_id = ? AND rut_proveedor = ? LIMIT 1',
@@ -872,6 +952,15 @@ export class InvoiceIngestionService {
 
     const invoiceTotal = Number(invoiceData.total ?? (invoiceData as any).total_factura) || 0;
 
+    const alertaVencimiento = armarAlertaVencimiento(invoiceData.items, new Date());
+    for (const vencido of alertaVencimiento.vencidos) {
+      logger.warn('InvoiceIngestionService', 'Producto ingresado con la fecha de vencimiento ya cumplida', {
+        folio: invoiceData.folio_factura,
+        producto: vencido.descripcion,
+        fecha_vencimiento: vencido.fecha_vencimiento
+      });
+    }
+
     return {
       invoice_id: invoiceId,
       folio_factura: invoiceData.folio_factura,
@@ -882,7 +971,8 @@ export class InvoiceIngestionService {
       used_fallback: usedFallback,
       ocr_provider: ocrProvider,
       duration_ms: duration,
-      persistido_local: persistidoLocal
+      persistido_local: persistidoLocal,
+      alerta_vencimiento: alertaVencimiento
     };
   }
 
@@ -908,7 +998,7 @@ export class InvoiceIngestionService {
          WHERE fi.tenant_id = ?
            AND fi.numero_factura = ?
            AND (p.rut_proveedor = ? OR fi.rut_proveedor = ?)
-           AND fi.estado NOT IN ('PENDIENTE_OCR', 'FALLIDA_OCR')
+           AND fi.estado NOT IN (${ESTADOS_DE_COLA_SQL})
          LIMIT 1`,
         [tenantId, folio, rut, rut]
       ) ?? null;
@@ -929,7 +1019,7 @@ export class InvoiceIngestionService {
         `SELECT fi.*, p.nombre_proveedores as proveedor_nombre 
          FROM factura_ingresos fi
          LEFT JOIN proveedores p ON fi.proveedor_id = p.id
-         WHERE fi.tenant_id = $1 AND fi.estado NOT IN ('PENDIENTE_OCR', 'FALLIDA_OCR')
+         WHERE fi.tenant_id = $1 AND fi.estado NOT IN (${ESTADOS_DE_COLA_SQL})
          ORDER BY fi.created_at DESC`,
         [tenantId]
       );
@@ -946,7 +1036,7 @@ export class InvoiceIngestionService {
           `SELECT fi.*, p.nombre_proveedores as proveedor_nombre 
            FROM factura_ingresos fi
            LEFT JOIN proveedores p ON fi.proveedor_id = p.id
-           WHERE fi.tenant_id = ? AND fi.estado NOT IN ('PENDIENTE_OCR', 'FALLIDA_OCR')
+           WHERE fi.tenant_id = ? AND fi.estado NOT IN (${ESTADOS_DE_COLA_SQL})
            ORDER BY fi.fecha_ingreso DESC`,
           [tenantId]
         );

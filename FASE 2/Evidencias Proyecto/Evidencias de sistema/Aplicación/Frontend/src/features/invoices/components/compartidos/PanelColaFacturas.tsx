@@ -7,21 +7,38 @@ import Chip from '@mui/material/Chip'
 import Divider from '@mui/material/Divider'
 import Alert from '@mui/material/Alert'
 import ScheduleOutlined from '@mui/icons-material/ScheduleOutlined'
-import { usePendientes, useProcesarPendientes } from '@/features/invoices/hooks/useInvoices'
+import {
+  useAbrirFacturaDeCola,
+  useDescartarFacturaDeCola,
+  usePendientes,
+  useProcesarPendientes,
+} from '@/features/invoices/hooks/useInvoices'
 import { obtenerMensajeError } from '@/lib/api/apiError'
 import { formatFecha } from '@/shared/utils/formatFecha'
-import type { FacturaEnCola } from '@/features/invoices/types'
+import type { FacturaEnCola, PrevisualizacionFactura } from '@/features/invoices/types'
 
-// facturas guardadas que todavia no se pudieron leer
-export function PanelColaFacturas() {
+type Props = {
+  onRevisar: (vista: PrevisualizacionFactura, colaId: string) => void
+}
+
+// facturas guardadas que todavia no entraron al inventario
+export function PanelColaFacturas({ onRevisar }: Props) {
   const cola = usePendientes()
   const procesar = useProcesarPendientes()
+  const abrir = useAbrirFacturaDeCola()
+  const descartar = useDescartarFacturaDeCola()
 
   const lista = cola.data?.data ?? []
   if (lista.length === 0) return null
 
   const esperando = lista.filter((f) => f.estado === 'PENDIENTE_OCR')
   const rendidas = lista.filter((f) => f.estado === 'FALLIDA_OCR')
+  // ya se leyeron: falta que alguien declare los vencimientos y las confirme
+  const porRevisar = lista.filter((f) => f.estado === 'POR_REVISAR')
+
+  function revisar(id: string) {
+    abrir.mutate(id, { onSuccess: (vista) => onRevisar(vista, id) })
+  }
 
   return (
     <Paper variant="outlined" sx={{ p: 2.5, mb: 3 }}>
@@ -30,9 +47,10 @@ export function PanelColaFacturas() {
 
         <Box sx={{ flexGrow: 1, minWidth: 0 }}>
           <Typography variant="h6" sx={{ fontWeight: 700 }}>
-            Facturas guardadas sin leer
+            Facturas guardadas sin ingresar
           </Typography>
           <Typography variant="body2" color="text.secondary">
+            {porRevisar.length > 0 && `${porRevisar.length} lista${porRevisar.length === 1 ? '' : 's'} para revisar, `}
             {esperando.length} esperando otro intento
             {rendidas.length > 0 && `, ${rendidas.length} hay que ingresarlas a mano`}
           </Typography>
@@ -51,20 +69,27 @@ export function PanelColaFacturas() {
 
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
         {lista.map((factura) => (
-          <FilaCola key={factura.id} factura={factura} maximo={cola.data?.intentos_maximos ?? 3} />
+          <FilaCola
+            key={factura.id}
+            factura={factura}
+            maximo={cola.data?.intentos_maximos ?? 3}
+            ocupado={abrir.isPending || descartar.isPending}
+            onRevisar={() => revisar(factura.id)}
+            onDescartar={() => descartar.mutate(factura.id)}
+          />
         ))}
       </Box>
 
-      {procesar.isError && (
+      {(procesar.error ?? abrir.error ?? descartar.error) && (
         <Alert severity="error" sx={{ mt: 1.5 }}>
-          {obtenerMensajeError(procesar.error)}
+          {obtenerMensajeError(procesar.error ?? abrir.error ?? descartar.error)}
         </Alert>
       )}
 
       {procesar.isSuccess && (
-        <Alert severity={procesar.data.procesadas > 0 ? 'success' : 'info'} sx={{ mt: 1.5 }}>
-          {procesar.data.procesadas > 0
-            ? `Se procesaron ${procesar.data.procesadas}. Revisa el historial para confirmar que quedaron bien.`
+        <Alert severity={procesar.data.por_revisar > 0 ? 'success' : 'info'} sx={{ mt: 1.5 }}>
+          {procesar.data.por_revisar > 0
+            ? `Se leyeron ${procesar.data.por_revisar}. Todavia no entraron al inventario: revisalas para declarar los vencimientos e ingresarlas.`
             : 'Todavia no se pudo leer ninguna. Se vuelve a intentar al sincronizar.'}
         </Alert>
       )}
@@ -72,8 +97,17 @@ export function PanelColaFacturas() {
   )
 }
 
-function FilaCola({ factura, maximo }: { factura: FacturaEnCola; maximo: number }) {
+type PropsFila = {
+  factura: FacturaEnCola
+  maximo: number
+  ocupado: boolean
+  onRevisar: () => void
+  onDescartar: () => void
+}
+
+function FilaCola({ factura, maximo, ocupado, onRevisar, onDescartar }: PropsFila) {
   const seRindio = factura.estado === 'FALLIDA_OCR'
+  const leida = factura.estado === 'POR_REVISAR'
 
   return (
     <Box
@@ -101,19 +135,32 @@ function FilaCola({ factura, maximo }: { factura: FacturaEnCola; maximo: number 
         </Typography>
         <Typography variant="caption" color="text.secondary">
           {factura.created_at ? formatFecha(factura.created_at) : ''}
-          {seRindio
-            ? ` · se intento ${maximo} veces`
-            : ` · intento ${factura.sync_attempts ?? 0} de ${maximo}`}
+          {leida
+            ? ' · ya se leyo, falta declarar los vencimientos'
+            : seRindio
+              ? ` · se intento ${maximo} veces`
+              : ` · intento ${factura.sync_attempts ?? 0} de ${maximo}`}
         </Typography>
       </Box>
 
-      <Chip
-        label={seRindio ? 'Ingresar a mano' : 'Esperando'}
-        size="small"
-        color={seRindio ? 'error' : 'info'}
-        variant={seRindio ? 'filled' : 'outlined'}
-        sx={{ flexShrink: 0 }}
-      />
+      {leida ? (
+        <Box sx={{ display: 'flex', gap: 1, flexShrink: 0 }}>
+          <Button size="small" onClick={onDescartar} disabled={ocupado}>
+            Descartar
+          </Button>
+          <Button size="small" variant="contained" onClick={onRevisar} disabled={ocupado}>
+            Revisar e ingresar
+          </Button>
+        </Box>
+      ) : (
+        <Chip
+          label={seRindio ? 'Ingresar a mano' : 'Esperando'}
+          size="small"
+          color={seRindio ? 'error' : 'info'}
+          variant={seRindio ? 'filled' : 'outlined'}
+          sx={{ flexShrink: 0 }}
+        />
+      )}
     </Box>
   )
 }

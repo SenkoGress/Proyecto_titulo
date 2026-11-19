@@ -209,7 +209,7 @@ describe('Pruebas Unitarias: Documento Ilegible y Validacion de la Extraccion', 
       const resultado = await cola.procesarPendientes(TENANT);
 
       // Antes decia "procesadas: 1" y borraba el ticket sin registrar nada
-      expect(resultado.procesadas).toBe(0);
+      expect(resultado.por_revisar).toBe(0);
       expect(resultado.fallidas).toBe(1);
       const enCola = cola.listar(TENANT);
       expect(enCola).toHaveLength(1);

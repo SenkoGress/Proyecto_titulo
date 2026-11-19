@@ -58,6 +58,8 @@ export async function escanearFactura(
 export async function confirmarFactura(variables: {
   datos: DatosExtraidosFactura
   documento?: DocumentoFactura
+  // viene de la cola: el servidor usa el documento del ticket y lo retira al ingresar
+  colaId?: string
 }) {
   const { data } = await httpClient.post<{ success: boolean; data: ResultadoIngesta }>(
     endpoints.invoices.confirm,
@@ -65,6 +67,7 @@ export async function confirmarFactura(variables: {
       tenant_id: tenantActual(),
       invoice_data: variables.datos,
       documento: variables.documento,
+      cola_id: variables.colaId,
     },
   )
   return data.data
@@ -91,13 +94,29 @@ export async function obtenerPendientes() {
 export async function procesarPendientes() {
   const { data } = await httpClient.post<{
     success: boolean
-    data: { procesadas: number; fallidas: number; pendientes: number }
+    data: { por_revisar: number; fallidas: number; pendientes: number }
   }>(
     endpoints.invoices.procesarPendientes,
     { tenant_id: tenantActual() },
     { timeout: ESPERA_COLA_MS },
   )
   return data.data
+}
+
+// abre una factura que la cola ya leyo, con el stock y los precios de este momento
+export async function abrirFacturaDeCola(id: string) {
+  const { data } = await httpClient.get<{ success: boolean; data: PrevisualizacionFactura }>(
+    endpoints.invoices.vistaPendiente(id),
+  )
+  return data.data
+}
+
+// retira de la cola una factura leida que no se va a ingresar
+export async function descartarFacturaDeCola(id: string) {
+  const { data } = await httpClient.delete<{ success: boolean; message: string }>(
+    endpoints.invoices.pendiente(id),
+  )
+  return data
 }
 
 // el archivo original: llega como bytes, no como json

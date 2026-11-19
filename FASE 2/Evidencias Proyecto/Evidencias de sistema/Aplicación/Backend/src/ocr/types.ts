@@ -7,6 +7,8 @@ export interface ExtractedInvoiceItem {
   unidad?: string;
   lote?: string;
   fecha_vencimiento?: string;
+  /** El usuario declaro que el producto no vence: no lleva fecha ni genera lote. */
+  no_vence?: boolean;
 }
 
 export interface ExtractedInvoiceData {

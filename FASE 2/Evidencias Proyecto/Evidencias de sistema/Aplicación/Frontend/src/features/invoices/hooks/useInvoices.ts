@@ -1,7 +1,9 @@
 // src/features/invoices/hooks/useInvoices.ts
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  abrirFacturaDeCola,
   confirmarFactura,
+  descartarFacturaDeCola,
   obtenerFacturas,
   escanearFactura,
   obtenerPendientes,
@@ -25,7 +27,23 @@ export function useConfirmarFactura() {
     onSuccess: () => {
       // el stock cambio, refrescamos el catalogo del pos
       clienteQuery.invalidateQueries({ queryKey: ['pos', 'productos'] })
+      // si venia de la cola, su ticket ya no existe
+      clienteQuery.invalidateQueries({ queryKey: ['invoices'] })
     },
+  })
+}
+
+// abrir una factura que la cola ya leyo, para declarar los vencimientos y confirmarla
+export function useAbrirFacturaDeCola() {
+  return useMutation({ mutationFn: abrirFacturaDeCola })
+}
+
+export function useDescartarFacturaDeCola() {
+  const clienteQuery = useQueryClient()
+
+  return useMutation({
+    mutationFn: descartarFacturaDeCola,
+    onSuccess: () => clienteQuery.invalidateQueries({ queryKey: ['invoices'] }),
   })
 }
 

@@ -78,7 +78,8 @@ describe('Smart Invoice Ingestion & Resilient OCR Fallback', () => {
           descripcion: 'Bebida Cola 1.5L Pack x6',
           cantidad: 24.0,
           precio_unitario: 850.0,
-          subtotal: 20400.0
+          subtotal: 20400.0,
+          fecha_vencimiento: '2099-12-31'
         }
       ],
       total: 20400.0

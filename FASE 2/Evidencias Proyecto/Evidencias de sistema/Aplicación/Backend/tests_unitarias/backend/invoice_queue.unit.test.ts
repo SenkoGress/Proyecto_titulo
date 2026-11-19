@@ -8,21 +8,22 @@ import { InvoiceFileStore } from '../../backend/src/invoices/invoice-file.store'
 import {
   ESTADO_FALLIDA,
   ESTADO_PENDIENTE,
+  ESTADO_POR_REVISAR,
   InvoiceQueueService
 } from '../../backend/src/invoices/invoice-queue.service';
 import { InvoiceIngestionService } from '../../backend/src/invoices/invoice-ingestion.service';
-import { IngestionResult } from '../../backend/src/invoices/invoice-ingestion.service';
+import { ScannedInvoicePreview } from '../../backend/src/invoices/invoice-ingestion.service';
 
 const TENANT = '00000000-0000-0000-0000-000000000001';
 const DOCUMENTO = Buffer.from('contenido-de-la-factura').toString('base64');
 
-/** Ingesta simulada: permite decidir si la digitalizacion de turno funciona o falla. */
+/** Lectura simulada: permite decidir si la digitalizacion de turno funciona o falla. */
 function ingestaQueResponde(respuestas: Array<'ok' | 'falla'>) {
   const usadas: string[] = [];
   const documentos: Array<{ ruta: string; nombre: string; mime: string } | undefined> = [];
   let i = 0;
   const servicio = {
-    async ingestInvoice(_t: string, _input: unknown, documento?: { ruta: string; nombre: string; mime: string }): Promise<IngestionResult> {
+    async scanInvoice(_t: string, _input: unknown, documento?: { ruta: string; nombre: string; mime: string }): Promise<ScannedInvoicePreview> {
       documentos.push(documento);
       const turno = respuestas[Math.min(i, respuestas.length - 1)];
       i += 1;
@@ -30,17 +31,14 @@ function ingestaQueResponde(respuestas: Array<'ok' | 'falla'>) {
       if (turno === 'falla') {
         throw new Error('No fue posible digitalizar el documento mediante IA ni extracción nativa de PDF.');
       }
+      const item = { sku: 'SKU-COLA', descripcion: 'Producto de la cola', cantidad: 1, precio_unitario: 10000, subtotal: 10000 };
       return {
-        invoice_id: 'inv-generada',
         folio_factura: 'FAC-DESDE-COLA',
-        proveedor_id: 'prov-1',
-        rut_proveedor: '76.123.456-0',
-        total: 10000,
-        items_count: 1,
-        used_fallback: false,
         ocr_provider: 'StubOcr',
-        duration_ms: 1
-      };
+        items: [item],
+        raw_data: { folio_factura: 'FAC-DESDE-COLA', rut_proveedor: '76.123.456-0', items: [item] },
+        documento
+      } as unknown as ScannedInvoicePreview;
     }
   };
   return { servicio: servicio as unknown as InvoiceIngestionService, usadas, documentos };
@@ -58,11 +56,11 @@ describe('Pruebas Unitarias: Cola de Facturas Pendientes de Digitalizacion', () 
   beforeEach(() => {
     directorio = fs.mkdtempSync(path.join(os.tmpdir(), 'gestock-cola-'));
     store = new InvoiceFileStore(directorio, 10);
-    defaultSqliteClient.execute('DELETE FROM factura_ingresos WHERE estado IN (?, ?)', [ESTADO_PENDIENTE, ESTADO_FALLIDA]);
+    defaultSqliteClient.execute('DELETE FROM factura_ingresos WHERE estado IN (?, ?, ?)', [ESTADO_PENDIENTE, ESTADO_FALLIDA, ESTADO_POR_REVISAR]);
   });
 
   afterEach(() => {
-    defaultSqliteClient.execute('DELETE FROM factura_ingresos WHERE estado IN (?, ?)', [ESTADO_PENDIENTE, ESTADO_FALLIDA]);
+    defaultSqliteClient.execute('DELETE FROM factura_ingresos WHERE estado IN (?, ?, ?)', [ESTADO_PENDIENTE, ESTADO_FALLIDA, ESTADO_POR_REVISAR]);
     fs.rmSync(directorio, { recursive: true, force: true });
   });
 
@@ -83,7 +81,7 @@ describe('Pruebas Unitarias: Cola de Facturas Pendientes de Digitalizacion', () 
     expect(guardados).toHaveLength(1);
   });
 
-  test('procesar la cola digitaliza la factura y retira el ticket', async () => {
+  test('procesar la cola lee la factura y la deja por revisar, sin ingresarla', async () => {
     const { servicio, usadas } = ingestaQueResponde(['ok']);
     const cola = new InvoiceQueueService(defaultSqliteClient, store, servicio, 3);
     cola.encolar(TENANT, DOCUMENTO, 'factura.pdf', 'application/pdf');
@@ -91,10 +89,14 @@ describe('Pruebas Unitarias: Cola de Facturas Pendientes de Digitalizacion', () 
     const resultado = await cola.procesarPendientes(TENANT);
 
     expect(usadas).toEqual(['ok']);
-    expect(resultado.procesadas).toBe(1);
+    expect(resultado.por_revisar).toBe(1);
     expect(resultado.fallidas).toBe(0);
     expect(resultado.detalle[0].folio).toBe('FAC-DESDE-COLA');
-    expect(cola.listar(TENANT)).toHaveLength(0);
+    // el ticket sigue en la cola: falta que una persona declare los vencimientos y la confirme
+    const enCola = cola.listar(TENANT);
+    expect(enCola).toHaveLength(1);
+    expect(enCola[0].estado).toBe(ESTADO_POR_REVISAR);
+    expect(cola.contarPendientes(TENANT)).toBe(0);
   });
 
   test('una caida del servicio deja la factura en cola SIN gastar intento', async () => {
@@ -106,7 +108,7 @@ describe('Pruebas Unitarias: Cola de Facturas Pendientes de Digitalizacion', () 
 
     const resultado = await cola.procesarPendientes(TENANT);
 
-    expect(resultado.procesadas).toBe(0);
+    expect(resultado.por_revisar).toBe(0);
     expect(resultado.pendientes).toBe(1);
     const enCola = cola.listar(TENANT);
     expect(enCola[0].estado).toBe(ESTADO_PENDIENTE);
@@ -115,7 +117,7 @@ describe('Pruebas Unitarias: Cola de Facturas Pendientes de Digitalizacion', () 
 
   test('un fallo propio del sistema si cuenta el intento', async () => {
     const servicio = {
-      async ingestInvoice(): Promise<never> {
+      async scanInvoice(): Promise<never> {
         throw new Error('la columna cantidad no admite nulos');
       }
     };
@@ -141,23 +143,23 @@ describe('Pruebas Unitarias: Cola de Facturas Pendientes de Digitalizacion', () 
     // Una caida del servicio se resuelve sola cuando el servicio vuelve. Antes la tercera
     // pasada marcaba la factura como fallida y el documento quedaba fuera del ciclo.
     expect(usadas).toHaveLength(3);
-    expect(tercera.procesadas).toBe(0);
+    expect(tercera.por_revisar).toBe(0);
     const enCola = cola.listar(TENANT);
     expect(enCola[0].estado).toBe(ESTADO_PENDIENTE);
     expect(cola.contarPendientes(TENANT)).toBe(1);
   });
 
-  test('una factura reintentada con exito despues de fallar termina procesada', async () => {
+  test('una factura reintentada con exito despues de fallar termina por revisar', async () => {
     const { servicio } = ingestaQueResponde(['falla', 'ok']);
     const cola = new InvoiceQueueService(defaultSqliteClient, store, servicio, 3);
     cola.encolar(TENANT, DOCUMENTO, 'factura.pdf', 'application/pdf');
 
     const primera = await cola.procesarPendientes(TENANT);
-    expect(primera.procesadas).toBe(0);
+    expect(primera.por_revisar).toBe(0);
 
     const segunda = await cola.procesarPendientes(TENANT);
-    expect(segunda.procesadas).toBe(1);
-    expect(cola.listar(TENANT)).toHaveLength(0);
+    expect(segunda.por_revisar).toBe(1);
+    expect(cola.listar(TENANT)[0].estado).toBe(ESTADO_POR_REVISAR);
   });
 
   test('si el documento ya no esta en disco la factura se marca fallida sin reintentos ciegos', async () => {
@@ -171,7 +173,7 @@ describe('Pruebas Unitarias: Cola de Facturas Pendientes de Digitalizacion', () 
     expect(cola.listar(TENANT)[0].estado).toBe(ESTADO_FALLIDA);
   });
 
-  test('al procesar la cola el documento se vincula a la factura, no queda huerfano', async () => {
+  test('al procesar la cola la lectura recibe el documento ya guardado, no queda huerfano', async () => {
     const { servicio, documentos } = ingestaQueResponde(['ok']);
     const cola = new InvoiceQueueService(defaultSqliteClient, store, servicio, 3);
     cola.encolar(TENANT, DOCUMENTO, 'factura.pdf', 'application/pdf');

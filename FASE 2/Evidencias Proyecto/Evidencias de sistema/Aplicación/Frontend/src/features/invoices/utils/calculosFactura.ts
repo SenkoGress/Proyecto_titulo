@@ -6,7 +6,7 @@ import type { ItemFactura } from '@/features/invoices/types'
 export function recalcularFila(
   fila: ItemFactura,
   cambios: Partial<
-    Pick<ItemFactura, 'cantidad' | 'precio_unitario' | 'descripcion' | 'sku' | 'fecha_vencimiento'>
+    Pick<ItemFactura, 'cantidad' | 'precio_unitario' | 'descripcion' | 'sku' | 'fecha_vencimiento' | 'no_vence'>
   >,
 ): ItemFactura {
   const actualizada = { ...fila, ...cambios }

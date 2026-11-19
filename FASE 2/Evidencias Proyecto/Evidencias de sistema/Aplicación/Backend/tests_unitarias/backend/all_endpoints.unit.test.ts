@@ -20,7 +20,7 @@ const rsaKey = crypto.generateKeyPairSync('rsa', {
 // Una imagen minima valida: la ruta solo exige formato data URL y el tope de tamano
 const FOTO = `data:image/png;base64,${Buffer.from('foto').toString('base64')}`;
 
-describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (76/76)', () => {
+describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (81/81)', () => {
   let server: http.Server;
   let baseUrl: string;
   let dteId = 'demo-dte-01';
@@ -397,7 +397,7 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (7
         rut_proveedor: '76.123.456-0',
         razon_social: 'Distribuidora del Sur',
         fecha_emision: '2026-09-16',
-        items: [{ sku: 'PROD-01', descripcion: 'Aceite 1L', cantidad: 12, precio_unitario: 1200, subtotal: 14400 }]
+        items: [{ sku: 'PROD-01', descripcion: 'Aceite 1L', cantidad: 12, precio_unitario: 1200, subtotal: 14400, fecha_vencimiento: '2099-12-31' }]
       };
       const res = await requestApi('POST', '/api/v1/invoices/confirm', {
         tenant_id: DEMO_TENANT,
@@ -408,6 +408,7 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (7
     });
 
     test('32. POST /api/v1/invoices/ingest ingresa factura confirmada al stock', async () => {
+      // esta ruta no tiene donde declarar vencimientos: ingresa porque el motor de prueba los trae
       const res = await requestApi('POST', '/api/v1/invoices/ingest', {
         tenant_id: DEMO_TENANT,
         file_name: 'factura_ingesta.pdf',
@@ -430,7 +431,7 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (7
       const res = await requestApi('POST', '/api/v1/invoices/process-pending', { tenant_id: DEMO_TENANT });
 
       expect(res.status).toBe(200);
-      expect(res.data.data).toHaveProperty('procesadas');
+      expect(res.data.data).toHaveProperty('por_revisar');
       expect(res.data.data).toHaveProperty('fallidas');
       expect(res.data.data).toHaveProperty('pendientes');
     });
@@ -904,6 +905,41 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (7
       const res = await requestApi('GET', '/api/v1/pos/products/lookup/PRUEBA-1', undefined, {
         Authorization: `Bearer ${adminToken}`
       });
+
+      expect(res.status).toBe(400);
+      expect(res.data.success).toBe(false);
+    });
+
+    test('74. GET /api/v1/invoices/pending/:id/preview responde 404 si la factura no espera revision', async () => {
+      const res = await requestApi('GET', `/api/v1/invoices/pending/00000000-0000-0000-0000-0000000000ff/preview?tenant_id=${DEMO_TENANT}`);
+
+      expect(res.status).toBe(404);
+      expect(res.data.success).toBe(false);
+    });
+
+    test('75. DELETE /api/v1/invoices/pending/:id responde 404 si la factura no espera revision', async () => {
+      const res = await requestApi('DELETE', `/api/v1/invoices/pending/00000000-0000-0000-0000-0000000000ff?tenant_id=${DEMO_TENANT}`);
+
+      expect(res.status).toBe(404);
+      expect(res.data.success).toBe(false);
+    });
+
+    test('76. POST /api/v1/auth/password/olvide exige el correo', async () => {
+      const res = await requestApi('POST', '/api/v1/auth/password/olvide', {});
+
+      expect(res.status).toBe(400);
+      expect(res.data.success).toBe(false);
+    });
+
+    test('77. POST /api/v1/auth/password/restablecer exige el codigo y la clave nueva', async () => {
+      const res = await requestApi('POST', '/api/v1/auth/password/restablecer', {});
+
+      expect(res.status).toBe(400);
+      expect(res.data.success).toBe(false);
+    });
+
+    test('78. POST /api/v1/suppliers/:id/pedido-correo rechaza un pedido sin mensaje', async () => {
+      const res = await requestApi('POST', '/api/v1/suppliers/00000000-0000-0000-0000-0000000000ff/pedido-correo', { tenant_id: DEMO_TENANT });
 
       expect(res.status).toBe(400);
       expect(res.data.success).toBe(false);

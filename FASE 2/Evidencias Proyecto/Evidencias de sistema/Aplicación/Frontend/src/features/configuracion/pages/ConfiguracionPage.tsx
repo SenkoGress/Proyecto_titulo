@@ -13,6 +13,7 @@ import { SeccionPciDss } from '@/features/configuracion/components/SeccionPciDss
 import { SeccionUsuarios } from '@/features/configuracion/components/SeccionUsuarios'
 import { SeccionClave } from '@/features/configuracion/components/SeccionClave'
 import { SeccionImpresion } from '@/features/configuracion/components/SeccionImpresion'
+import { SeccionVencimientos } from '@/features/configuracion/components/SeccionVencimientos'
 import { usePuedeAdministrar } from '@/features/auth/stores/sesionStore'
 
 // configuracion del sistema
@@ -38,6 +39,7 @@ export function ConfiguracionPage() {
         <SeccionApariencia />
         <SeccionImpresion />
         <SeccionClave />
+        <SeccionVencimientos />
 
         {esAdmin && (
           <>

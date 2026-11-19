@@ -29,6 +29,7 @@ const ESTADO_FACTURA: Record<string, [string, Tono]> = {
   PROCESSED: ['Procesada', 'success'],
   PROCESADA: ['Procesada', 'success'],
   PENDIENTE_OCR: ['En cola', 'warning'],
+  POR_REVISAR: ['Por revisar', 'info'],
   FALLIDA_OCR: ['Fallo la lectura', 'error'],
 }
 

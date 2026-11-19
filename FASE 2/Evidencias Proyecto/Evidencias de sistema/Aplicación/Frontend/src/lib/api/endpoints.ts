@@ -78,6 +78,8 @@ export const endpoints = {
     listar: `${API_V1}/invoices/`,
     pendientes: `${API_V1}/invoices/pending`,
     procesarPendientes: `${API_V1}/invoices/process-pending`,
+    pendiente: (id: string) => `${API_V1}/invoices/pending/${id}`,
+    vistaPendiente: (id: string) => `${API_V1}/invoices/pending/${id}/preview`,
     documento: (id: string) => `${API_V1}/invoices/${id}/document`,
   },
   caja: {

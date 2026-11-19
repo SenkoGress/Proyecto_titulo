@@ -1,5 +1,5 @@
 // src/features/invoices/pages/IngresoFacturasPage.tsx
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import { Migas } from '@/shared/components/ui/Migas'
@@ -21,6 +21,8 @@ import { useConfirmarFactura,
   useFacturas } from '@/features/invoices/hooks/useInvoices'
 import { recalcularFila } from '@/features/invoices/utils/calculosFactura'
 import { DialogoDatosProveedor } from '@/features/invoices/components/compartidos/DialogoDatosProveedor'
+import { DialogoAlertaVencimiento } from '@/features/invoices/components/compartidos/DialogoAlertaVencimiento'
+import { productosVencidos, faltaVencimiento } from '@/features/invoices/utils/vencimientoFactura'
 import {
   camposParaConfirmar,
   datosDesdeFactura,
@@ -44,6 +46,7 @@ function filaVacia(): ItemFactura {
     stock_actual: 0,
     stock_proyectado: 1,
     fecha_vencimiento: null,
+    no_vence: false,
   }
 }
 
@@ -70,6 +73,10 @@ export function IngresoFacturasPage() {
   const [totalDeclarado, setTotalDeclarado] = useState(0)
   const [proveedor, setProveedor] = useState<DatosProveedorFactura | null>(null)
   const [pidiendoProveedor, setPidiendoProveedor] = useState(false)
+  // factura que viene de la cola: al confirmar se retira su ticket
+  const [colaId, setColaId] = useState<string | null>(null)
+  const [avisandoVencidos, setAvisandoVencidos] = useState(false)
+  const [intentoSinFechas, setIntentoSinFechas] = useState(false)
 
   const confirmar = useConfirmarFactura()
 
@@ -86,12 +93,23 @@ export function IngresoFacturasPage() {
       return
     }
 
-    setPreview(resultado.preview)
-    setItems(resultado.preview.items)
-    setTotalDeclarado(resultado.preview.total_factura)
+    cargarVista(resultado.preview)
+  }
+
+  // deja la factura leida en la pantalla de revision
+  function cargarVista(vista: PrevisualizacionFactura) {
+    setPreview(vista)
+    setItems(vista.items)
+    setTotalDeclarado(vista.total_factura)
     // proveedor nuevo al que le faltan datos: se piden ahora, antes de revisar los productos
-    setProveedor(datosDesdeFactura(resultado.preview))
-    setPidiendoProveedor(faltanDatos(resultado.preview))
+    setProveedor(datosDesdeFactura(vista))
+    setPidiendoProveedor(faltanDatos(vista))
+  }
+
+  // una factura que la cola ya leyo: se revisa igual que una recien subida
+  function revisarDeCola(vista: PrevisualizacionFactura, id: string) {
+    setColaId(id)
+    cargarVista(vista)
   }
 
   function cambiarFila(indice: number, cambios: Partial<ItemFactura>) {
@@ -114,12 +132,40 @@ export function IngresoFacturasPage() {
     setItems([])
     setProveedor(null)
     setPidiendoProveedor(false)
+    setColaId(null)
+    setAvisandoVencidos(false)
+    setIntentoSinFechas(false)
     confirmar.reset()
   }
 
-  // enviar la version revisada al backend
+  // d.s. 977/96: sin la fecha de cada producto, o la marca de que no vence, no se ingresa
+  const avisoVencimientos = useRef<HTMLDivElement>(null)
+  const sinVencimiento = items.filter(faltaVencimiento)
+  const vencidos = productosVencidos(items, new Date())
+
   function confirmarIngreso() {
     if (!preview) return
+
+    if (sinVencimiento.length > 0) {
+      setIntentoSinFechas(true)
+      // el aviso queda arriba, fuera de la vista de quien esta en el boton
+      avisoVencimientos.current?.scrollIntoView({ block: 'center' })
+      return
+    }
+
+    // un producto vencido se avisa antes de ingresar, pero no se bloquea
+    if (vencidos.length > 0) {
+      setAvisandoVencidos(true)
+      return
+    }
+
+    enviarIngreso()
+  }
+
+  // enviar la version revisada al backend
+  function enviarIngreso() {
+    if (!preview) return
+    setAvisandoVencidos(false)
 
     confirmar.mutate({
       datos: {
@@ -133,10 +179,12 @@ export function IngresoFacturasPage() {
           precio_unitario: item.precio_unitario,
           subtotal: item.subtotal,
           unidad: item.unidad,
-          fecha_vencimiento: item.fecha_vencimiento || null,
+          fecha_vencimiento: item.no_vence ? null : item.fecha_vencimiento || null,
+          no_vence: item.no_vence === true,
         })),
       },
       documento: preview.documento,
+      colaId: colaId ?? undefined,
     })
   }
 
@@ -159,7 +207,7 @@ export function IngresoFacturasPage() {
 
       {!preview && !encolada && !ilegible && (
         <>
-          <PanelColaFacturas />
+          <PanelColaFacturas onRevisar={revisarDeCola} />
           <SubirFactura onEscaneada={alEscanear} />
         </>
       )}
@@ -183,6 +231,28 @@ export function IngresoFacturasPage() {
           ingreso el {formatFechaSola(duplicada.fecha_ingreso)}. Si la confirmas de nuevo, el stock vuelve
           a subir por una compra que ya esta contada.
         </Alert>
+      )}
+
+      {preview && (
+        <Alert
+          ref={avisoVencimientos}
+          severity={sinVencimiento.length === 0 ? 'success' : intentoSinFechas ? 'error' : 'warning'}
+          sx={{ mb: 2 }}
+        >
+          <AlertTitle>Vencimientos (D.S. N° 977/96, Reglamento Sanitario de los Alimentos)</AlertTitle>
+          {sinVencimiento.length === 0
+            ? 'Todos los productos tienen su fecha de vencimiento o la marca de que no vencen.'
+            : `${sinVencimiento.length === 1 ? 'Falta 1 producto' : `Faltan ${sinVencimiento.length} productos`} por declarar: ` +
+              'escribe la fecha de vencimiento o marca «No vence». Sin eso la factura no se puede ingresar.'}
+        </Alert>
+      )}
+
+      {preview && avisandoVencidos && (
+        <DialogoAlertaVencimiento
+          vencidos={vencidos}
+          onVolver={() => setAvisandoVencidos(false)}
+          onIngresar={enviarIngreso}
+        />
       )}
 
       {preview?.es_proveedor_nuevo && proveedor && (

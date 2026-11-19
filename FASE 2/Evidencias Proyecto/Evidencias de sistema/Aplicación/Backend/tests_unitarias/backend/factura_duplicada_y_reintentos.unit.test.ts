@@ -26,7 +26,7 @@ const factura: ExtractedInvoiceData = {
   rut_proveedor: '76.998.776-5',
   razon_social: 'Froneri Chile SpA',
   fecha_emision: '2026-10-20',
-  items: [{ descripcion: 'Helado Vainilla 1L', cantidad: 10, precio_unitario: 1200, subtotal: 12000 }],
+  items: [{ descripcion: 'Helado Vainilla 1L', cantidad: 10, precio_unitario: 1200, subtotal: 12000, fecha_vencimiento: '2099-12-31' }],
   total: 12000,
   metodo_ingreso: 'TEST'
 };

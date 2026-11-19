@@ -16,6 +16,8 @@ export type ItemFactura = {
   stock_proyectado: number
   // la escribe el usuario: las facturas chilenas casi nunca la traen
   fecha_vencimiento?: string | null
+  // el usuario declara que el producto no vence; reemplaza a la fecha
+  no_vence?: boolean
 }
 
 // lo que espera POST /invoices/confirm (ExtractedInvoiceData del backend)
@@ -27,6 +29,15 @@ export type ItemExtraido = {
   subtotal: number
   unidad?: string
   fecha_vencimiento?: string | null
+  no_vence?: boolean
+}
+
+// producto vencido o por vencer que el sistema avisa al ingresar una factura
+export type AvisoVencimiento = {
+  descripcion: string
+  fecha_vencimiento: string
+  cantidad: number
+  dias_restantes: number
 }
 
 export type DatosExtraidosFactura = {
@@ -79,7 +90,7 @@ export type FacturaEnCola = {
   id: string
   numero_factura: string
   archivo_nombre: string
-  estado: 'PENDIENTE_OCR' | 'FALLIDA_OCR'
+  estado: 'PENDIENTE_OCR' | 'FALLIDA_OCR' | 'POR_REVISAR'
   intentos_maximos: number
   sync_attempts?: number
   ultimo_error?: string | null
@@ -102,6 +113,7 @@ export type ResultadoIngesta = {
   used_fallback: boolean
   ocr_provider: string
   duration_ms: number
+  alerta_vencimiento?: { vencidos: AvisoVencimiento[]; por_vencer: AvisoVencimiento[] }
 }
 
 // factura ya guardada, de GET /invoices
