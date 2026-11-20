@@ -17,6 +17,8 @@ import { TipoDTE } from '../dte/types';
 import { logger } from '../utils/logger';
 import { mesLocal } from '../utils/fecha-local';
 import { ESTADOS_DE_COLA_SQL } from '../invoices/estados-cola';
+import { bytesDelSobre } from '../dte/sii-envio.service';
+import { rutSiiSeguro } from '../utils/sii.utils';
 
 const MENSAJE_ITEM_INVALIDO = 'Cada ítem necesita una cantidad mayor que cero y un precio que no sea negativo.';
 
@@ -80,6 +82,12 @@ dteRouter.post('/config', (req: Request, res: Response) => {
       telefono,
       correoEmisor
     } = req.body;
+
+    // un RUT de emisor invalido dejaria sin boleta todas las ventas: no se guarda
+    if (rut && !rutSiiSeguro(rut)) {
+      res.status(400).json({ success: false, error: 'EMISOR_RUT_INVALIDO', message: 'El RUT del emisor no es valido: revise el numero y el digito verificador.' });
+      return;
+    }
 
     defaultSqliteClient.withTransaction(() => {
       const setConf = (clave: string, val: string, desc: string) => {
@@ -546,7 +554,7 @@ dteRouter.get('/envio/:id/sobre', (req: Request, res: Response) => {
 
     res.setHeader('Content-Type', 'application/xml; charset=ISO-8859-1');
     res.setHeader('Content-Disposition', `attachment; filename="EnvioDTE-${req.params.id}.xml"`);
-    res.send(sobre.sobre_xml);
+    res.send(bytesDelSobre(sobre.sobre_xml));
   } catch (err: any) {
     logger.error('DteRoutes', 'Error entregando el sobre', err);
     res.status(500).json({ success: false, error: err.message });

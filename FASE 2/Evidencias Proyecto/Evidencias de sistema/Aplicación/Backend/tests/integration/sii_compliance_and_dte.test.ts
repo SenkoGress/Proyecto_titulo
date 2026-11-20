@@ -89,12 +89,13 @@ describe('Cumplimiento Normativo SII & Integración POS', () => {
 
       expect(ted.tedXml).toContain('<TED version="1.0">');
       expect(ted.tedXml).toContain('<DD>');
-      expect(ted.tedXml).toContain('<RE>76.123.456-0</RE>');
+      // el SII exige el RUT sin puntos (RUTType)
+      expect(ted.tedXml).toContain('<RE>76123456-0</RE>');
       expect(ted.tedXml).toContain('<TD>39</TD>');
       expect(ted.tedXml).toContain('<F>9999</F>');
       expect(ted.tedXml).toContain('<MNT>5990</MNT>');
       expect(ted.tedXml).toContain('<CAF version="1.0">');
-      expect(ted.tedXml).toContain('<FRMT alg="SHA1withRSA">');
+      expect(ted.tedXml).toContain('<FRMT algoritmo="SHA1withRSA">');
       expect(ted.firmaSha1RsaBase64).toBeTruthy();
       expect(ted.firmaSha1RsaBase64.length).toBeGreaterThan(50);
     });

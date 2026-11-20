@@ -31,6 +31,7 @@ import {
 
 import { generateChileanBarcode } from '../utils/barcode.utils';
 import { detalleError } from '../utils/detalle-error';
+import { rutSiiSeguro } from '../utils/sii.utils';
 
 const router = Router();
 const sqlite = defaultSqliteClient;
@@ -807,6 +808,25 @@ router.post('/checkout', async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
+  // Sin un RUT de emisor valido no se puede emitir la boleta, y una venta sin boleta no cumple con
+  // el SII: se rechaza antes de cobrar. Lo mismo la factura a un RUT que no se puede leer.
+  if (!rutSiiSeguro(defaultDteEmitter.getTenantFiscalConfig(tenant_id).emisor.rut)) {
+    res.status(400).json({
+      success: false,
+      error: 'EMISOR_RUT_INVALIDO',
+      message: 'El RUT del emisor en Configuracion no es valido, y sin el no se puede emitir la boleta. Corrijalo antes de vender.'
+    });
+    return;
+  }
+  if (tipo_comprobante === 'FACTURA' && receptor_empresa && !rutSiiSeguro(receptor_empresa.rut)) {
+    res.status(400).json({
+      success: false,
+      error: 'RUT_RECEPTOR_INVALIDO',
+      message: 'El RUT de la empresa de la factura no es valido: revise el numero y el digito verificador.'
+    });
+    return;
+  }
+
   const startTime = Date.now();
   const saleId = uuidv4();
   const folio = `POS-${Date.now()}`;
@@ -988,7 +1008,8 @@ router.post('/checkout', async (req: Request, res: Response): Promise<void> => {
           comuna: receptor_empresa.comuna || 'SANTIAGO',
           ciudad: receptor_empresa.ciudad || 'SANTIAGO'
         };
-      } else if (rut_cliente) {
+      } else if (rut_cliente && rutSiiSeguro(rut_cliente)) {
+        // un RUT de cliente que no se puede leer ("S/R", "-") deja la boleta como cliente anonimo
         receptorFinal = {
           rut: rut_cliente,
           razonSocial: 'CLIENTE IDENTIFICADO'
@@ -1525,6 +1546,18 @@ router.post('/devolucion', async (req: Request, res: Response): Promise<void> =>
     const folioRef = dteOriginal?.folio || parseInt((ventaOriginal.folio_local_sqlite || '1').replace(/\D/g, ''), 10) || 1;
     const fechaRef = (dteOriginal?.fecha_emision || ventaOriginal.fecha || new Date().toISOString()).substring(0, 10);
 
+    // La nota de credito se revisa antes de devolver nada: sin RUT de emisor no se puede emitir, y un
+    // RUT de cliente que no se puede leer, guardado antes de la 1.0.4, pasa a cliente anonimo
+    if (!rutSiiSeguro(defaultDteEmitter.getTenantFiscalConfig(tenant_id).emisor.rut)) {
+      res.status(400).json({
+        success: false,
+        error: 'EMISOR_RUT_INVALIDO',
+        message: 'El RUT del emisor en Configuracion no es valido, y sin el no se puede emitir la nota de credito. Corrijalo antes de devolver.'
+      });
+      return;
+    }
+    const receptorNc = dteOriginal?.rut_receptor && rutSiiSeguro(dteOriginal.rut_receptor) ? dteOriginal : null;
+
     // 5. Lo cobrado con tarjeta se devuelve primero en la maquina: si no se puede, no hay devolucion
     const returnSaleId = uuidv4();
     let reverso: PaymentTransactionResult | null = null;
@@ -1635,9 +1668,9 @@ router.post('/devolucion', async (req: Request, res: Response): Promise<void> =>
         codigoRef: 1, // 1: Anula Documento de Referencia
         razonRef: motivo
       },
-      receptor: dteOriginal?.rut_receptor ? {
-        rut: dteOriginal.rut_receptor,
-        razonSocial: dteOriginal.razon_social_receptor || 'CLIENTE'
+      receptor: receptorNc ? {
+        rut: receptorNc.rut_receptor,
+        razonSocial: receptorNc.razon_social_receptor || 'CLIENTE'
       } : undefined
     });
 

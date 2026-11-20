@@ -9,6 +9,7 @@ import { defaultSqliteClient } from '../database/sqlite/client';
 import { logger } from '../utils/logger';
 import { TipoDTE, SiiCafRecord, TedResult } from './types';
 import { fechaLocal, marcaLocal } from '../utils/fecha-local';
+import { rutSii, textoSii } from '../utils/sii.utils';
 
 export class CafManagerService {
   /**
@@ -96,19 +97,18 @@ export class CafManagerService {
       rawCaf = rawCaf.substring(startIdx, endIdx);
     }
 
-    // Normalizar datos para evitar caracteres incompatibles en XML
-    const cleanItem = params.primerItem.replace(/[<>&'"]/g, '').substring(0, 40);
-    const cleanRSR = params.receptorRazonSocial.replace(/[<>&'"]/g, '').substring(0, 40);
+    const cleanItem = textoSii(params.primerItem, 40);
+    const cleanRSR = textoSii(params.receptorRazonSocial, 40);
 
     // Estructura oficial del nodo Datos del Documento (<DD>)
-    const ddXml = `<DD><RE>${params.emisorRut}</RE><TD>${params.tipoDte}</TD><F>${params.folio}</F><FE>${params.fechaEmision}</FE><RR>${params.receptorRut}</RR><RSR>${cleanRSR}</RSR><MNT>${Math.round(params.montoTotal)}</MNT><IT1>${cleanItem}</IT1>${rawCaf}<TSTED>${timestamp}</TSTED></DD>`;
+    const ddXml = `<DD><RE>${rutSii(params.emisorRut)}</RE><TD>${params.tipoDte}</TD><F>${params.folio}</F><FE>${params.fechaEmision}</FE><RR>${rutSii(params.receptorRut)}</RR><RSR>${cleanRSR}</RSR><MNT>${Math.round(params.montoTotal)}</MNT><IT1>${cleanItem}</IT1>${rawCaf}<TSTED>${timestamp}</TSTED></DD>`;
 
     // Firma SHA1withRSA usando la llave privada provista por el SII en el CAF
     const sign = crypto.createSign('RSA-SHA1');
     sign.update(ddXml);
     const firmaSha1RsaBase64 = sign.sign(params.rsaskPrivateKey, 'base64');
 
-    const tedXml = `<TED version="1.0">${ddXml}<FRMT alg="SHA1withRSA">${firmaSha1RsaBase64}</FRMT></TED>`;
+    const tedXml = `<TED version="1.0">${ddXml}<FRMT algoritmo="SHA1withRSA">${firmaSha1RsaBase64}</FRMT></TED>`;
 
     return {
       tedXml,
@@ -188,9 +188,10 @@ export class CafManagerService {
     const id = uuidv4();
     const fechaHoy = fechaLocal();
 
-    // Estructura con la forma del CAF del SII, pero sin su firma: el nodo FRMA lleva una marca
-    // literal en lugar de la firma de la autoridad, y por eso el rango queda como PROVISIONAL.
-    const cafXml = `<CAF version="1.0"><DA><RE>76123456-7</RE><RS>COMERCIAL DON TITO SPA</RS><TD>${tipoDte}</TD><RNG><D>${desde}</D><H>${hasta}</H></RNG><FA>${fechaHoy}</FA><RSAPK><M>${cleanPubKey.substring(0, 120)}</M><E>AQAB</E></RSAPK><IDK>300</IDK></DA><FRMA alg="SHA1withRSA">MOCK_SII_CERTIFIED_CAF_SIGNATURE</FRMA></CAF>`;
+    // Estructura con la forma del CAF del SII, pero sin su firma: el nodo FRMA lleva, en Base64, una
+    // marca que dice que no es una firma de la autoridad, y por eso el rango queda como PROVISIONAL.
+    const marcaProvisional = Buffer.from('FOLIO PROVISIONAL: SIN FIRMA DEL SII').toString('base64');
+    const cafXml = `<CAF version="1.0"><DA><RE>76123456-7</RE><RS>COMERCIAL DON TITO SPA</RS><TD>${tipoDte}</TD><RNG><D>${desde}</D><H>${hasta}</H></RNG><FA>${fechaHoy}</FA><RSAPK><M>${cleanPubKey.substring(0, 120)}</M><E>AQAB</E></RSAPK><IDK>300</IDK></DA><FRMA algoritmo="SHA1withRSA">${marcaProvisional}</FRMA></CAF>`;
 
     defaultSqliteClient.execute(
       `INSERT INTO sii_caf 

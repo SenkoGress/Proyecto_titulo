@@ -81,7 +81,7 @@ describe('Documento tributario que cuadra y escrituras del catalogo solo para el
   });
 
   describe('el XML firmado cuadra', () => {
-    const empresa = { rut: '76.555.001-9', razonSocial: 'Comercio Receptor', giro: 'COMERCIO', comuna: 'Santiago', ciudad: 'Santiago' };
+    const empresa = { rut: '76.555.001-7', razonSocial: 'Comercio Receptor', giro: 'COMERCIO', comuna: 'Santiago', ciudad: 'Santiago' };
     const referencia = { nroLineaRef: 1, tipoDocRef: 33, folioRef: 1, fechaRef: '2026-11-20', codigoRef: 1, razonRef: 'Prueba' };
     const emitir = (tipoDte: TipoDTE, items: ItemDTE[]) =>
       String(
@@ -173,7 +173,7 @@ describe('Documento tributario que cuadra y escrituras del catalogo solo para el
     test('la emision directa y la guia rechazan cantidades y precios negativos', async () => {
       const directa = await pedir('POST', '/dte/emit', { tenantId: TENANT, tipoDte: 39, items: [{ nombre: 'A', cantidad: -1, precioUnitario: 1000 }] });
       const guia = await pedir('POST', '/dte/guias/emitir', {
-        tenantId: TENANT, receptorRut: '76.555.001-9', receptorRazonSocial: 'X', direccionDestino: 'Calle 1',
+        tenantId: TENANT, receptorRut: '76.555.001-7', receptorRazonSocial: 'X', direccionDestino: 'Calle 1',
         items: [{ nombre: 'A', cantidad: 1, precioUnitario: -500 }]
       });
 
@@ -218,6 +218,79 @@ describe('Documento tributario que cuadra y escrituras del catalogo solo para el
 
       expect(Number((await resumen()).ventas_efectivo) - efectivoAntes).toBe(1230);
       expect(Number(boletasF29()) - f29Antes).toBe(1234);
+    });
+  });
+
+  describe('la caja revisa los RUT antes de cobrar', () => {
+    const vender = (extra: Record<string, unknown> = {}) =>
+      pedir('POST', '/pos/checkout', { tenant_id: TENANT, usuario_id: USUARIO, metodo_pago: 'EFECTIVO', items: [{ producto_id: productoId, cantidad: 1 }], ...extra });
+    // un RUT de emisor guardado antes de la 1.0.4, cuando no se revisaba el digito verificador
+    const conEmisor = async (rut: string | null, prueba: () => Promise<void>) => {
+      const previo = defaultSqliteClient.queryOne<{ valor: string }>("SELECT valor FROM configuracion_sistema WHERE tenant_id = ? AND clave = 'sii_rut_emisor'", [TENANT]);
+      const fijar = (valor: string | null) =>
+        valor === null
+          ? defaultSqliteClient.execute("DELETE FROM configuracion_sistema WHERE tenant_id = ? AND clave = 'sii_rut_emisor'", [TENANT])
+          : defaultSqliteClient.execute(
+            `INSERT INTO configuracion_sistema (id, tenant_id, clave, valor, descripcion, actualizado_at)
+             VALUES (?, ?, 'sii_rut_emisor', ?, 'RUT Emisor fiscal SII', datetime('now'))
+             ON CONFLICT(tenant_id, clave) DO UPDATE SET valor = excluded.valor`,
+            [`cfg-${TENANT}-sii_rut_emisor`, TENANT, valor]
+          );
+      fijar(rut);
+      try {
+        await prueba();
+      } finally {
+        fijar(previo ? previo.valor : null);
+      }
+    };
+
+    test('con el RUT del emisor invalido no se cobra ni se descuenta stock', async () => {
+      await conEmisor('76.123.456-1', async () => {
+        const stock = producto().stock_actual;
+        const res = await vender();
+
+        expect([res.status, res.json.error]).toEqual([400, 'EMISOR_RUT_INVALIDO']);
+        expect(producto().stock_actual).toBe(stock);
+      });
+    });
+
+    test('con el RUT del emisor invalido no se devuelve el dinero de una venta', async () => {
+      const venta = await vender();
+      expect(venta.status).toBe(201);
+
+      await conEmisor('76.123.456-1', async () => {
+        const res = await pedir('POST', '/pos/devolucion', { tenant_id: TENANT, usuario_id: USUARIO, venta_id: venta.json.data.saleId, motivo: 'prueba' });
+
+        expect([res.status, res.json.error]).toEqual([400, 'EMISOR_RUT_INVALIDO']);
+        const devoluciones = defaultSqliteClient.queryOne<{ n: number }>('SELECT COUNT(*) AS n FROM transacciones_venta WHERE referencia_venta_id = ?', [venta.json.data.saleId]);
+        expect(Number(devoluciones?.n)).toBe(0);
+      });
+    });
+
+    test('la factura a un RUT con el digito equivocado se rechaza antes de cobrar', async () => {
+      const stock = producto().stock_actual;
+      const res = await vender({ tipo_comprobante: 'FACTURA', receptor_empresa: { rut: '76.555.001-9', razon_social: 'Comercio Receptor' } });
+
+      expect([res.status, res.json.error]).toEqual([400, 'RUT_RECEPTOR_INVALIDO']);
+      expect(producto().stock_actual).toBe(stock);
+    });
+
+    test('una boleta con un RUT de cliente que no se puede leer sale a cliente anonimo', async () => {
+      const res = await vender({ rut_cliente: 'S/R' });
+
+      expect(res.status).toBe(201);
+      const dte = defaultSqliteClient.queryOne<{ rut_receptor: string }>('SELECT rut_receptor FROM sii_dte_emitidos WHERE venta_id = ?', [res.json.data.saleId]);
+      expect(dte?.rut_receptor).toBe('66666666-6');
+    });
+
+    test('la configuracion no guarda un RUT de emisor con el digito equivocado', async () => {
+      await conEmisor(null, async () => {
+        const res = await pedir('POST', '/dte/config', { tenantId: TENANT, rut: '76.123.456-1' }, tokenAdmin);
+
+        // la pantalla muestra el campo message
+        expect([res.status, res.json.error, res.json.message]).toEqual([400, 'EMISOR_RUT_INVALIDO', expect.stringMatching(/digito verificador/)]);
+        expect(defaultDteEmitter.getTenantFiscalConfig(TENANT).emisor.rut).not.toBe('76.123.456-1');
+      });
     });
   });
 

@@ -112,7 +112,7 @@ describe('Chilean Retail & Tax Compliance Pack Integration Tests', () => {
         metodoPago: 'EFECTIVO',
         items: [itemCerveza],
         receptor: {
-          rut: '77.888.999-0',
+          rut: '77.888.999-4',
           razonSocial: 'BOTILLERIA LOS ANDES SPA',
           giro: 'VENTA DE BEBIDAS ALCOHOLICAS',
           direccion: 'CALLE INDUSTRIAL 456',
@@ -177,7 +177,7 @@ describe('Chilean Retail & Tax Compliance Pack Integration Tests', () => {
           }
         ],
         receptor: {
-          rut: '77.888.999-0',
+          rut: '77.888.999-4',
           razonSocial: 'CONSTRUCTORA LOS ANDES SPA',
           giro: 'CONSTRUCCION Y OBRAS MENORES',
           direccion: 'CALLE INDUSTRIAL 456',
@@ -189,7 +189,7 @@ describe('Chilean Retail & Tax Compliance Pack Integration Tests', () => {
       expect(dteFactura.tipoDocumento).toBe('FACTURA');
       expect(dteFactura.tipoDte).toBe(33);
       expect(dteFactura.xmlDte).toContain('<TipoDTE>33</TipoDTE>');
-      expect(dteFactura.xmlDte).toContain('<RUTRecep>77.888.999-0</RUTRecep>');
+      expect(dteFactura.xmlDte).toContain('<RUTRecep>77888999-4</RUTRecep>');
       expect(dteFactura.xmlDte).toContain('<RznSocRecep>CONSTRUCTORA LOS ANDES SPA</RznSocRecep>');
       expect(dteFactura.xmlDte).toContain('<GiroRecep>CONSTRUCCION Y OBRAS MENORES</GiroRecep>');
       expect(dteFactura.xmlDte).toContain('<DirRecep>CALLE INDUSTRIAL 456</DirRecep>');
@@ -257,7 +257,7 @@ describe('Chilean Retail & Tax Compliance Pack Integration Tests', () => {
         transporte: {
           indTraslado: 5, // 5: Traslado interno no venta
           patente: 'JJXX88',
-          choferRut: '15.234.567-8',
+          choferRut: '15.234.567-4',
           choferNombre: 'Mario González Chofer',
           direccionDestino: 'AV. PROVIDENCIA 999',
           comunaDestino: 'PROVIDENCIA'
@@ -269,7 +269,7 @@ describe('Chilean Retail & Tax Compliance Pack Integration Tests', () => {
       expect(guia.xmlDte).toContain('<IndTraslado>5</IndTraslado>');
       expect(guia.xmlDte).toContain('<Transporte>');
       expect(guia.xmlDte).toContain('<Patente>JJXX88</Patente>');
-      expect(guia.xmlDte).toContain('<RUTChofer>15.234.567-8</RUTChofer>');
+      expect(guia.xmlDte).toContain('<RUTChofer>15234567-4</RUTChofer>');
       expect(guia.xmlDte).toContain('<NombreChofer>Mario González Chofer</NombreChofer>');
     });
   });

@@ -20,6 +20,7 @@ import {
   EmisionDteResponse
 } from './types';
 import { fechaLocal, marcaLocal } from '../utils/fecha-local';
+import { rutSii, textoSii } from '../utils/sii.utils';
 
 /** Monto de una linea: la unica fuente del subtotal, para que el detalle y los totales coincidan. */
 export function montoLinea(item: { cantidad: number; precioUnitario: number }): number {
@@ -36,9 +37,9 @@ function netoDeLinea(bruto: number, tasaIla: number): number {
   return Math.round(bruto / (1.19 + tasaIla / 100));
 }
 
-/** El formato del SII admite hasta 6 decimales en el precio unitario. */
-function precioDetalle(precio: number): string {
-  return String(Number(precio.toFixed(6)));
+/** El formato del SII admite hasta 6 decimales en la cantidad y en el precio unitario. */
+function decimalesSii(valor: number): string {
+  return Number(valor.toFixed(6)).toFixed(6).replace(/\.?0+$/, '');
 }
 
 export class DteEmitterService {
@@ -220,16 +221,22 @@ export class DteEmitterService {
     const tipoDte = req.tipoDte || TipoDTE.BOLETA_ELECTRONICA;
     const primerItemNombre = req.items[0]?.nombre || 'Venta Minorista';
 
+    // Los RUT se normalizan antes de gastar el folio, armar el timbre y firmar: un RUT invalido no
+    // consume folio, y el XML firmado nunca se reescribe despues
+    const rutEmisor = rutSii(emisor.rut);
+    const rutReceptor = rutSii(receptor.rut);
+    const rutChofer = tipoDte === TipoDTE.GUIA_DESPACHO && req.transporte ? rutSii(req.transporte.choferRut || emisor.rut) : '';
+
     // 1. Asignar folio correlativo atómico con el CAF activo
     const { folio, caf } = defaultCafManager.consumeNextFolio(req.tenantId, tipoDte);
 
     // 2. Generar Timbre Electrónico DTE (TED) con la llave <RSASK> del CAF
     const tedResult = defaultCafManager.generateTed({
-      emisorRut: emisor.rut,
+      emisorRut: rutEmisor,
       tipoDte,
       folio,
       fechaEmision: fecha,
-      receptorRut: receptor.rut,
+      receptorRut: rutReceptor,
       receptorRazonSocial: receptor.razonSocial,
       montoTotal: totales.montoTotal,
       primerItem: primerItemNombre,
@@ -251,11 +258,14 @@ export class DteEmitterService {
       const neto = detalleNeto && !it.exento;
       const monto = neto ? netoDeLinea(montoLinea(it), tasaIla) : montoLinea(it);
       const precio = neto ? Number(it.precioUnitario) / (1.19 + tasaIla / 100) : Number(it.precioUnitario);
-      itemsXml += `<Detalle><NroLinDet>${idx + 1}</NroLinDet>${exeTag}<NmbItem>${it.nombre.replace(/[<>&'"]/g, '').substring(0, 50)}</NmbItem><QtyItem>${it.cantidad}</QtyItem><PrcItem>${precioDetalle(precio)}</PrcItem>${ilaTag}<MontoItem>${monto}</MontoItem></Detalle>`;
+      // el esquema pide un precio mayor que cero: un item sin valor, como un traslado, va sin precio
+      const prcTag = precio > 0 ? `<PrcItem>${decimalesSii(precio)}</PrcItem>` : '';
+      itemsXml += `<Detalle><NroLinDet>${idx + 1}</NroLinDet>${exeTag}<NmbItem>${textoSii(it.nombre, 80)}</NmbItem><QtyItem>${decimalesSii(Number(it.cantidad))}</QtyItem>${prcTag}${ilaTag}<MontoItem>${monto}</MontoItem></Detalle>`;
     });
 
-    // Encabezado según tipo de documento
-    let idDocExtra = '<IndServicio>3</IndServicio>';
+    // Encabezado según tipo de documento. IndServicio 3 en la boleta es venta y servicios; en la
+    // factura significaria factura de servicios, y el almacen vende mercaderia
+    let idDocExtra = esBoleta(tipoDte) ? '<IndServicio>3</IndServicio>' : '';
     if (tipoDte === TipoDTE.GUIA_DESPACHO) {
       idDocExtra = `<IndTraslado>${req.transporte?.indTraslado || 5}</IndTraslado>`;
     }
@@ -265,13 +275,19 @@ export class DteEmitterService {
       idDocExtra += '<MntBruto>1</MntBruto>';
     }
 
-    // Receptor corporativo para Facturas y Guías, o simple para boletas
+    // Receptor: la boleta no admite giro; los demas documentos van con los datos del comercio. Los
+    // largos son los del esquema del SII, que rechaza el documento si un texto se pasa
     let receptorXml = '';
-    if (isFactura || tipoDte === TipoDTE.GUIA_DESPACHO || receptor.giro) {
-      receptorXml = `<Receptor><RUTRecep>${receptor.rut}</RUTRecep><RznSocRecep>${receptor.razonSocial.replace(/[<>&'"]/g, '')}</RznSocRecep><GiroRecep>${(receptor.giro || 'COMERCIO').replace(/[<>&'"]/g, '')}</GiroRecep><DirRecep>${(receptor.direccion || emisor.direccion).replace(/[<>&'"]/g, '')}</DirRecep><CmnaRecep>${receptor.comuna || emisor.comuna}</CmnaRecep><CiudadRecep>${receptor.ciudad || emisor.ciudad}</CiudadRecep></Receptor>`;
+    if (!esBoleta(tipoDte) && (isFactura || tipoDte === TipoDTE.GUIA_DESPACHO || receptor.giro)) {
+      receptorXml = `<Receptor><RUTRecep>${rutReceptor}</RUTRecep><RznSocRecep>${textoSii(receptor.razonSocial, 100)}</RznSocRecep><GiroRecep>${textoSii(receptor.giro || 'COMERCIO', 40)}</GiroRecep><DirRecep>${textoSii(receptor.direccion || emisor.direccion, 70)}</DirRecep><CmnaRecep>${textoSii(receptor.comuna || emisor.comuna, 20)}</CmnaRecep><CiudadRecep>${textoSii(receptor.ciudad || emisor.ciudad, 20)}</CiudadRecep></Receptor>`;
     } else {
-      receptorXml = `<Receptor><RUTRecep>${receptor.rut}</RUTRecep><RznSocRecep>${receptor.razonSocial.replace(/[<>&'"]/g, '')}</RznSocRecep></Receptor>`;
+      receptorXml = `<Receptor><RUTRecep>${rutReceptor}</RUTRecep><RznSocRecep>${textoSii(receptor.razonSocial, 100)}</RznSocRecep></Receptor>`;
     }
+
+    // El emisor de la boleta tiene sus propios nombres de nodo y no lleva actividad economica
+    const emisorXml = esBoleta(tipoDte)
+      ? `<Emisor><RUTEmisor>${rutEmisor}</RUTEmisor><RznSocEmisor>${textoSii(emisor.razonSocial, 100)}</RznSocEmisor><GiroEmisor>${textoSii(emisor.giro, 80)}</GiroEmisor><DirOrigen>${textoSii(emisor.direccion, 70)}</DirOrigen><CmnaOrigen>${textoSii(emisor.comuna, 20)}</CmnaOrigen><CiudadOrigen>${textoSii(emisor.ciudad, 20)}</CiudadOrigen></Emisor>`
+      : `<Emisor><RUTEmisor>${rutEmisor}</RUTEmisor><RznSoc>${textoSii(emisor.razonSocial, 100)}</RznSoc><GiroEmis>${textoSii(emisor.giro, 80)}</GiroEmis><Acteco>${emisor.acteco || '471100'}</Acteco><DirOrigen>${textoSii(emisor.direccion, 70)}</DirOrigen><CmnaOrigen>${textoSii(emisor.comuna, 20)}</CmnaOrigen><CiudadOrigen>${textoSii(emisor.ciudad, 20)}</CiudadOrigen></Emisor>`;
 
     // Totales con desglose de ILA si existe
     let ilaTotalesXml = '';
@@ -294,19 +310,19 @@ export class DteEmitterService {
     // Nodo Referencia para Notas de Crédito (Tipo 61) o documentos con referencia
     let referenciaXml = '';
     if (req.referencia) {
-      referenciaXml = `<Referencia><NroLinRef>${req.referencia.nroLineaRef || 1}</NroLinRef><TpoDocRef>${req.referencia.tipoDocRef}</TpoDocRef><FolioRef>${req.referencia.folioRef}</FolioRef><FchRef>${req.referencia.fechaRef}</FchRef><CodRef>${req.referencia.codigoRef || 1}</CodRef><RazonRef>${req.referencia.razonRef.replace(/[<>&'"]/g, '')}</RazonRef></Referencia>`;
+      referenciaXml = `<Referencia><NroLinRef>${req.referencia.nroLineaRef || 1}</NroLinRef><TpoDocRef>${req.referencia.tipoDocRef}</TpoDocRef><FolioRef>${req.referencia.folioRef}</FolioRef><FchRef>${req.referencia.fechaRef}</FchRef><CodRef>${req.referencia.codigoRef || 1}</CodRef><RazonRef>${textoSii(req.referencia.razonRef, 90)}</RazonRef></Referencia>`;
     }
 
     // Nodo Transporte para Guía de Despacho (Tipo 52)
     let transporteXml = '';
     if (tipoDte === TipoDTE.GUIA_DESPACHO && req.transporte) {
-      transporteXml = `<Transporte><Patente>${req.transporte.patente || 'ABCD12'}</Patente><RUTTrans>${req.transporte.choferRut || emisor.rut}</RUTTrans><Chofer><RUTChofer>${req.transporte.choferRut || emisor.rut}</RUTChofer><NombreChofer>${(req.transporte.choferNombre || 'Chofer Asignado').replace(/[<>&'"]/g, '')}</NombreChofer></Chofer><DirDest>${(req.transporte.direccionDestino || receptor.direccion || 'Local Destino').replace(/[<>&'"]/g, '')}</DirDest><CmnaDest>${req.transporte.comunaDestino || receptor.comuna || emisor.comuna}</CmnaDest></Transporte>`;
+      transporteXml = `<Transporte><Patente>${textoSii(req.transporte.patente || 'ABCD12', 8)}</Patente><RUTTrans>${rutChofer}</RUTTrans><Chofer><RUTChofer>${rutChofer}</RUTChofer><NombreChofer>${textoSii(req.transporte.choferNombre || 'Chofer Asignado', 30)}</NombreChofer></Chofer><DirDest>${textoSii(req.transporte.direccionDestino || receptor.direccion || 'Local Destino', 70)}</DirDest><CmnaDest>${textoSii(req.transporte.comunaDestino || receptor.comuna || emisor.comuna, 20)}</CmnaDest></Transporte>`;
     }
 
-    const documentoXml = `<Documento ID="${docId}"><Encabezado><IdDoc><TipoDTE>${tipoDte}</TipoDTE><Folio>${folio}</Folio><FchEmis>${fecha}</FchEmis>${idDocExtra}</IdDoc><Emisor><RUTEmisor>${emisor.rut}</RUTEmisor><RznSoc>${emisor.razonSocial.replace(/[<>&'"]/g, '')}</RznSoc><GiroEmis>${emisor.giro.replace(/[<>&'"]/g, '')}</GiroEmis><Acteco>${emisor.acteco || '471100'}</Acteco><DirOrigen>${emisor.direccion.replace(/[<>&'"]/g, '')}</DirOrigen><CmnaOrigen>${emisor.comuna}</CmnaOrigen><CiudadOrigen>${emisor.ciudad}</CiudadOrigen></Emisor>${receptorXml}<Totales>${totalesAfectosXml}${ilaTotalesXml}<MntTotal>${totales.montoTotal}</MntTotal></Totales></Encabezado>${itemsXml}${transporteXml}${referenciaXml}${tedResult.tedXml}<TmstFirma>${tmstFirma}</TmstFirma></Documento>`;
+    const documentoXml = `<Documento ID="${docId}"><Encabezado><IdDoc><TipoDTE>${tipoDte}</TipoDTE><Folio>${folio}</Folio><FchEmis>${fecha}</FchEmis>${idDocExtra}</IdDoc>${emisorXml}${receptorXml}${transporteXml}<Totales>${totalesAfectosXml}${ilaTotalesXml}<MntTotal>${totales.montoTotal}</MntTotal></Totales></Encabezado>${itemsXml}${referenciaXml}${tedResult.tedXml}<TmstFirma>${tmstFirma}</TmstFirma></Documento>`;
 
     // 4. Firmar el XML con XMLDSig
-    const signatureXml = defaultXmlSigner.signDocument(documentoXml, docId);
+    const signatureXml = defaultXmlSigner.signDocument(documentoXml, docId, undefined, 'http://www.sii.cl/SiiDte');
     const fullDteXml = `<DTE version="1.0" xmlns="http://www.sii.cl/SiiDte">${documentoXml}${signatureXml}</DTE>`;
 
     // 5. Construir URL QR oficial de verificación fiscal del SII (Res. Ex. N° 53)

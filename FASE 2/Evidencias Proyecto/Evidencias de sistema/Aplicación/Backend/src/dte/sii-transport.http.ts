@@ -2,6 +2,7 @@ import { defaultSqliteClient, SqliteClient } from '../database/sqlite/client';
 import { defaultXmlSigner, XmlSignerService } from './xml-signer.service';
 import { SiiTransport } from './types';
 import { logger } from '../utils/logger';
+import { bytesDelSobre } from './sii-envio.service';
 
 interface Credenciales {
   certificadoPem: string;
@@ -143,7 +144,7 @@ export class SiiTransportHttp implements SiiTransport {
     formulario.append('dvSender', dv || '');
     formulario.append('rutCompany', rutSinDv);
     formulario.append('dvCompany', dv || '');
-    formulario.append('archivo', new Blob([sobreXml], { type: 'text/xml' }), 'EnvioDTE.xml');
+    formulario.append('archivo', new Blob([new Uint8Array(bytesDelSobre(sobreXml))], { type: 'text/xml; charset=ISO-8859-1' }), 'EnvioDTE.xml');
 
     const respuesta = await fetch(`${this.servidor(ambiente)}/cgi_dte/UPL/DTEUpload`, {
       method: 'POST',
