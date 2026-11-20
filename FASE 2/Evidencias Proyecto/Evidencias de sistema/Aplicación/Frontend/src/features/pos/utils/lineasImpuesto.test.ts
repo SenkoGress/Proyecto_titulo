@@ -4,9 +4,12 @@ import { lineasParaImpuestos } from '@/features/pos/utils/lineasImpuesto'
 import { desglosarImpuestos } from '@/shared/utils/impuestos'
 import type { LineaCarrito } from '@/features/pos/stores/carritoStore'
 
-// una cerveza de 10.000 con el impuesto de cervezas, 20,5%
+// una cerveza de 10.000 con el impuesto de cervezas, codigo 26 y 20,5%
 const cerveza = [
-  { producto: { precio_venta: 10000, impuesto_adicional_tasa: 20.5 }, cantidad: 1 },
+  {
+    producto: { precio_venta: 10000, impuesto_adicional_codigo: 26, impuesto_adicional_tasa: 20.5 },
+    cantidad: 1,
+  },
 ] as unknown as LineaCarrito[]
 
 describe('lineasParaImpuestos', () => {
@@ -20,10 +23,20 @@ describe('lineasParaImpuestos', () => {
 
   it('un producto sin impuesto adicional queda en cero en los dos casos', () => {
     const pan = [
-      { producto: { precio_venta: 2190, impuesto_adicional_tasa: null }, cantidad: 2 },
+      {
+        producto: { precio_venta: 2190, impuesto_adicional_codigo: null, impuesto_adicional_tasa: null },
+        cantidad: 2,
+      },
     ] as unknown as LineaCarrito[]
     expect(lineasParaImpuestos(pan, 'BOLETA')).toEqual([{ subtotal: 4380, tasaIla: 0 }])
     expect(lineasParaImpuestos(pan, 'FACTURA')).toEqual([{ subtotal: 4380, tasaIla: 0 }])
+  })
+
+  it('con tasa pero sin codigo no se desglosa, igual que en el documento', () => {
+    const aMedias = [
+      { producto: { precio_venta: 10000, impuesto_adicional_tasa: 20.5 }, cantidad: 1 },
+    ] as unknown as LineaCarrito[]
+    expect(lineasParaImpuestos(aMedias, 'FACTURA')).toEqual([{ subtotal: 10000, tasaIla: 0 }])
   })
 })
 

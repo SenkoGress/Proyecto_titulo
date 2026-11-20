@@ -1,13 +1,29 @@
 // src/features/pos/utils/errorVenta.test.ts
 import { describe, expect, it } from 'vitest'
 import { AxiosError, AxiosHeaders } from 'axios'
-import { cobroSinVenta, esTurnoCerrado, faltaStock, productosSinStock } from '@/features/pos/utils/errorVenta'
+import {
+  cobroSinVenta,
+  emisorSinRutValido,
+  esTurnoCerrado,
+  faltaStock,
+  productosSinStock,
+} from '@/features/pos/utils/errorVenta'
 
 function respuesta(status: number, data: unknown) {
   const error = new AxiosError('Request failed', 'ERR_BAD_REQUEST')
   error.response = { status, data, statusText: '', headers: {}, config: { headers: new AxiosHeaders() } }
   return error
 }
+
+describe('emisorSinRutValido', () => {
+  it('reconoce el codigo del servidor', () => {
+    expect(emisorSinRutValido(respuesta(400, { error: 'EMISOR_RUT_INVALIDO' }))).toBe(true)
+  })
+
+  it('no confunde el rut del cliente con el del local', () => {
+    expect(emisorSinRutValido(respuesta(400, { error: 'RUT_RECEPTOR_INVALIDO' }))).toBe(false)
+  })
+})
 
 describe('esTurnoCerrado', () => {
   it('reconoce el codigo del servidor', () => {

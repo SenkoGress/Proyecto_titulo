@@ -37,14 +37,10 @@ function Fila({ etiqueta, valor, fuerte }: { etiqueta: string; valor: string; fu
 // representacion del ticket tal como se imprime, en el rollo que tenga esta caja
 export function TicketImpreso({ comprobante, emisor, metodoPago, totalCobrado }: Props) {
   const anchoPapel = usePapelStore((estado) => estado.ancho)
-  const { neto, iva, exento, total } = comprobante.totales
+  const { total } = comprobante.totales
 
-  // el documento declara el monto real de la venta; lo que sobra despues de neto, iva y exento es el
-  // impuesto adicional. la boleta nunca lo lleva (dl 825, art. 43), y una nota de credito anterior a la
-  // 1.0.3 puede traer hasta 5 pesos de redondeo que no son impuesto
-  const resto = Math.max(0, total - neto - iva - exento)
-  const tipo = comprobante.tipoDte
-  const ila = tipo === 33 || (tipo === 61 && resto > 5) ? resto : 0
+  // el impuesto adicional lo declara el documento: en la boleta viene en cero (dl 825, art. 43)
+  const ila = comprobante.totales.ila ?? 0
   // el redondeo es la diferencia entre lo cobrado y el documento. una devolucion se cobra en negativo
   // y un documento anterior a la 1.0.3 ya traia el total redondeado: en los dos casos no hay ajuste
   const diferencia = Math.abs(totalCobrado) - total
@@ -124,8 +120,6 @@ export function TicketImpreso({ comprobante, emisor, metodoPago, totalCobrado }:
       {comprobante.totales.exento > 0 && (
         <Fila etiqueta="EXENTO:" valor={formatoClp(comprobante.totales.exento)} />
       )}
-      {/* el comprobante del backend no trae el ILA por separado, se deduce para que
-          los montos del ticket cuadren con el total */}
       {ila > 0 && <Fila etiqueta="IMPUESTO ADICIONAL ILA:" valor={formatoClp(ila)} />}
       {ajusteRedondeo !== 0 && (
         <>

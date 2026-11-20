@@ -28,6 +28,11 @@ export function cobroSinVenta(error: unknown): boolean {
   return codigoVenta(error) === 'COBRO_SIN_VENTA'
 }
 
+// el rut del emisor va en cada boleta y solo el administrador puede corregirlo en Configuracion
+export function emisorSinRutValido(error: unknown): boolean {
+  return codigoVenta(error) === 'EMISOR_RUT_INVALIDO'
+}
+
 // que producto falta y cuanto, para corregir la linea sin ir a buscarlo al mensaje
 export function productosSinStock(error: unknown): ProductoSinStock[] {
   if (codigoVenta(error) !== 'STOCK_INSUFICIENTE') return []

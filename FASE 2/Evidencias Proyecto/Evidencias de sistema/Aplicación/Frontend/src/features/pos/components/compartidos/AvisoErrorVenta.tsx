@@ -5,7 +5,13 @@ import AlertTitle from '@mui/material/AlertTitle'
 import Button from '@mui/material/Button'
 import Box from '@mui/material/Box'
 import { obtenerMensajeError } from '@/lib/api/apiError'
-import { cobroSinVenta, esTurnoCerrado, faltaStock, productosSinStock } from '@/features/pos/utils/errorVenta'
+import {
+  cobroSinVenta,
+  emisorSinRutValido,
+  esTurnoCerrado,
+  faltaStock,
+  productosSinStock,
+} from '@/features/pos/utils/errorVenta'
 
 type Props = { error: unknown; onEmpezarDeNuevo?: () => void }
 
@@ -28,6 +34,16 @@ export function AvisoErrorVenta({ error, onEmpezarDeNuevo }: Props) {
             Abrir la caja
           </Button>
         </Box>
+      </Alert>
+    )
+  }
+
+  if (emisorSinRutValido(error)) {
+    return (
+      <Alert severity="error">
+        <AlertTitle sx={{ fontWeight: 700 }}>No se puede emitir la boleta</AlertTitle>
+        El RUT del local no es valido y va dentro de cada boleta. Avisa al administrador para que lo
+        corrija en Configuracion: hasta entonces la caja no puede vender.
       </Alert>
     )
   }

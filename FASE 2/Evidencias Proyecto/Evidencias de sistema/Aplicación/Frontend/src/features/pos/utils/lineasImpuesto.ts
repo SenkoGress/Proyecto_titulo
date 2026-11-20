@@ -8,8 +8,14 @@ import type { TipoComprobante } from '@/features/pos/types'
 export function lineasParaImpuestos(lineas: LineaCarrito[], tipoComprobante: TipoComprobante) {
   const desglosaIla = tipoComprobante === 'FACTURA'
 
-  return lineas.map((linea) => ({
-    subtotal: linea.producto.precio_venta * linea.cantidad,
-    tasaIla: desglosaIla ? Number(linea.producto.impuesto_adicional_tasa) || 0 : 0,
-  }))
+  return lineas.map((linea) => {
+    // los dos campos viajan juntos al documento: con uno solo el total no cuadraria
+    const codigo = Number(linea.producto.impuesto_adicional_codigo) || 0
+    const tasa = Number(linea.producto.impuesto_adicional_tasa) || 0
+
+    return {
+      subtotal: linea.producto.precio_venta * linea.cantidad,
+      tasaIla: desglosaIla && codigo > 0 && tasa > 0 ? tasa : 0,
+    }
+  })
 }

@@ -65,13 +65,22 @@ describe('TicketImpreso', () => {
     expect(texto).toMatch(/TOTAL A PAGAR:\s*\$1\.240/)
   })
 
-  it('el impuesto adicional de una factura se deduce sin descuadrarse', () => {
-    const factura = { ...boleta({ neto: 4105, iva: 780, total: 5970 }), tipoDte: 33 }
+  it('el impuesto adicional de una factura es el que declara el documento', () => {
+    const factura = { ...boleta({ neto: 4105, iva: 780, ila: 1085, total: 5970 }), tipoDte: 33 }
     const texto = textoDel(factura, 5970, 'Tarjeta')
 
     expect(texto).toMatch(/IMPUESTO ADICIONAL ILA:\s*\$1\.085/)
   })
 
+  // la boleta no lleva impuesto adicional (dl 825, art. 43): el servidor lo manda en cero y el
+  // ticket no lo deduce del total, asi un peso de diferencia no se imprime como impuesto
+  it('una boleta no muestra impuesto adicional aunque el total no cierre con el neto', () => {
+    const texto = textoDel(boleta({ neto: 1036, iva: 197, ila: 0 }), 1234)
+
+    expect(texto).not.toContain('ILA')
+  })
+
+  // un documento guardado antes de la 1.0.5 viene sin el campo: vale como sin impuesto adicional
   it('una nota de credito anterior con el redondeo hacia arriba no muestra impuesto adicional', () => {
     const nota = { ...boleta({ neto: 1039, iva: 197, total: 1240 }), tipoDte: 61 }
 

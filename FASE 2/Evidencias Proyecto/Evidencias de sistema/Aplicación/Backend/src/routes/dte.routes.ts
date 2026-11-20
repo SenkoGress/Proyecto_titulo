@@ -300,6 +300,8 @@ dteRouter.get('/:id/receipt', (req: Request, res: Response) => {
           neto: dte.monto_neto,
           iva: dte.monto_iva,
           exento: dte.monto_exento,
+          // el documento ya trae su impuesto adicional: el ticket no tiene que deducirlo
+          ila: dte.monto_ila,
           total: dte.monto_total
         },
         items,

@@ -52,7 +52,7 @@ export class XmlSignerService {
    * venga heredada (nsContexto) y en ningun otro que la repita. Los espacios entre etiquetas se
    * conservan, como en C14N: lo que se firma debe ir sin ellos (el CAF del SII se aplana al timbrar).
    *
-   * ponytail: cubre el XML que arma GesTock (espacios de nombres por defecto, sin prefijos,
+   * Alcance: cubre el XML que arma GesTock (espacios de nombres por defecto, sin prefijos,
    * comentarios ni instrucciones de proceso). Para XML ajeno haria falta un C14N completo.
    */
   public canonicalize(xml: string, nsContexto = ''): string {

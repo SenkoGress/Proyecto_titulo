@@ -69,7 +69,8 @@ export type ComprobanteDte = {
   fechaEmision: string
   emisor: { rut: string; razonSocial: string }
   receptor: { rut: string | null; razonSocial: string | null }
-  totales: { neto: number; iva: number; exento: number; total: number }
+  // ila lo manda el servidor; un documento guardado sin el campo vale como sin impuesto adicional
+  totales: { neto: number; iva: number; exento: number; ila?: number; total: number }
   items: ItemComprobante[]
   qrCodeUrl: string
   tedXml: string
