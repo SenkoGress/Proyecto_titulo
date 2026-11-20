@@ -118,10 +118,10 @@ export class DteEmitterService {
     // Regla de Redondeo Ley N° 20.956 del Banco Central de Chile
     const ultimoDigito = totalBruto % 10;
     let redondeo = 0;
-    if (ultimoDigito >= 1 && ultimoDigito <= 4) {
-      redondeo = -ultimoDigito; // Redondeo hacia abajo
-    } else if (ultimoDigito >= 5 && ultimoDigito <= 9) {
-      redondeo = 10 - ultimoDigito; // Redondeo hacia arriba
+    if (ultimoDigito >= 1 && ultimoDigito <= 5) {
+      redondeo = -ultimoDigito; // hasta 5 baja, lo dice el articulo 13
+    } else if (ultimoDigito >= 6 && ultimoDigito <= 9) {
+      redondeo = 10 - ultimoDigito;
     }
     const totalRedondeado = totalBruto + redondeo;
 

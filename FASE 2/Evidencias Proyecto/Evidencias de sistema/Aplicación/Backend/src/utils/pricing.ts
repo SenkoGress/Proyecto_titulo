@@ -15,10 +15,11 @@ export function aplicarRedondeoChileno(valor: number): number {
   const entero = Math.round(valor);
   const ultimoDigito = Math.abs(entero) % 10;
 
-  if (ultimoDigito >= 1 && ultimoDigito <= 4) {
-    return entero - ultimoDigito; // Redondea hacia abajo a la decena inferior
-  } else if (ultimoDigito >= 5 && ultimoDigito <= 9) {
-    return entero + (10 - ultimoDigito); // Redondea hacia arriba a la decena superior
+  // el articulo 13 de la Ley N 20.956 baja el 5: hasta 5 a la decena inferior, desde 6 a la superior
+  if (ultimoDigito >= 1 && ultimoDigito <= 5) {
+    return entero - ultimoDigito;
+  } else if (ultimoDigito >= 6 && ultimoDigito <= 9) {
+    return entero + (10 - ultimoDigito);
   }
 
   return entero; // Si termina en 0, no requiere ajuste
