@@ -13,6 +13,7 @@ import DeleteSweepOutlined from '@mui/icons-material/DeleteSweepOutlined'
 import { BotonSincronizar } from '@/shared/components/layout/BotonSincronizar'
 import type { ProductoInventario } from '@/features/inventario/types'
 import { contarCategorias } from '@/features/inventario/utils/categoriasInventario'
+import { usePuedeAdministrar } from '@/features/auth/stores/sesionStore'
 
 type Props = {
   productos: ProductoInventario[]
@@ -36,6 +37,8 @@ export function BarraHerramientasInventario({
   onAgregar,
   onVerMermas,
 }: Props) {
+  // dar de alta y recibir mercaderia es del administrador; el cajero consulta y registra mermas
+  const esAdmin = usePuedeAdministrar()
   const categorias = contarCategorias(productos)
 
   return (
@@ -62,17 +65,21 @@ export function BarraHerramientasInventario({
           Exportar CSV
         </Button>
 
-        <Button size="small" variant="contained" startIcon={<RequestQuoteIcon />} component={Link} to="/facturas">
-          Recepcion mercaderia
-        </Button>
+        {esAdmin && (
+          <Button size="small" variant="contained" startIcon={<RequestQuoteIcon />} component={Link} to="/facturas">
+            Recepcion mercaderia
+          </Button>
+        )}
 
         <Button size="small" startIcon={<DeleteSweepOutlined />} onClick={onVerMermas}>
           Mermas
         </Button>
 
-        <Button size="small" variant="contained" startIcon={<AddIcon />} onClick={onAgregar}>
-          Añadir producto
-        </Button>
+        {esAdmin && (
+          <Button size="small" variant="contained" startIcon={<AddIcon />} onClick={onAgregar}>
+            Añadir producto
+          </Button>
+        )}
 
         <BotonSincronizar />
       </Box>

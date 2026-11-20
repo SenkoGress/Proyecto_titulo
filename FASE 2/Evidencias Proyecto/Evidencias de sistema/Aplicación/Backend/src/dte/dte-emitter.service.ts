@@ -21,6 +21,26 @@ import {
 } from './types';
 import { fechaLocal, marcaLocal } from '../utils/fecha-local';
 
+/** Monto de una linea: la unica fuente del subtotal, para que el detalle y los totales coincidan. */
+export function montoLinea(item: { cantidad: number; precioUnitario: number }): number {
+  return Math.round(Number(item.cantidad) * Number(item.precioUnitario));
+}
+
+/** Tasa del impuesto adicional de un item: solo cuenta con codigo y tasa, que viajan juntos al XML. */
+function tasaAdicional(item: ItemDTE): number {
+  return Number(item.codigoIla) > 0 && Number(item.tasaIla) > 0 ? Number(item.tasaIla) : 0;
+}
+
+/** Neto de una linea bruta: sin IVA y, si lo lleva, sin impuesto adicional. */
+function netoDeLinea(bruto: number, tasaIla: number): number {
+  return Math.round(bruto / (1.19 + tasaIla / 100));
+}
+
+/** El formato del SII admite hasta 6 decimales en el precio unitario. */
+function precioDetalle(precio: number): string {
+  return String(Number(precio.toFixed(6)));
+}
+
 export class DteEmitterService {
   /**
    * Obtiene la configuración tributaria activa del tenant
@@ -60,16 +80,23 @@ export class DteEmitterService {
   }
 
   /**
-   * Calcula los totales respetando el IVA del 19%, ILA y la Ley de Redondeo N° 20.956.
-   * conIla en false para la venta del minorista al consumidor (DL 825, art. 43 inciso final):
-   * el impuesto adicional ya viene en el costo y el precio solo se separa en neto e IVA.
+   * Totales del documento. Declaran el monto real de la venta: el redondeo de la Ley N° 20.956 es un
+   * ajuste del pago en efectivo, no del documento, y con tarjeta se cobra exacto.
+   *
+   * Los precios del catalogo son brutos. neto + IVA + adicional + exento da el total exacto, porque el
+   * IVA es lo que falta. conIla en false para la venta del minorista al consumidor (DL 825, art. 43
+   * inciso final): el impuesto adicional ya viene en el costo y el precio solo se separa en neto e IVA.
+   *
+   * detalleNeto en true cuando el documento no admite montos brutos (guia, o lleva impuesto adicional):
+   * el detalle se expresa en neto por linea y MntNeto tiene que ser su suma. En los demas, la boleta y
+   * los documentos con MntBruto=1, el neto de lo afecto se saca una sola vez sobre el documento.
    */
-  public calculateTotals(items: ItemDTE[], conIla = true): TotalesDTE {
-    let netoTotal = 0;
-    let ivaTotal = 0;
+  public calculateTotals(items: ItemDTE[], conIla = true, detalleNeto = false): TotalesDTE {
     let exentoTotal = 0;
+    let afectoTotal = 0;
+    let afectoSinIla = 0;
+    let netoPorLinea = 0;
     let ilaTotal = 0;
-    let totalBruto = 0;
     const desgloseMap: Record<number, { codigo: number; nombre: string; tasa: number; monto: number }> = {};
 
     // Codigos de la tabla del formato DTE del SII: son los que viajan en CodImpAdic
@@ -82,58 +109,48 @@ export class DteEmitterService {
     };
 
     for (const it of items) {
-      const sub = Math.round(it.cantidad * it.precioUnitario);
+      const sub = montoLinea(it);
       if (it.exento) {
         exentoTotal += sub;
-        totalBruto += sub;
-      } else {
-        const tasaIla = conIla ? it.tasaIla || 0 : 0;
-        const codigoIla = conIla ? it.codigoIla || 0 : 0;
-        const factorImpuestos = 1.19 + (tasaIla / 100);
-
-        // Precios en catálogo chileno minorista son brutos (IVA + ILA incluidos)
-        const neto = Math.round(sub / factorImpuestos);
-        const iva = Math.round(neto * 0.19);
-        const ila = Math.round(neto * (tasaIla / 100));
-
-        netoTotal += neto;
-        ivaTotal += iva;
-        ilaTotal += ila;
-        totalBruto += sub;
-
-        if (codigoIla > 0 && ila > 0) {
-          if (!desgloseMap[codigoIla]) {
-            desgloseMap[codigoIla] = {
-              codigo: codigoIla,
-              nombre: nombresIla[codigoIla] || `Impuesto Adicional Cód ${codigoIla}`,
-              tasa: tasaIla,
-              monto: 0
-            };
-          }
-          desgloseMap[codigoIla].monto += ila;
-        }
+        continue;
       }
+      afectoTotal += sub;
+
+      const tasaIla = conIla ? tasaAdicional(it) : 0;
+      if (tasaIla <= 0 && !detalleNeto) {
+        afectoSinIla += sub;
+        continue;
+      }
+
+      // Con impuesto adicional, o con detalle neto, el neto se separa por linea
+      const neto = netoDeLinea(sub, tasaIla);
+      netoPorLinea += neto;
+      if (tasaIla <= 0) continue;
+
+      const ila = Math.round(neto * (tasaIla / 100));
+      const codigoIla = Number(it.codigoIla);
+      ilaTotal += ila;
+      if (!desgloseMap[codigoIla]) {
+        desgloseMap[codigoIla] = {
+          codigo: codigoIla,
+          nombre: nombresIla[codigoIla] || `Impuesto Adicional Cód ${codigoIla}`,
+          tasa: tasaIla,
+          monto: 0
+        };
+      }
+      desgloseMap[codigoIla].monto += ila;
     }
 
-    // Regla de Redondeo Ley N° 20.956 del Banco Central de Chile
-    const ultimoDigito = totalBruto % 10;
-    let redondeo = 0;
-    if (ultimoDigito >= 1 && ultimoDigito <= 5) {
-      redondeo = -ultimoDigito; // hasta 5 baja, lo dice el articulo 13
-    } else if (ultimoDigito >= 6 && ultimoDigito <= 9) {
-      redondeo = 10 - ultimoDigito;
-    }
-    const totalRedondeado = totalBruto + redondeo;
+    const montoNeto = Math.round(afectoSinIla / 1.19) + netoPorLinea;
 
     return {
-      montoNeto: netoTotal,
+      montoNeto,
       tasaIva: 19.0,
-      montoIva: ivaTotal,
+      montoIva: afectoTotal - montoNeto - ilaTotal,
       montoExento: exentoTotal,
       montoIla: ilaTotal,
       desgloseIla: Object.values(desgloseMap),
-      montoTotal: totalRedondeado,
-      redondeoChileno: redondeo
+      montoTotal: exentoTotal + afectoTotal
     };
   }
 
@@ -160,7 +177,12 @@ export class DteEmitterService {
     const esBoleta = (tipo?: number) => tipo === TipoDTE.BOLETA_ELECTRONICA || tipo === TipoDTE.BOLETA_EXENTA;
     // La boleta y la nota de credito que la anula no llevan ILA; la factura a otro vendedor si (art. 43 letra d)
     const conIla = !esBoleta(req.tipoDte || TipoDTE.BOLETA_ELECTRONICA) && !(isDevolucion && esBoleta(req.referencia?.tipoDocRef));
-    const totales = this.calculateTotals(req.items, conIla);
+    const tipoEmitido = req.tipoDte || TipoDTE.BOLETA_ELECTRONICA;
+    // MntBruto es solo para documentos sin impuestos adicionales y no aplica a la guia (formato DTE
+    // del SII, campo 10 de IdDoc). En esos casos el detalle va en neto.
+    const llevaIla = conIla && req.items.some((it) => !it.exento && tasaAdicional(it) > 0);
+    const detalleNeto = !esBoleta(tipoEmitido) && (tipoEmitido === TipoDTE.GUIA_DESPACHO || llevaIla);
+    const totales = this.calculateTotals(req.items, conIla, detalleNeto);
 
     // Cumplimiento Resolucion Exenta N 176 del SII: Prevencion de doble debito tributario
     // Solo aplica para Boletas a consumidor final (no para Facturas ni Notas de Crédito)
@@ -219,16 +241,28 @@ export class DteEmitterService {
     const docId = `DTE_${tipoDte}_F${folio}`;
     const tmstFirma = marcaLocal();
 
+    // Orden del esquema del SII: IndExe va antes del nombre y CodImpAdic justo antes del monto
     let itemsXml = '';
     req.items.forEach((it, idx) => {
-      const ilaTag = conIla && it.codigoIla ? `<CodImpAdic>${it.codigoIla}</CodImpAdic>` : '';
-      itemsXml += `<Detalle><NroLinDet>${idx + 1}</NroLinDet>${ilaTag}<NmbItem>${it.nombre.replace(/[<>&'"]/g, '').substring(0, 50)}</NmbItem><QtyItem>${it.cantidad}</QtyItem><PrcItem>${Math.round(it.precioUnitario)}</PrcItem><MontoItem>${Math.round(it.subtotal)}</MontoItem></Detalle>`;
+      const tasaIla = conIla && !it.exento ? tasaAdicional(it) : 0;
+      const exeTag = it.exento ? '<IndExe>1</IndExe>' : '';
+      const ilaTag = tasaIla > 0 ? `<CodImpAdic>${Number(it.codigoIla)}</CodImpAdic>` : '';
+      // con detalle neto, el precio y el monto de la linea van sin IVA ni impuesto adicional
+      const neto = detalleNeto && !it.exento;
+      const monto = neto ? netoDeLinea(montoLinea(it), tasaIla) : montoLinea(it);
+      const precio = neto ? Number(it.precioUnitario) / (1.19 + tasaIla / 100) : Number(it.precioUnitario);
+      itemsXml += `<Detalle><NroLinDet>${idx + 1}</NroLinDet>${exeTag}<NmbItem>${it.nombre.replace(/[<>&'"]/g, '').substring(0, 50)}</NmbItem><QtyItem>${it.cantidad}</QtyItem><PrcItem>${precioDetalle(precio)}</PrcItem>${ilaTag}<MontoItem>${monto}</MontoItem></Detalle>`;
     });
 
     // Encabezado según tipo de documento
     let idDocExtra = '<IndServicio>3</IndServicio>';
     if (tipoDte === TipoDTE.GUIA_DESPACHO) {
       idDocExtra = `<IndTraslado>${req.transporte?.indTraslado || 5}</IndTraslado>`;
+    }
+    // La boleta es bruta por definicion. En los demas tipos el detalle lleva los precios del catalogo,
+    // que incluyen IVA, y el SII los leeria como netos si no se declara
+    if (!esBoleta(tipoDte) && !detalleNeto) {
+      idDocExtra += '<MntBruto>1</MntBruto>';
     }
 
     // Receptor corporativo para Facturas y Guías, o simple para boletas
@@ -247,6 +281,16 @@ export class DteEmitterService {
       }
     }
 
+    // Una boleta exenta no tiene parte afecta; lo exento se declara aparte para que el documento cuadre
+    const totalesAfectosXml =
+      (totales.montoNeto > 0 || totales.montoExento === 0
+        ? `<MntNeto>${totales.montoNeto}</MntNeto>`
+        : '') +
+      (totales.montoExento > 0 ? `<MntExe>${totales.montoExento}</MntExe>` : '') +
+      (totales.montoNeto > 0 || totales.montoExento === 0
+        ? `${esBoleta(tipoDte) ? '' : '<TasaIVA>19</TasaIVA>'}<IVA>${totales.montoIva}</IVA>`
+        : '');
+
     // Nodo Referencia para Notas de Crédito (Tipo 61) o documentos con referencia
     let referenciaXml = '';
     if (req.referencia) {
@@ -259,7 +303,7 @@ export class DteEmitterService {
       transporteXml = `<Transporte><Patente>${req.transporte.patente || 'ABCD12'}</Patente><RUTTrans>${req.transporte.choferRut || emisor.rut}</RUTTrans><Chofer><RUTChofer>${req.transporte.choferRut || emisor.rut}</RUTChofer><NombreChofer>${(req.transporte.choferNombre || 'Chofer Asignado').replace(/[<>&'"]/g, '')}</NombreChofer></Chofer><DirDest>${(req.transporte.direccionDestino || receptor.direccion || 'Local Destino').replace(/[<>&'"]/g, '')}</DirDest><CmnaDest>${req.transporte.comunaDestino || receptor.comuna || emisor.comuna}</CmnaDest></Transporte>`;
     }
 
-    const documentoXml = `<Documento ID="${docId}"><Encabezado><IdDoc><TipoDTE>${tipoDte}</TipoDTE><Folio>${folio}</Folio><FchEmis>${fecha}</FchEmis>${idDocExtra}</IdDoc><Emisor><RUTEmisor>${emisor.rut}</RUTEmisor><RznSoc>${emisor.razonSocial.replace(/[<>&'"]/g, '')}</RznSoc><GiroEmis>${emisor.giro.replace(/[<>&'"]/g, '')}</GiroEmis><Acteco>${emisor.acteco || '471100'}</Acteco><DirOrigen>${emisor.direccion.replace(/[<>&'"]/g, '')}</DirOrigen><CmnaOrigen>${emisor.comuna}</CmnaOrigen><CiudadOrigen>${emisor.ciudad}</CiudadOrigen></Emisor>${receptorXml}<Totales><MntNeto>${totales.montoNeto}</MntNeto><TasaIVA>19</TasaIVA><IVA>${totales.montoIva}</IVA>${ilaTotalesXml}<MntTotal>${totales.montoTotal}</MntTotal></Totales></Encabezado>${itemsXml}${transporteXml}${referenciaXml}${tedResult.tedXml}<TmstFirma>${tmstFirma}</TmstFirma></Documento>`;
+    const documentoXml = `<Documento ID="${docId}"><Encabezado><IdDoc><TipoDTE>${tipoDte}</TipoDTE><Folio>${folio}</Folio><FchEmis>${fecha}</FchEmis>${idDocExtra}</IdDoc><Emisor><RUTEmisor>${emisor.rut}</RUTEmisor><RznSoc>${emisor.razonSocial.replace(/[<>&'"]/g, '')}</RznSoc><GiroEmis>${emisor.giro.replace(/[<>&'"]/g, '')}</GiroEmis><Acteco>${emisor.acteco || '471100'}</Acteco><DirOrigen>${emisor.direccion.replace(/[<>&'"]/g, '')}</DirOrigen><CmnaOrigen>${emisor.comuna}</CmnaOrigen><CiudadOrigen>${emisor.ciudad}</CiudadOrigen></Emisor>${receptorXml}<Totales>${totalesAfectosXml}${ilaTotalesXml}<MntTotal>${totales.montoTotal}</MntTotal></Totales></Encabezado>${itemsXml}${transporteXml}${referenciaXml}${tedResult.tedXml}<TmstFirma>${tmstFirma}</TmstFirma></Documento>`;
 
     // 4. Firmar el XML con XMLDSig
     const signatureXml = defaultXmlSigner.signDocument(documentoXml, docId);

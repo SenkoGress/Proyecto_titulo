@@ -18,7 +18,7 @@ import {
 } from '../inventory/vencimiento';
 import { codigoValido, consultarCodigo } from '../inventory/open-food-facts.service';
 import { motivoImagenInvalida } from '../inventory/imagen-producto';
-import { defaultDteEmitter } from '../dte/dte-emitter.service';
+import { montoLinea, defaultDteEmitter } from '../dte/dte-emitter.service';
 import { defaultSiiEnvio } from '../dte/sii-envio.service';
 import { TipoDTE } from '../dte/types';
 import { defaultReplenishmentService } from '../replenishment/replenishment.service';
@@ -787,7 +787,7 @@ router.post('/checkout', async (req: Request, res: Response): Promise<void> => {
     res.status(409).json({
       success: false,
       error: 'STOCK_INSUFICIENTE',
-      message: `No hay stock suficiente: ${detalle}. Ajusta la cantidad o corrige el stock en Inventario.`,
+      message: `No hay stock suficiente: ${detalle}. Ajusta la cantidad, o pide al administrador que corrija el stock en Inventario.`,
       productos: sinStock
     });
     return;
@@ -817,7 +817,7 @@ router.post('/checkout', async (req: Request, res: Response): Promise<void> => {
     let unidades = 0;
     // Calcular total y unidades. La Ley N° 20.956 rige exclusivamente para pagos en efectivo
     for (const item of lineas) {
-      total += Number(item.precio_unitario) * Number(item.cantidad);
+      total += montoLinea({ cantidad: item.cantidad, precioUnitario: item.precio_unitario });
       unidades += Number(item.cantidad);
     }
     if (metodo_pago && String(metodo_pago).trim().toUpperCase() === 'EFECTIVO') {
@@ -881,7 +881,7 @@ router.post('/checkout', async (req: Request, res: Response): Promise<void> => {
       // Procesar cada detalle y actualizar stock
       for (const item of lineas) {
         const detailId = uuidv4();
-        const subtotal = Number(item.precio_unitario) * Number(item.cantidad);
+        const subtotal = montoLinea({ cantidad: item.cantidad, precioUnitario: item.precio_unitario });
 
         // Insertar detalle_venta
         sqlite.execute(
@@ -970,7 +970,7 @@ router.post('/checkout', async (req: Request, res: Response): Promise<void> => {
           sku: it.sku || prod?.sku,
           cantidad: Number(it.cantidad),
           precioUnitario: Number(it.precio_unitario),
-          subtotal: Number(it.precio_unitario) * Number(it.cantidad),
+          subtotal: montoLinea({ cantidad: it.cantidad, precioUnitario: it.precio_unitario }),
           codigoIla: it.codigo_ila || prod?.impuesto_adicional_codigo || undefined,
           tasaIla: it.tasa_ila || prod?.impuesto_adicional_tasa || undefined
         };
@@ -1486,7 +1486,7 @@ router.post('/devolucion', async (req: Request, res: Response): Promise<void> =>
             sku: match.sku,
             cantidad: cant,
             precio_unitario: match.precio_unitario,
-            subtotal: match.precio_unitario * cant,
+            subtotal: montoLinea({ cantidad: cant, precioUnitario: match.precio_unitario }),
             codigoIla: match.impuesto_adicional_codigo || undefined,
             tasaIla: match.impuesto_adicional_tasa || undefined
           });
@@ -1503,7 +1503,7 @@ router.post('/devolucion', async (req: Request, res: Response): Promise<void> =>
           sku: d.sku,
           cantidad: cant,
           precio_unitario: d.precio_unitario,
-          subtotal: d.precio_unitario * cant,
+          subtotal: montoLinea({ cantidad: cant, precioUnitario: d.precio_unitario }),
           codigoIla: d.impuesto_adicional_codigo || undefined,
           tasaIla: d.impuesto_adicional_tasa || undefined
         });

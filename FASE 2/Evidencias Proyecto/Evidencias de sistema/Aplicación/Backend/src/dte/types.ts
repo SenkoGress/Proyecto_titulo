@@ -86,7 +86,6 @@ export interface TotalesDTE {
   montoIla?: number;
   desgloseIla?: DesgloseILA[];
   montoTotal: number;
-  redondeoChileno?: number; // Ley N° 20.956
 }
 
 export interface SiiCafRecord {

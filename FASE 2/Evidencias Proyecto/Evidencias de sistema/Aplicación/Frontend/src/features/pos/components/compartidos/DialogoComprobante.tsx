@@ -29,7 +29,6 @@ import type { VentaRegistrada } from '@/features/pos/types'
 
 type Props = {
   venta: VentaRegistrada
-  ajusteRedondeo: number
   onCerrar: () => void
 }
 
@@ -38,7 +37,7 @@ function esCorreoValido(correo: string): boolean {
 }
 
 // comprobante fiscal de la venta recien cobrada
-export function DialogoComprobante({ venta, ajusteRedondeo, onCerrar }: Props) {
+export function DialogoComprobante({ venta, onCerrar }: Props) {
   const dteId = venta.dte?.esTributarioDte ? venta.dte.dteId : undefined
 
   const comprobante = useComprobante(dteId)
@@ -121,7 +120,7 @@ export function DialogoComprobante({ venta, ajusteRedondeo, onCerrar }: Props) {
             comprobante={comprobante.data}
             emisor={configDte.data?.emisor}
             metodoPago={venta.payment_method}
-            ajusteRedondeo={ajusteRedondeo}
+            totalCobrado={venta.total}
           />
         )}
 

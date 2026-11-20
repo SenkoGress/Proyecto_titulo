@@ -10,6 +10,7 @@ import EditOutlined from '@mui/icons-material/EditOutlined'
 import InventoryOutlined from '@mui/icons-material/Inventory2Outlined'
 import DeleteSweepOutlined from '@mui/icons-material/DeleteSweepOutlined'
 import HistoryOutlined from '@mui/icons-material/HistoryOutlined'
+import { usePuedeAdministrar } from '@/features/auth/stores/sesionStore'
 
 export type AccionesProductoProps = {
   onEditar: () => void
@@ -21,6 +22,8 @@ export type AccionesProductoProps = {
 // menu de acciones de cada fila del inventario
 export function AccionesProducto({ onEditar, onAjustar, onMerma, onHistorial }: AccionesProductoProps) {
   const [ancla, setAncla] = useState<HTMLElement | null>(null)
+  // el cajero consulta y registra mermas; editar y ajustar stock es del administrador (RF-04)
+  const esAdmin = usePuedeAdministrar()
 
   function elegir(accion: () => void) {
     setAncla(null)
@@ -34,19 +37,23 @@ export function AccionesProducto({ onEditar, onAjustar, onMerma, onHistorial }: 
       </IconButton>
 
       <Menu anchorEl={ancla} open={Boolean(ancla)} onClose={() => setAncla(null)}>
-        <MenuItem onClick={() => elegir(onEditar)}>
-          <ListItemIcon>
-            <EditOutlined fontSize="small" />
-          </ListItemIcon>
-          <ListItemText>Editar producto</ListItemText>
-        </MenuItem>
+        {esAdmin && (
+          <MenuItem onClick={() => elegir(onEditar)}>
+            <ListItemIcon>
+              <EditOutlined fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>Editar producto</ListItemText>
+          </MenuItem>
+        )}
 
-        <MenuItem onClick={() => elegir(onAjustar)}>
-          <ListItemIcon>
-            <InventoryOutlined fontSize="small" />
-          </ListItemIcon>
-          <ListItemText>Ajustar stock</ListItemText>
-        </MenuItem>
+        {esAdmin && (
+          <MenuItem onClick={() => elegir(onAjustar)}>
+            <ListItemIcon>
+              <InventoryOutlined fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>Ajustar stock</ListItemText>
+          </MenuItem>
+        )}
 
         <MenuItem onClick={() => elegir(onMerma)}>
           <ListItemIcon>

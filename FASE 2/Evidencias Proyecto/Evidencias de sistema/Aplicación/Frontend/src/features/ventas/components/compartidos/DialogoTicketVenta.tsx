@@ -95,7 +95,7 @@ export function DialogoTicketVenta({ venta, onCerrar }: Props) {
             comprobante={comprobante.data}
             emisor={configDte.data?.emisor}
             metodoPago={venta.medio_pago_nombre}
-            ajusteRedondeo={0}
+            totalCobrado={venta.total}
           />
         )}
 

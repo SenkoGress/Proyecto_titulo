@@ -58,7 +58,7 @@ export function AvisoErrorVenta({ error, onEmpezarDeNuevo }: Props) {
             <li key={producto.producto_id}>{faltaStock(producto)}</li>
           ))}
         </Box>
-        Baja la cantidad, o corrige el stock en Inventario si en la gondola si hay.
+        Baja la cantidad. Si en la gondola si hay, pide al administrador que corrija el stock en Inventario.
       </Alert>
     )
   }

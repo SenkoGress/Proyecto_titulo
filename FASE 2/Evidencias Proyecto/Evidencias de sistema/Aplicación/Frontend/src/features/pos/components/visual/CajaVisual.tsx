@@ -23,8 +23,7 @@ export function CajaVisual() {
 
       {ventaLista && (
         <DialogoComprobante
-          venta={ventaLista.venta}
-          ajusteRedondeo={ventaLista.ajusteRedondeo}
+          venta={ventaLista}
           onCerrar={cerrarComprobante}
         />
       )}

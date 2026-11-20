@@ -187,9 +187,23 @@ function isCashierDteRoute(method: string | undefined, fullPath: string): boolea
 }
 
 /**
+ * Escrituras del catalogo que solo hace el administrador: dar de alta, editar (precios incluidos) y
+ * ajustar stock. El cajero consulta el catalogo y registra mermas (RF-04). La barra final opcional
+ * importa: Express atiende /products/ igual que /products.
+ */
+function isAdminCatalogWrite(method: string | undefined, fullPath: string): boolean {
+  const metodo = (method || '').toUpperCase();
+  if (metodo === 'POST') return /^\/api\/v1\/pos\/products\/?$/.test(fullPath);
+  if (metodo === 'PUT') return /^\/api\/v1\/pos\/products\/[^/]+\/?$/.test(fullPath);
+  if (metodo === 'PATCH') return /^\/api\/v1\/pos\/products\/[^/]+\/stock\/?$/.test(fullPath);
+  return false;
+}
+
+/**
  * Middleware de Control de Acceso Basado en Roles (RBAC) y Seguridad JWT
  * - Rutas exclusivas de administrador: /dashboard, /invoices, /suppliers, /replenishment, /dte, /config
- * - Rutas de cajero / admin: /pos, /caja y las rutas DTE del comprobante de venta (isCashierDteRoute)
+ * - Rutas de cajero / admin: /pos, /caja y las rutas DTE del comprobante de venta (isCashierDteRoute),
+ *   salvo las escrituras del catalogo (isAdminCatalogWrite)
  * - Con token, el tenant declarado en la petición debe coincidir con el del token (aislamiento multi-tenant)
  * - Con token, el usuario_id del body se reemplaza por el id del usuario autenticado
  * - Cuando ENFORCE_AUTH=true, exige token en todas las rutas protegidas
@@ -284,8 +298,11 @@ export const rbacAuthMiddleware = (req: Request, res: Response, next: NextFuncti
       req.body.usuario_id = decodedUser.id;
     }
 
-    const isAdminRoute = /^\/api\/v1\/(dashboard|invoices|suppliers|replenishment|dte|config)(\/|$)/.test(fullPath);
-    if (isAdminRoute && decodedUser.rol !== 'admin' && !isCashierDteRoute(req.method, fullPath)) {
+    const isAdminRoute =
+      (/^\/api\/v1\/(dashboard|invoices|suppliers|replenishment|dte|config)(\/|$)/.test(fullPath) &&
+        !isCashierDteRoute(req.method, fullPath)) ||
+      isAdminCatalogWrite(req.method, fullPath);
+    if (isAdminRoute && decodedUser.rol !== 'admin') {
       logger.warn('SecurityMiddleware', `Acceso denegado a ruta admin (${fullPath}) para rol ${decodedUser.rol}`, {
         userId: decodedUser.id,
         email: decodedUser.email

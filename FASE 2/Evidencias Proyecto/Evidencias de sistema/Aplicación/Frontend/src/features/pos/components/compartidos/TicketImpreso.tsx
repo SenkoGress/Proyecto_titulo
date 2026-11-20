@@ -15,7 +15,8 @@ type Props = {
   comprobante: ComprobanteDte
   emisor: EmisorFiscal | undefined
   metodoPago: string
-  ajusteRedondeo: number
+  // lo que se cobro: en efectivo es el total del documento con el redondeo de la ley 20.956
+  totalCobrado: number
 }
 
 // linea de separacion igual a la del papel
@@ -34,12 +35,20 @@ function Fila({ etiqueta, valor, fuerte }: { etiqueta: string; valor: string; fu
 }
 
 // representacion del ticket tal como se imprime, en el rollo que tenga esta caja
-export function TicketImpreso({ comprobante, emisor, metodoPago, ajusteRedondeo }: Props) {
+export function TicketImpreso({ comprobante, emisor, metodoPago, totalCobrado }: Props) {
   const anchoPapel = usePapelStore((estado) => estado.ancho)
   const { neto, iva, exento, total } = comprobante.totales
 
-  // lo que sobra despues de neto, iva, exento y el redondeo es el impuesto adicional
-  const ila = Math.max(0, total - neto - iva - exento - ajusteRedondeo)
+  // el documento declara el monto real de la venta; lo que sobra despues de neto, iva y exento es el
+  // impuesto adicional. la boleta nunca lo lleva (dl 825, art. 43), y una nota de credito anterior a la
+  // 1.0.3 puede traer hasta 5 pesos de redondeo que no son impuesto
+  const resto = Math.max(0, total - neto - iva - exento)
+  const tipo = comprobante.tipoDte
+  const ila = tipo === 33 || (tipo === 61 && resto > 5) ? resto : 0
+  // el redondeo es la diferencia entre lo cobrado y el documento. una devolucion se cobra en negativo
+  // y un documento anterior a la 1.0.3 ya traia el total redondeado: en los dos casos no hay ajuste
+  const diferencia = Math.abs(totalCobrado) - total
+  const ajusteRedondeo = diferencia !== 0 && Math.abs(diferencia) <= 5 ? diferencia : 0
 
   return (
     <Box
@@ -119,17 +128,20 @@ export function TicketImpreso({ comprobante, emisor, metodoPago, ajusteRedondeo 
           los montos del ticket cuadren con el total */}
       {ila > 0 && <Fila etiqueta="IMPUESTO ADICIONAL ILA:" valor={formatoClp(ila)} />}
       {ajusteRedondeo !== 0 && (
-        <Fila
-          etiqueta="LEY REDONDEO (20.956):"
-          valor={`${ajusteRedondeo > 0 ? '+' : ''}${ajusteRedondeo}`}
-        />
+        <>
+          <Fila etiqueta="TOTAL:" valor={formatoClp(total)} />
+          <Fila
+            etiqueta="LEY REDONDEO (20.956):"
+            valor={`${ajusteRedondeo > 0 ? '+' : ''}${ajusteRedondeo}`}
+          />
+        </>
       )}
 
       <Separador />
 
       <Box sx={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: 15 }}>
         <Box component="span">TOTAL A PAGAR:</Box>
-        <Box component="span">{formatoClp(comprobante.totales.total)}</Box>
+        <Box component="span">{formatoClp(total + ajusteRedondeo)}</Box>
       </Box>
 
       <Separador />

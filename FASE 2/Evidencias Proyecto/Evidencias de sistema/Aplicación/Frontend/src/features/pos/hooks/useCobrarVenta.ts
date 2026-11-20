@@ -1,23 +1,15 @@
 // src/features/pos/hooks/useCobrarVenta.ts
 import { useState } from 'react'
-import { desglosarImpuestos } from '@/shared/utils/impuestos'
-import { lineasParaImpuestos } from '@/features/pos/utils/lineasImpuesto'
 import { useRegistrarVenta } from '@/features/pos/hooks/usePos'
 import { useCarritoStore } from '@/features/pos/stores/carritoStore'
 import { tieneAlcohol } from '@/features/pos/utils/alcohol'
 import type { ItemCheckout, VentaRegistrada } from '@/features/pos/types'
 import { tenantActual, usuarioActualId } from '@/features/auth/utils/identidad'
 
-// la venta cobrada y su redondeo, que se pierde al vaciar el carrito
-export type VentaCobrada = {
-  venta: VentaRegistrada
-  ajusteRedondeo: number
-}
-
 // cobrar venta (lo usan los dos modos)
 export function useCobrarVenta() {
   const registrarVenta = useRegistrarVenta()
-  const [ventaLista, setVentaLista] = useState<VentaCobrada | null>(null)
+  const [ventaLista, setVentaLista] = useState<VentaRegistrada | null>(null)
 
   // enviar venta al backend
   function cobrar() {
@@ -32,12 +24,6 @@ export function useCobrarVenta() {
 
     // la factura no se puede emitir sin los datos del receptor
     if (tipoComprobante === 'FACTURA' && !receptorEmpresa) return
-
-    // el redondeo de la ley 20.956 solo corre en efectivo
-    const desglose = desglosarImpuestos(
-      lineasParaImpuestos(lineas, tipoComprobante),
-      metodoPago === 'EFECTIVO',
-    )
 
     // items como los pide el checkout
     const items: ItemCheckout[] = lineas.map((linea) => ({
@@ -61,7 +47,7 @@ export function useCobrarVenta() {
       },
       {
         onSuccess: (venta) => {
-          setVentaLista({ venta, ajusteRedondeo: desglose.redondeo }) // mostrar comprobante
+          setVentaLista(venta) // mostrar comprobante
           limpiar() // ticket nuevo
         },
       },

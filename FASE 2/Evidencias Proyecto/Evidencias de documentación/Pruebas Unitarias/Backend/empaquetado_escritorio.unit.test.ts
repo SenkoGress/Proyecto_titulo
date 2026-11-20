@@ -58,14 +58,10 @@ describe('Pruebas Unitarias: Empaquetado de Escritorio', () => {
       expect(copiador).toContain('process.exit(1)');
     });
 
-    test('el backend compilado lleva las migraciones de los dos motores', () => {
+    // Sin construir no hay nada que comprobar: la prueba figura como omitida, no como aprobada
+    const compilado = path.join(RAIZ, 'dist/backend/src/database');
+    (fs.existsSync(compilado) ? test : test.skip)('el backend compilado lleva las migraciones de los dos motores', () => {
       const motores = ['sqlite', 'postgres'];
-      const compilado = path.join(RAIZ, 'dist/backend/src/database');
-
-      if (!fs.existsSync(compilado)) {
-        // Sin construir no hay nada que comprobar; la orden de construccion ya quedo fijada arriba
-        return;
-      }
 
       for (const motor of motores) {
         const carpeta = path.join(compilado, motor, 'migrations');

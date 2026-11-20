@@ -21,15 +21,16 @@ describe('Pricing Rounding Law, Admin Margin & Cash Closing (Balance Z)', () => 
       expect(aplicarRedondeoChileno(1623)).toBe(1620);
       expect(aplicarRedondeoChileno(1624)).toBe(1620);
       expect(aplicarRedondeoChileno(994)).toBe(990);
+      expect(aplicarRedondeoChileno(1625)).toBe(1620);
+      expect(aplicarRedondeoChileno(995)).toBe(990);
     });
 
     it('debe redondear hacia arriba a la decena si el último dígito termina en 5, 6, 7, 8 o 9', () => {
-      expect(aplicarRedondeoChileno(1625)).toBe(1630);
       expect(aplicarRedondeoChileno(1626)).toBe(1630);
       expect(aplicarRedondeoChileno(1627)).toBe(1630);
       expect(aplicarRedondeoChileno(1628)).toBe(1630);
       expect(aplicarRedondeoChileno(1629)).toBe(1630);
-      expect(aplicarRedondeoChileno(995)).toBe(1000);
+      expect(aplicarRedondeoChileno(996)).toBe(1000);
     });
 
     it('debe conservar el valor exacto si termina en 0', () => {

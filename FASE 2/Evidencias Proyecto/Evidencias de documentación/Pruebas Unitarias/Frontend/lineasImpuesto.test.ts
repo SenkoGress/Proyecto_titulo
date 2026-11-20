@@ -49,3 +49,31 @@ describe('lo que ve el cliente', () => {
     expect(factura.neto).toBeLessThan(boleta.neto)
   })
 })
+
+// la pantalla de cobro usa la misma regla que la boleta (dte-emitter.service.ts)
+describe('el desglose de la caja cuadra igual que el documento', () => {
+  it('con varias lineas, neto + iva + ila da el total y el neto se saca una vez sobre lo afecto', () => {
+    const d = desglosarImpuestos(
+      [
+        { subtotal: 1234, tasaIla: 0 },
+        { subtotal: 2397, tasaIla: 0 },
+        { subtotal: 1005, tasaIla: 0 },
+      ],
+      false,
+    )
+    expect(d.neto).toBe(Math.round(4636 / 1.19))
+    expect(d.neto + d.iva + d.ila).toBe(4636)
+  })
+
+  it('con impuesto adicional tambien cuadra', () => {
+    const d = desglosarImpuestos([{ subtotal: 5970, tasaIla: 20.5 }, { subtotal: 1234, tasaIla: 0 }], false)
+    expect(d.ila).toBeGreaterThan(0)
+    expect(d.neto + d.iva + d.ila).toBe(7204)
+  })
+
+  it('en efectivo el redondeo baja el 5 y no toca el desglose', () => {
+    const d = desglosarImpuestos([{ subtotal: 1005, tasaIla: 0 }], true)
+    expect(d.total).toBe(1000)
+    expect(d.neto + d.iva).toBe(1005)
+  })
+})

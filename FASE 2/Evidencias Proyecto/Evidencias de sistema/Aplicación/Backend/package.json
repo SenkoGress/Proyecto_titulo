@@ -1,6 +1,6 @@
 {
   "name": "gestock-backend",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Gestock - Predictive Inventory Management System (Cloud SaaS & POS Offline-First)",
   "main": "electron/main.js",
   "scripts": {
@@ -50,6 +50,7 @@
     "uuid": "^11.1.0"
   },
   "devDependencies": {
+    "@serialport/binding-mock": "^10.2.2",
     "@types/bcryptjs": "^2.4.6",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.0",

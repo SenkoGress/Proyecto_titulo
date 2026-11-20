@@ -2,21 +2,22 @@ import { aplicarRedondeoChileno, calcularPrecioVenta, desglosarIvaChileno } from
 
 describe('Pruebas Unitarias: Normativa de Precios, Ley N° 20.956 e Impuestos Chilenos', () => {
   describe('Ley de Redondeo en Efectivo (Ley N° 20.956)', () => {
-    test('redondea hacia abajo a la decena si el ultimo digito termina en 1, 2, 3 o 4', () => {
+    test('redondea hacia abajo a la decena si el ultimo digito termina en 1, 2, 3, 4 o 5', () => {
       expect(aplicarRedondeoChileno(1001)).toBe(1000);
       expect(aplicarRedondeoChileno(1002)).toBe(1000);
       expect(aplicarRedondeoChileno(1003)).toBe(1000);
       expect(aplicarRedondeoChileno(1004)).toBe(1000);
       expect(aplicarRedondeoChileno(54)).toBe(50);
+      expect(aplicarRedondeoChileno(1005)).toBe(1000);
+      expect(aplicarRedondeoChileno(55)).toBe(50);
     });
 
-    test('redondea hacia arriba a la decena si el ultimo digito termina en 5, 6, 7, 8 o 9', () => {
-      expect(aplicarRedondeoChileno(1005)).toBe(1010);
+    test('redondea hacia arriba a la decena si el ultimo digito termina en 6, 7, 8 o 9', () => {
       expect(aplicarRedondeoChileno(1006)).toBe(1010);
       expect(aplicarRedondeoChileno(1007)).toBe(1010);
       expect(aplicarRedondeoChileno(1008)).toBe(1010);
       expect(aplicarRedondeoChileno(1009)).toBe(1010);
-      expect(aplicarRedondeoChileno(55)).toBe(60);
+      expect(aplicarRedondeoChileno(56)).toBe(60);
     });
 
     test('conserva el valor inalterado si el ultimo digito termina en 0', () => {

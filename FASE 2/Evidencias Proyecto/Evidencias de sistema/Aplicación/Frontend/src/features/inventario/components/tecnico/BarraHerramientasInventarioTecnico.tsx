@@ -13,6 +13,7 @@ import Tooltip from '@mui/material/Tooltip'
 import { contarCategorias, TODAS_CATEGORIAS } from '@/features/inventario/utils/categoriasInventario'
 import { contarCriticos, SOLO_CRITICOS } from '@/features/inventario/utils/filtrosVencimientos'
 import type { FilaFefo } from '@/features/inventario/utils/matrizFefo'
+import { usePuedeAdministrar } from '@/features/auth/stores/sesionStore'
 
 type Props = {
   productos: FilaFefo[]
@@ -40,6 +41,8 @@ export function BarraHerramientasInventarioTecnico({
   onAgregar,
   onVerMermas,
 }: Props) {
+  // dar de alta y recibir mercaderia es del administrador; el cajero consulta y registra mermas
+  const esAdmin = usePuedeAdministrar()
   const categorias = contarCategorias(productos)
   const criticos = contarCriticos(productos)
 
@@ -71,9 +74,11 @@ export function BarraHerramientasInventarioTecnico({
           Historial de mermas
         </Button>
 
-        <Button size="small" variant="contained" startIcon={<AddIcon />} onClick={onAgregar}>
-          Alta de producto
-        </Button>
+        {esAdmin && (
+          <Button size="small" variant="contained" startIcon={<AddIcon />} onClick={onAgregar}>
+            Alta de producto
+          </Button>
+        )}
 
         <Tooltip title={cantidadSeleccionada > 0 ? '' : 'Marca productos en la tabla para imprimir sus etiquetas'}>
           <span>

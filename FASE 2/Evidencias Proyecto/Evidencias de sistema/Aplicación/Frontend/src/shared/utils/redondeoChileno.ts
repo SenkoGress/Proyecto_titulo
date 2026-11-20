@@ -1,6 +1,6 @@
 // src/shared/utils/redondeoChileno.ts
 
-// ley 20.956: 1-4 baja, 5-9 sube a la decena
+// ley 20.956: 1-5 baja, 6-9 sube a la decena
 export function aplicarRedondeoChileno(valor: number): number {
   if (Number.isNaN(valor)) return 0
 

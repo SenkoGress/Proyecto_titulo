@@ -1,8 +1,8 @@
 /**
  * Utilidades de fijación de precios y Ley de Redondeo de Chile (Ley N° 20.956)
  * Banco Central de Chile:
- * - Dígitos 1 a 4: Redondeo hacia abajo a la decena.
- * - Dígitos 5 a 9: Redondeo hacia arriba a la decena.
+ * - Dígitos 1 a 5: Redondeo hacia abajo a la decena.
+ * - Dígitos 6 a 9: Redondeo hacia arriba a la decena.
  */
 
 /**

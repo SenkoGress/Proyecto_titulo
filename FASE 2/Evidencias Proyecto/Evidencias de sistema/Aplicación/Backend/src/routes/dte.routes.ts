@@ -7,7 +7,7 @@ import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { defaultCafManager } from '../dte/caf-manager.service';
-import { defaultDteEmitter } from '../dte/dte-emitter.service';
+import { montoLinea, defaultDteEmitter } from '../dte/dte-emitter.service';
 import { defaultRcofService } from '../dte/rcof.service';
 import { defaultSiiCertification } from '../dte/sii-certification.service';
 import { defaultF29ReportService } from '../dte/f29-report.service';
@@ -17,6 +17,17 @@ import { TipoDTE } from '../dte/types';
 import { logger } from '../utils/logger';
 import { mesLocal } from '../utils/fecha-local';
 import { ESTADOS_DE_COLA_SQL } from '../invoices/estados-cola';
+
+const MENSAJE_ITEM_INVALIDO = 'Cada ítem necesita una cantidad mayor que cero y un precio que no sea negativo.';
+
+/** Un documento firmado no puede llevar cantidades ni precios negativos: el SII los rechaza y quedan guardados. */
+function itemsValidos(items: Array<Record<string, unknown>>): boolean {
+  return items.every((it) => {
+    const cantidad = Number(it.cantidad ?? 1);
+    const precio = Number(it.precioUnitario ?? 0);
+    return Number.isFinite(cantidad) && cantidad > 0 && Number.isFinite(precio) && precio >= 0;
+  });
+}
 
 export const dteRouter = Router();
 
@@ -147,6 +158,9 @@ dteRouter.post('/emit', (req: Request, res: Response) => {
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ success: false, error: 'Debe especificar al menos un ítem para emitir el documento.' });
+    }
+    if (!itemsValidos(items)) {
+      return res.status(400).json({ success: false, error: MENSAJE_ITEM_INVALIDO });
     }
 
     const emision = defaultDteEmitter.emitDocument({
@@ -377,6 +391,9 @@ dteRouter.post('/guias/emitir', (req: Request, res: Response) => {
         error: 'Faltan campos obligatorios para emitir la Guía de Despacho (receptor, dirección, items)'
       });
     }
+    if (!itemsValidos(items)) {
+      return res.status(400).json({ success: false, error: MENSAJE_ITEM_INVALIDO });
+    }
 
     const dteItems = items.map((it: any, idx: number) => ({
       nroLinea: idx + 1,
@@ -384,7 +401,7 @@ dteRouter.post('/guias/emitir', (req: Request, res: Response) => {
       sku: it.sku,
       cantidad: Number(it.cantidad) || 1,
       precioUnitario: Number(it.precioUnitario) || 0,
-      subtotal: (Number(it.cantidad) || 1) * (Number(it.precioUnitario) || 0)
+      subtotal: montoLinea({ cantidad: Number(it.cantidad) || 1, precioUnitario: Number(it.precioUnitario) || 0 })
     }));
 
     const guiaResult = defaultDteEmitter.emitDocument({
