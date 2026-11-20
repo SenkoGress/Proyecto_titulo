@@ -15,7 +15,7 @@ describe('Pricing Rounding Law, Admin Margin & Cash Closing (Balance Z)', () => 
   });
 
   describe('1. Ley de Redondeo Chilena (Ley N° 20.956) y Fijación de Precios', () => {
-    it('debe redondear hacia abajo a la decena si el último dígito termina en 1, 2, 3 o 4', () => {
+    it('debe redondear hacia abajo a la decena si el último dígito termina en 1, 2, 3, 4 o 5', () => {
       expect(aplicarRedondeoChileno(1621)).toBe(1620);
       expect(aplicarRedondeoChileno(1622)).toBe(1620);
       expect(aplicarRedondeoChileno(1623)).toBe(1620);
@@ -25,7 +25,7 @@ describe('Pricing Rounding Law, Admin Margin & Cash Closing (Balance Z)', () => 
       expect(aplicarRedondeoChileno(995)).toBe(990);
     });
 
-    it('debe redondear hacia arriba a la decena si el último dígito termina en 5, 6, 7, 8 o 9', () => {
+    it('debe redondear hacia arriba a la decena si el último dígito termina en 6, 7, 8 o 9', () => {
       expect(aplicarRedondeoChileno(1626)).toBe(1630);
       expect(aplicarRedondeoChileno(1627)).toBe(1630);
       expect(aplicarRedondeoChileno(1628)).toBe(1630);

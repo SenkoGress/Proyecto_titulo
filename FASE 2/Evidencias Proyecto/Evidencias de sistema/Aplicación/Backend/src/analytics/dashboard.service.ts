@@ -90,23 +90,35 @@ export class DashboardService {
     } // 'historico' no agrega filtro de fecha
 
     // 2. KPIs de Ventas
-    const salesAgg = this.sqlite.queryOne<{
+    // el total y las transacciones se cuentan sobre la venta, y las unidades y el costo sobre el
+    // detalle: en una sola consulta con el join, SUM(tv.total) sumaba el total una vez por linea
+    const ventasAgg = this.sqlite.queryOne<{
       total_bruto: number;
       total_transacciones: number;
+    }>(
+      `SELECT 
+        COALESCE(SUM(tv.total), 0) as total_bruto,
+        COUNT(tv.id) as total_transacciones
+       FROM transacciones_venta tv
+       WHERE tv.tenant_id = ? ${dateFilter}`,
+      [tenantId]
+    ) || { total_bruto: 0, total_transacciones: 0 };
+
+    const detalleAgg = this.sqlite.queryOne<{
       unidades_vendidas: number;
       costo_vendido: number;
     }>(
       `SELECT 
-        COALESCE(SUM(tv.total), 0) as total_bruto,
-        COUNT(DISTINCT tv.id) as total_transacciones,
         COALESCE(SUM(dv.cantidad), 0) as unidades_vendidas,
         COALESCE(SUM(dv.cantidad * COALESCE(p.precio_compra, 0)), 0) as costo_vendido
-       FROM transacciones_venta tv
-       LEFT JOIN detalle_venta dv ON tv.id = dv.venta_id
+       FROM detalle_venta dv
+       JOIN transacciones_venta tv ON tv.id = dv.venta_id
        LEFT JOIN productos p ON dv.producto_id = p.id
        WHERE tv.tenant_id = ? ${dateFilter}`,
       [tenantId]
-    ) || { total_bruto: 0, total_transacciones: 0, unidades_vendidas: 0, costo_vendido: 0 };
+    ) || { unidades_vendidas: 0, costo_vendido: 0 };
+
+    const salesAgg = { ...ventasAgg, ...detalleAgg };
 
     const totalVentasBruto = Number(salesAgg.total_bruto || 0);
     const totalVentasNeto = Math.round(totalVentasBruto / 1.19);
