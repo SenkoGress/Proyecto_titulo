@@ -8,9 +8,9 @@
 
 La aplicación de escritorio para Windows se descarga desde las publicaciones del repositorio de trabajo, sin necesidad de cuenta:
 
-**[Descargar GesTock 1.0.3 para Windows](https://github.com/SenkoGress/Proyecto_titulo/releases/latest)** · [descarga directa del instalador](https://github.com/SenkoGress/Proyecto_titulo/releases/download/v1.0.3/GesTock-1.0.3-instalador.exe) (132 MB)
+**[Descargar GesTock 1.0.4 para Windows](https://github.com/SenkoGress/Proyecto_titulo/releases/latest)** · [descarga directa del instalador](https://github.com/SenkoGress/Proyecto_titulo/releases/download/v1.0.4/GesTock-1.0.4-instalador.exe) (132 MB)
 
-1. Ejecute `GesTock-1.0.3-instalador.exe`. Windows muestra un aviso azul porque el instalador no está firmado: elija «Más información» y luego «Ejecutar de todas formas».
+1. Ejecute `GesTock-1.0.4-instalador.exe`. Windows muestra un aviso azul porque el instalador no está firmado: elija «Más información» y luego «Ejecutar de todas formas».
 2. En el primer arranque, cree la cuenta de administrador y marque la casilla del catálogo de demostración (25 productos y 5 proveedores).
 
 La aplicación funciona sin configuración adicional: vende, emite boletas en el ambiente de certificación y cobra con tarjeta en modo simulado. El correo, la lectura de facturas con inteligencia artificial y el ambiente de prueba de las máquinas de pago necesitan los archivos de configuración del local, que se entregan aparte.
