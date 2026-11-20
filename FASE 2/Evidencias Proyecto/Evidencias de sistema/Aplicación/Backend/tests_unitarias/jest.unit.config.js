@@ -1,3 +1,6 @@
+// zona de Chile: las fechas locales (vencimientos, dia de la caja) se prueban igual en cualquier equipo
+process.env.TZ = 'America/Santiago';
+
 module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',

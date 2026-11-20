@@ -7,8 +7,11 @@ import {
   cargarCatalogoDemo,
   leerCatalogoDemo
 } from '../../backend/src/database/cargar-catalogo-demo';
+import { clasificarSemaforo, diasHastaVencer, reloj } from '../../backend/src/inventory/vencimiento';
 
 const TENANT = '00000000-0000-0000-0000-000000000001';
+// 23:30 en Chile ya es el dia siguiente en UTC: una fecha calculada con la hora UTC se corre un dia
+const HOY = new Date(2026, 6, 15, 23, 30);
 
 /**
  * La carpeta de datos del usuario se borra para volver a ver el sistema como lo vera quien lo
@@ -16,9 +19,65 @@ const TENANT = '00000000-0000-0000-0000-000000000001';
  * carpeta, de modo que se puede recuperar y es el mismo en todos los equipos.
  */
 describe('Pruebas Unitarias: Catalogo de Demostracion', () => {
+  const relojReal = reloj.ahora;
+  let primeraCarga: Awaited<ReturnType<typeof cargarCatalogoDemo>>;
+
+  // el reloj se fija antes de cualquier carga: la carga es aditiva y una anterior dejaria sus fechas
   beforeAll(async () => {
     defaultPgClient.tripCircuit();
     await initializeDatabase();
+    reloj.ahora = () => new Date(HOY);
+    primeraCarga = await cargarCatalogoDemo(TENANT);
+  });
+
+  afterAll(() => {
+    reloj.ahora = relojReal;
+  });
+
+  describe('Los vencimientos', () => {
+    const fechas = () => {
+      const catalogo = leerCatalogoDemo()!;
+      return catalogo.productos.map((p) => ({
+        nombre: p.nombre,
+        vence_en_dias: p.vence_en_dias,
+        fecha: defaultSqliteClient.queryOne<{ f: string | null }>(
+          'SELECT fecha_vencimiento AS f FROM productos WHERE id = ?',
+          [p.id]
+        )?.f ?? null
+      }));
+    };
+
+    test('las pruebas corren en la zona de Chile y sobre una carga recien hecha', () => {
+      expect(HOY.getTimezoneOffset()).toBeGreaterThan(0);
+      expect(primeraCarga.productos_nuevos).toBe(leerCatalogoDemo()!.productos.length);
+    });
+
+    test('cada fecha queda a los dias exactos de la carga, contados en la fecha local', () => {
+      for (const { nombre, vence_en_dias, fecha } of fechas().filter((f) => f.vence_en_dias != null)) {
+        expect([nombre, diasHastaVencer(fecha, HOY)]).toEqual([nombre, vence_en_dias]);
+      }
+    });
+
+    test('el semaforo tiene algo que mostrar en cada uno de sus estados', () => {
+      const estados = fechas()
+        .filter((f) => f.fecha)
+        .map((f) => clasificarSemaforo(diasHastaVencer(f.fecha, HOY)!).estado);
+      const contar = (estado: string) => estados.filter((e) => e === estado).length;
+
+      expect(contar('VENCIDO')).toBe(2);
+      expect(contar('VENCE_ESTA_SEMANA')).toBe(3);
+      expect(contar('VENCE_EN_15_DIAS')).toBe(1);
+      expect(contar('VENCE_EN_30_DIAS')).toBe(1);
+      expect(contar('VIGENTE')).toBe(estados.length - 7);
+      expect(contar('VIGENTE')).toBeGreaterThan(0);
+    });
+
+    test('lo que no se vence queda sin fecha', () => {
+      const sinFecha = fechas().filter((f) => f.fecha === null).map((f) => f.nombre);
+      expect(sinFecha).toHaveLength(2);
+      expect(sinFecha.some((n) => n.startsWith('Pisco'))).toBe(true);
+      expect(sinFecha.some((n) => n.startsWith('Bolsa'))).toBe(true);
+    });
   });
 
   describe('El archivo del catalogo', () => {

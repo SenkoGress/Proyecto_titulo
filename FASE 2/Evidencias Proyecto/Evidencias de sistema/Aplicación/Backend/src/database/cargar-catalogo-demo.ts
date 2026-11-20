@@ -4,6 +4,18 @@ import { defaultSqliteClient, SqliteClient } from './sqlite/client';
 import { defaultPgClient, PostgresClient } from './postgres/client';
 import { logger } from '../utils/logger';
 import { motivoImagenInvalida } from '../inventory/imagen-producto';
+import { reloj } from '../inventory/vencimiento';
+import { fechaLocal } from '../utils/fecha-local';
+
+/**
+ * Fecha de vencimiento contada desde el dia de la carga, sobre la fecha local: con una fecha fija la
+ * demostracion envejece y lo que vencia esta semana aparece vencido.
+ */
+function fechaDeVencimiento(venceEnDias: number | null | undefined): string | null {
+  if (venceEnDias === null || venceEnDias === undefined) return null;
+  const hoy = reloj.ahora();
+  return fechaLocal(new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() + venceEnDias));
+}
 
 /**
  * Catalogo de demostracion versionado en el proyecto.
@@ -43,7 +55,8 @@ export interface ProductoSembrado {
   precio_venta: number;
   impuesto_adicional_codigo?: number;
   impuesto_adicional_tasa?: number;
-  fecha_vencimiento?: string | null;
+  /** Dias desde la carga hasta el vencimiento (negativo: ya vencido). null en lo que no se vence. */
+  vence_en_dias?: number | null;
   activo?: number;
   /** Foto como data URL. Una que no cumple el formato o el tope se descarta y el producto se carga igual. */
   imagen?: string | null;
@@ -187,7 +200,7 @@ export async function cargarCatalogoDemo(
           producto.categoria ?? null,
           producto.impuesto_adicional_codigo ?? 0,
           producto.impuesto_adicional_tasa ?? 0,
-          producto.fecha_vencimiento ?? null,
+          fechaDeVencimiento(producto.vence_en_dias),
           imagenDe(producto)
         ]
       );
