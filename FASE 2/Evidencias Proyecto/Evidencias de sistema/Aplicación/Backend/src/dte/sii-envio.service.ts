@@ -25,11 +25,6 @@ export interface DocumentoPendiente {
 
 export type TipoSobre = 'EnvioDTE' | 'EnvioBOLETA';
 
-/** El sobre declara ISO-8859-1: se entrega en esos bytes, no en UTF-8, o el SII lee mal las tildes y la ñ. */
-export function bytesDelSobre(sobreXml: string): Buffer {
-  return Buffer.from(sobreXml, 'latin1');
-}
-
 export interface SobrePreparado {
   envioId: string;
   tipoSobre: TipoSobre;

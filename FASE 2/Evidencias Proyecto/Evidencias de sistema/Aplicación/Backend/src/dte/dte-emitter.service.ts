@@ -259,7 +259,7 @@ export class DteEmitterService {
       const monto = neto ? netoDeLinea(montoLinea(it), tasaIla) : montoLinea(it);
       const precio = neto ? Number(it.precioUnitario) / (1.19 + tasaIla / 100) : Number(it.precioUnitario);
       // el esquema pide un precio mayor que cero: un item sin valor, como un traslado, va sin precio
-      const prcTag = precio > 0 ? `<PrcItem>${decimalesSii(precio)}</PrcItem>` : '';
+      const prcTag = Number(decimalesSii(precio)) > 0 ? `<PrcItem>${decimalesSii(precio)}</PrcItem>` : '';
       itemsXml += `<Detalle><NroLinDet>${idx + 1}</NroLinDet>${exeTag}<NmbItem>${textoSii(it.nombre, 80)}</NmbItem><QtyItem>${decimalesSii(Number(it.cantidad))}</QtyItem>${prcTag}${ilaTag}<MontoItem>${monto}</MontoItem></Detalle>`;
     });
 
@@ -287,7 +287,7 @@ export class DteEmitterService {
     // El emisor de la boleta tiene sus propios nombres de nodo y no lleva actividad economica
     const emisorXml = esBoleta(tipoDte)
       ? `<Emisor><RUTEmisor>${rutEmisor}</RUTEmisor><RznSocEmisor>${textoSii(emisor.razonSocial, 100)}</RznSocEmisor><GiroEmisor>${textoSii(emisor.giro, 80)}</GiroEmisor><DirOrigen>${textoSii(emisor.direccion, 70)}</DirOrigen><CmnaOrigen>${textoSii(emisor.comuna, 20)}</CmnaOrigen><CiudadOrigen>${textoSii(emisor.ciudad, 20)}</CiudadOrigen></Emisor>`
-      : `<Emisor><RUTEmisor>${rutEmisor}</RUTEmisor><RznSoc>${textoSii(emisor.razonSocial, 100)}</RznSoc><GiroEmis>${textoSii(emisor.giro, 80)}</GiroEmis><Acteco>${emisor.acteco || '471100'}</Acteco><DirOrigen>${textoSii(emisor.direccion, 70)}</DirOrigen><CmnaOrigen>${textoSii(emisor.comuna, 20)}</CmnaOrigen><CiudadOrigen>${textoSii(emisor.ciudad, 20)}</CiudadOrigen></Emisor>`;
+      : `<Emisor><RUTEmisor>${rutEmisor}</RUTEmisor><RznSoc>${textoSii(emisor.razonSocial, 100)}</RznSoc><GiroEmis>${textoSii(emisor.giro, 80)}</GiroEmis><Acteco>${/^\d{6}$/.test(String(emisor.acteco)) ? emisor.acteco : '471100'}</Acteco><DirOrigen>${textoSii(emisor.direccion, 70)}</DirOrigen><CmnaOrigen>${textoSii(emisor.comuna, 20)}</CmnaOrigen><CiudadOrigen>${textoSii(emisor.ciudad, 20)}</CiudadOrigen></Emisor>`;
 
     // Totales con desglose de ILA si existe
     let ilaTotalesXml = '';

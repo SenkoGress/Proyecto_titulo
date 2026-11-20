@@ -17,17 +17,34 @@ import { TipoDTE } from '../dte/types';
 import { logger } from '../utils/logger';
 import { mesLocal } from '../utils/fecha-local';
 import { ESTADOS_DE_COLA_SQL } from '../invoices/estados-cola';
-import { bytesDelSobre } from '../dte/sii-envio.service';
-import { rutSiiSeguro } from '../utils/sii.utils';
+import { bytesDelSobre, rutSiiSeguro } from '../utils/sii.utils';
 
 const MENSAJE_ITEM_INVALIDO = 'Cada ítem necesita una cantidad mayor que cero y un precio que no sea negativo.';
+
+/**
+ * El RUT que no se puede leer, o con el digito equivocado, se informa como 400 con su campo: un 500
+ * dejaria al usuario sin saber que dato corregir.
+ */
+function rutInvalido(tenantId: string, ruts: { receptor?: unknown; chofer?: unknown }): { error: string; message: string } | null {
+  if (!rutSiiSeguro(defaultDteEmitter.getTenantFiscalConfig(tenantId).emisor.rut)) {
+    return { error: 'EMISOR_RUT_INVALIDO', message: 'El RUT del emisor en Configuracion no es valido: corrijalo antes de emitir.' };
+  }
+  if (ruts.receptor && !rutSiiSeguro(String(ruts.receptor))) {
+    return { error: 'RUT_RECEPTOR_INVALIDO', message: 'El RUT del receptor no es valido: revise el numero y el digito verificador.' };
+  }
+  if (ruts.chofer && !rutSiiSeguro(String(ruts.chofer))) {
+    return { error: 'RUT_CHOFER_INVALIDO', message: 'El RUT del chofer no es valido: revise el numero y el digito verificador.' };
+  }
+  return null;
+}
 
 /** Un documento firmado no puede llevar cantidades ni precios negativos: el SII los rechaza y quedan guardados. */
 function itemsValidos(items: Array<Record<string, unknown>>): boolean {
   return items.every((it) => {
     const cantidad = Number(it.cantidad ?? 1);
     const precio = Number(it.precioUnitario ?? 0);
-    return Number.isFinite(cantidad) && cantidad > 0 && Number.isFinite(precio) && precio >= 0;
+    // el XML lleva hasta 6 decimales: una cantidad menor quedaria en cero
+    return Number.isFinite(cantidad) && Number(cantidad.toFixed(6)) > 0 && Number.isFinite(precio) && precio >= 0;
   });
 }
 
@@ -86,6 +103,11 @@ dteRouter.post('/config', (req: Request, res: Response) => {
     // un RUT de emisor invalido dejaria sin boleta todas las ventas: no se guarda
     if (rut && !rutSiiSeguro(rut)) {
       res.status(400).json({ success: false, error: 'EMISOR_RUT_INVALIDO', message: 'El RUT del emisor no es valido: revise el numero y el digito verificador.' });
+      return;
+    }
+    // el esquema del SII pide el codigo de actividad economica como un numero de 6 digitos
+    if (acteco && !/^\d{6}$/.test(String(acteco))) {
+      res.status(400).json({ success: false, error: 'ACTECO_INVALIDO', message: 'El codigo de actividad economica debe tener 6 digitos, sin puntos (por ejemplo 471100).' });
       return;
     }
 
@@ -169,6 +191,10 @@ dteRouter.post('/emit', (req: Request, res: Response) => {
     }
     if (!itemsValidos(items)) {
       return res.status(400).json({ success: false, error: MENSAJE_ITEM_INVALIDO });
+    }
+    const rutMalo = rutInvalido(tenantId, { receptor: receptor?.rut });
+    if (rutMalo) {
+      return res.status(400).json({ success: false, ...rutMalo });
     }
 
     const emision = defaultDteEmitter.emitDocument({
@@ -401,6 +427,10 @@ dteRouter.post('/guias/emitir', (req: Request, res: Response) => {
     }
     if (!itemsValidos(items)) {
       return res.status(400).json({ success: false, error: MENSAJE_ITEM_INVALIDO });
+    }
+    const rutMalo = rutInvalido(tenantId, { receptor: receptorRut, chofer: choferRut });
+    if (rutMalo) {
+      return res.status(400).json({ success: false, ...rutMalo });
     }
 
     const dteItems = items.map((it: any, idx: number) => ({

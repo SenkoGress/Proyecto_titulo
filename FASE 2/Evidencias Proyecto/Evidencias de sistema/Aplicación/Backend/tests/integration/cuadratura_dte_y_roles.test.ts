@@ -294,6 +294,66 @@ describe('Documento tributario que cuadra y escrituras del catalogo solo para el
     });
   });
 
+  describe('la emision directa, la guia y la descarga del sobre', () => {
+    test('un RUT invalido en la emision directa o en la guia responde 400 con su campo, no 500', async () => {
+      const emision = await pedir('POST', '/dte/emit', {
+        tenantId: TENANT, tipoDte: TipoDTE.FACTURA_ELECTRONICA, items: [item('Pan', 1234)], receptor: { rut: '76.555.001-9', razonSocial: 'Comercio' }
+      }, tokenAdmin);
+      expect([emision.status, emision.json.error]).toEqual([400, 'RUT_RECEPTOR_INVALIDO']);
+
+      const guia = await pedir('POST', '/dte/guias/emitir', {
+        tenantId: TENANT, receptorRut: '76.555.001-7', receptorRazonSocial: 'Comercio', direccionDestino: 'Calle 1',
+        choferRut: '11.111.111-2', items: [{ nombre: 'Pan', cantidad: 1, precioUnitario: 1234 }]
+      }, tokenAdmin);
+      expect([guia.status, guia.json.error]).toEqual([400, 'RUT_CHOFER_INVALIDO']);
+      expect(guia.json.message).toMatch(/digito verificador/);
+    });
+
+    test('una cantidad que en 6 decimales queda en cero se rechaza', async () => {
+      const res = await pedir('POST', '/dte/emit', { tenantId: TENANT, items: [item('Pan', 1234, 0.0000001)] }, tokenAdmin);
+      expect(res.status).toBe(400);
+    });
+
+    test('la descarga entrega el sobre en bytes ISO-8859-1, como declara', async () => {
+      const id = 'cccccccc-0000-4000-8000-0000000e0001';
+      defaultSqliteClient.execute(
+        `INSERT OR REPLACE INTO sii_envios (id, tenant_id, ambiente, documentos, estado, sobre_xml, tipo_sobre)
+         VALUES (?, ?, 'CERTIFICACION', 1, 'PREPARADO', ?, 'EnvioDTE')`,
+        [id, TENANT, '<?xml version="1.0" encoding="ISO-8859-1"?><EnvioDTE><RznSocRecep>Panadería Ñuñoa</RznSocRecep></EnvioDTE>']
+      );
+      const res = await fetch(`${base}/api/v1/dte/envio/${id}/sobre?tenantId=${TENANT}`, { headers: { Authorization: `Bearer ${tokenAdmin}` } });
+      const bytes = Buffer.from(await res.arrayBuffer());
+
+      expect(res.status).toBe(200);
+      expect(res.headers.get('content-type')).toMatch(/ISO-8859-1/i);
+      // la Ñ es 0xD1 en ISO-8859-1; en UTF-8 serian dos bytes (0xC3 0x91)
+      expect(bytes.includes(Buffer.from([0xd1]))).toBe(true);
+      expect(bytes.includes(Buffer.from([0xc3]))).toBe(false);
+    });
+
+    test('la configuracion no guarda un acteco que no sea de 6 digitos, y uno viejo no llega al XML', async () => {
+      const res = await pedir('POST', '/dte/config', { tenantId: TENANT, acteco: '47.11.00' }, tokenAdmin);
+      expect([res.status, res.json.error]).toEqual([400, 'ACTECO_INVALIDO']);
+
+      // guardado antes de la 1.0.4, cuando no se revisaba: el documento usa el codigo del almacen
+      defaultSqliteClient.execute(
+        `INSERT INTO configuracion_sistema (id, tenant_id, clave, valor, descripcion, actualizado_at)
+         VALUES (?, ?, 'sii_acteco', '47.11.00', 'Codigo de actividad economica SII', datetime('now'))
+         ON CONFLICT(tenant_id, clave) DO UPDATE SET valor = excluded.valor`,
+        [`cfg-${TENANT}-sii_acteco`, TENANT]
+      );
+      try {
+        const r = defaultDteEmitter.emitDocument({
+          tenantId: TENANT, tipoDte: TipoDTE.FACTURA_ELECTRONICA, metodoPago: 'EFECTIVO', items: [item('Pan', 1234)],
+          receptor: { rut: '76.555.001-7', razonSocial: 'Comercio' }
+        });
+        expect(String(r.xmlDte)).toContain('<Acteco>471100</Acteco>');
+      } finally {
+        defaultSqliteClient.execute("DELETE FROM configuracion_sistema WHERE tenant_id = ? AND clave = 'sii_acteco'", [TENANT]);
+      }
+    });
+  });
+
   describe('solo el administrador escribe en el catalogo', () => {
     test('el cajero no da de alta, no edita precios y no ajusta stock, ni con una barra al final', async () => {
       const antes = producto();

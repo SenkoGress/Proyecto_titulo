@@ -409,4 +409,31 @@ describe('Pruebas Unitarias: Envio de Documentos al SII', () => {
       expect(ruta).toContain("1, 'SII')");
     });
   });
+  describe('La subida al SII', () => {
+    test('el sobre se sube en bytes ISO-8859-1, como declara su encabezado', async () => {
+      const transporte = new SiiTransportHttp();
+      // sin certificado real: se reemplaza la autenticacion y se mira solo lo que se sube
+      Object.assign(transporte as any, {
+        credenciales: () => ({}),
+        obtenerSemilla: async () => '1',
+        obtenerToken: async () => 'TOKEN'
+      });
+      let subido: FormData | undefined;
+      const fetchOriginal = global.fetch;
+      global.fetch = (async (_url: string, opciones: { body: FormData }) => {
+        subido = opciones.body;
+        return { ok: true, status: 200, text: async () => '<TRACKID>99</TRACKID><STATUS>0</STATUS>' };
+      }) as any;
+      try {
+        await transporte.subirSobre('<?xml version="1.0" encoding="ISO-8859-1"?><EnvioDTE>Ñuñoa</EnvioDTE>', 'CERTIFICACION', '76123456-0');
+      } finally {
+        global.fetch = fetchOriginal;
+      }
+
+      const bytes = Buffer.from(await (subido!.get('archivo') as Blob).arrayBuffer());
+      // la Ñ es 0xD1 en ISO-8859-1; en UTF-8 serian dos bytes (0xC3 0x91)
+      expect(bytes.includes(Buffer.from([0xd1, 0x75, 0xf1]))).toBe(true);
+      expect(bytes.includes(Buffer.from([0xc3]))).toBe(false);
+    });
+  });
 });

@@ -7,8 +7,11 @@ import { initializeDatabase } from '../../src/database/init-db';
 import { defaultSqliteClient } from '../../src/database/sqlite/client';
 import { defaultPgClient } from '../../src/database/postgres/client';
 import { defaultDteEmitter } from '../../src/dte/dte-emitter.service';
-import { bytesDelSobre, defaultSiiEnvio } from '../../src/dte/sii-envio.service';
+import { defaultSiiEnvio } from '../../src/dte/sii-envio.service';
+import { bytesDelSobre } from '../../src/utils/sii.utils';
 import { ItemDTE, TipoDTE } from '../../src/dte/types';
+import { defaultCafManager } from '../../src/dte/caf-manager.service';
+import { defaultXmlSigner } from '../../src/dte/xml-signer.service';
 
 /**
  * Los documentos que emite GesTock pasan los esquemas oficiales del SII (schema_dte.zip y
@@ -31,6 +34,19 @@ const refFactura = { nroLineaRef: 1, tipoDocRef: 33, folioRef: 1, fechaRef: '202
 const refBoleta = { nroLineaRef: 1, tipoDocRef: 39, folioRef: 1, fechaRef: '2026-11-20', codigoRef: 1, razonRef: 'Devolucion de la boleta' };
 const cerveza = item('Cerveza Lager 350cc', 1990, 3, { codigoIla: 26, tasaIla: 20.5 });
 
+/** Verifica la firma del primer timbre de un sobre leido como bytes ISO-8859-1. */
+function verificaTimbre(sobreLatin1: string, clavePrivada: string): boolean {
+  const dd = /<DD>.*?<\/DD>/.exec(sobreLatin1)![0];
+  const firma = /<FRMT algoritmo="SHA1withRSA">([^<]+)<\/FRMT>/.exec(sobreLatin1)![1];
+  const verificador = crypto.createVerify('RSA-SHA1');
+  verificador.update(Buffer.from(dd, 'latin1'));
+  return verificador.verify(crypto.createPublicKey(clavePrivada), firma, 'base64');
+}
+
+function verificaFirmasConNet(archivo: string) {
+  return spawnSync('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(ESQUEMAS, 'verificar_firmas.ps1'), '-Xml', archivo], { encoding: 'utf8' });
+}
+
 const CASOS: Array<[string, any]> = [
   ['boleta', { tipoDte: 39, items: [item('Leche 1L', 1234), item('Pan', 799, 3), item('Granel', 333.33, 3)] }],
   ['boleta con linea exenta', { tipoDte: 39, items: [item('Leche 1L', 1234), item('Libro', 5000, 1, { exento: true })] }],
@@ -47,6 +63,7 @@ const CASOS: Array<[string, any]> = [
   ['nota de credito sobre una boleta', { tipoDte: 61, items: [item('Leche 1L', 1234)], referencia: refBoleta }],
   ['guia con transporte', { tipoDte: 52, items: [item('Leche 1L', 1234), item('Pan', 799, 3)], receptor: empresa, transporte: { indTraslado: 5, patente: 'ABCD12', choferRut: '11.111.111-1', choferNombre: largo, direccionDestino: largo, comunaDestino: largo } }],
   ['guia sin transporte', { tipoDte: 52, items: [item('Leche 1L', 1234)], receptor: empresa }],
+  ['guia con un precio que redondea a cero', { tipoDte: 52, items: [item('Muestra', 0.0000001, 1)], receptor: empresa }],
   ['guia de traslado sin valor', { tipoDte: 52, items: [item('Caja de traslado', 0, 2)], receptor: empresa, transporte: { indTraslado: 5, patente: 'S/P', choferRut: '11111111-1', choferNombre: 'Chofer' } }]
 ];
 
@@ -90,7 +107,7 @@ describe('El XML de los documentos tributarios cumple los esquemas oficiales del
 
   // .NET canonicaliza, recalcula cada digest y verifica cada firma por su cuenta: la del documento y la del sobre
   (enWindows ? test.each : test.skip.each)(CASOS.map(([nombre]) => [nombre]))('%s: .NET verifica las firmas del documento y del sobre', (nombre) => {
-    const r = spawnSync('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(ESQUEMAS, 'verificar_firmas.ps1'), '-Xml', documentos.get(nombre)!.archivo], { encoding: 'utf8' });
+    const r = verificaFirmasConNet(documentos.get(nombre)!.archivo);
 
     expect(r.stdout.trim().split(/\r?\n/).map((l) => l.split(' ')[0])).toEqual(['OK', 'OK']);
     expect(r.status).toBe(0);
@@ -130,18 +147,17 @@ describe('El XML de los documentos tributarios cumple los esquemas oficiales del
 
     const traslado = documentos.get('guia de traslado sin valor')!.xml;
     expect(traslado).not.toContain('<PrcItem>');
+    // se compara ya redondeado a 6 decimales: 0,0000001 quedaria en un PrcItem de cero
+    expect(documentos.get('guia con un precio que redondea a cero')!.xml).not.toContain('<PrcItem>');
     expect(documentos.get('boleta con cantidad fraccionaria y nombre largo')!.xml).toContain('<QtyItem>0.333333</QtyItem>');
   });
 
-  test('el timbre se firma sobre el RUT ya normalizado y su firma sigue siendo valida', () => {
-    for (const [nombre, { xml, caf }] of documentos) {
-      expect(xml).toContain('<FRMT algoritmo="SHA1withRSA">');
-      const dd = /<DD>.*<\/DD>/.exec(xml)![0];
-      const firma = /<FRMT algoritmo="SHA1withRSA">([^<]+)<\/FRMT>/.exec(xml)![1];
-      const verificador = crypto.createVerify('RSA-SHA1');
-      verificador.update(dd);
-      const publica = crypto.createPublicKey(caf.rsask_private_key);
-      expect([nombre, verificador.verify(publica, firma, 'base64')]).toEqual([nombre, true]);
+  // el SII verifica el timbre sobre los bytes que recibe: se leen del archivo en ISO-8859-1, no del texto
+  test('el timbre se firma sobre el RUT ya normalizado y su firma vale sobre los bytes que se envian', () => {
+    for (const [nombre, { caf, archivo }] of documentos) {
+      const recibido = fs.readFileSync(archivo).toString('latin1');
+      expect(recibido).toContain('<FRMT algoritmo="SHA1withRSA">');
+      expect([nombre, verificaTimbre(recibido, caf.rsask_private_key)]).toEqual([nombre, true]);
     }
   });
 
@@ -191,5 +207,61 @@ describe('El XML de los documentos tributarios cumple los esquemas oficiales del
       })
     ).toThrow(/RUT/);
     expect(folio()).toBe(antes);
+  });
+
+  test('la forma canonica conserva los espacios entre etiquetas, como C14N, y declara el espacio heredado', () => {
+    expect(defaultXmlSigner.canonicalize('<a ID="1"> <b/>\n</a>', 'http://www.sii.cl/SiiDte'))
+      .toBe('<a xmlns="http://www.sii.cl/SiiDte" ID="1"> <b></b>\n</a>');
+  });
+
+  // el archivo de folios que entrega el SII viene con saltos de linea entre etiquetas; los
+  // provisionales se arman en una linea y no lo muestran
+  test('con un archivo de folios del SII, con saltos de linea, la firma y el timbre siguen valiendo', () => {
+    const claves = crypto.generateKeyPairSync('rsa', {
+      modulusLength: 1024,
+      publicKeyEncoding: { type: 'pkcs1', format: 'pem' },
+      privateKeyEncoding: { type: 'pkcs1', format: 'pem' }
+    });
+    const archivoCaf = [
+      '<?xml version="1.0"?>',
+      '<AUTORIZACION>',
+      '<CAF version="1.0">',
+      '<DA>',
+      '<RE>76123456-0</RE>',
+      '<RS>COMERCIAL DON TITO SPA</RS>',
+      '<TD>33</TD>',
+      '<RNG><D>900001</D><H>900010</H></RNG>',
+      '<FA>2026-11-20</FA>',
+      '<RSAPK><M>AQAB</M><E>Aw==</E></RSAPK>',
+      '<IDK>100</IDK>',
+      '</DA>',
+      '<FRMA algoritmo="SHA1withRSA">QUJD</FRMA>',
+      '</CAF>',
+      `<RSASK>${claves.privateKey}</RSASK>`,
+      '</AUTORIZACION>'
+    ].join('\n');
+    const caf = defaultCafManager.importCafFromXml(TENANT, archivoCaf);
+    try {
+      const r = defaultDteEmitter.emitDocument({
+        tenantId: TENANT, tipoDte: TipoDTE.FACTURA_ELECTRONICA, metodoPago: 'EFECTIVO',
+        items: [item('Café de grano', 4990)], receptor: { ...empresa, razonSocial: 'Panadería Ñuñoa Ltda.' }
+      });
+      expect(r.folio).toBe(900001);
+      const [sobre] = defaultSiiEnvio.prepararSobres(TENANT, [String(r.dteId)]);
+      const archivo = path.join(carpeta, 'caf_del_sii.xml');
+      fs.writeFileSync(archivo, bytesDelSobre(sobre.sobreXml));
+
+      const recibido = fs.readFileSync(archivo).toString('latin1');
+      // el SII verifica el timbre sobre el DD aplanado: no puede llevar saltos entre etiquetas
+      expect(/<DD>.*?<\/DD>/s.exec(recibido)![0]).not.toMatch(/>\s+</);
+      expect(verificaTimbre(recibido, claves.privateKey)).toBe(true);
+      if (enWindows) {
+        const firmas = verificaFirmasConNet(archivo);
+        expect(firmas.stdout.trim().split(/\r?\n/).map((l) => l.split(' ')[0])).toEqual(['OK', 'OK']);
+      }
+    } finally {
+      // el rango de prueba no debe quedar activo para las demas suites
+      defaultSqliteClient.execute('UPDATE sii_caf SET activo = 0 WHERE id = ?', [caf.id]);
+    }
   });
 });

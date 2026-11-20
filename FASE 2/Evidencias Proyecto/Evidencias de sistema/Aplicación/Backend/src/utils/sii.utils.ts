@@ -35,6 +35,8 @@ export function rutValido(rut: string): boolean {
  * digito pasaria por el de otro contribuyente.
  */
 export function rutSiiSeguro(rut: string | null | undefined): string | null {
+  // con puntos y sin guion lo mas probable es que falte el digito: el ultimo numero no lo es
+  if (/\./.test(String(rut ?? '')) && !/-/.test(String(rut ?? ''))) return null;
   const limpio = String(rut ?? '').replace(/[^0-9kK]/g, '').toUpperCase();
   const cuerpo = limpio.slice(0, -1);
   const dv = limpio.slice(-1);
@@ -71,4 +73,9 @@ export function textoSii(valor: unknown, largoMaximo: number): string {
     .replace(/[<>&'"]/g, '')
     .trim()
     .substring(0, largoMaximo);
+}
+
+/** El sobre declara ISO-8859-1: se entrega en esos bytes, no en UTF-8, o el SII lee mal las tildes y la ñ. */
+export function bytesDelSobre(sobreXml: string): Buffer {
+  return Buffer.from(sobreXml, 'latin1');
 }

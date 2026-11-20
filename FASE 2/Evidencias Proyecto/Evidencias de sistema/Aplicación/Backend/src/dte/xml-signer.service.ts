@@ -49,15 +49,14 @@ export class XmlSignerService {
    * Forma canonica C14N inclusiva (sin comentarios) de un fragmento que el sistema genero: los
    * elementos vacios se escriben con su etiqueta de cierre, los atributos van ordenados y despues de
    * la declaracion del espacio de nombres, y esa declaracion aparece en el primer elemento aunque
-   * venga heredada (nsContexto) y en ningun otro que la repita. Asi lo calcula cualquier verificador
-   * XMLDSig, y sin esto el SII no reconoce el digest ni la firma.
+   * venga heredada (nsContexto) y en ningun otro que la repita. Los espacios entre etiquetas se
+   * conservan, como en C14N: lo que se firma debe ir sin ellos (el CAF del SII se aplana al timbrar).
    *
    * ponytail: cubre el XML que arma GesTock (espacios de nombres por defecto, sin prefijos,
    * comentarios ni instrucciones de proceso). Para XML ajeno haria falta un C14N completo.
    */
   public canonicalize(xml: string, nsContexto = ''): string {
     const plano = xml
-      .replace(/>\s+</g, '><')
       .replace(/\r\n?/g, '\n')
       .trim()
       .replace(/<([A-Za-z_][\w.:-]*)([^<>]*?)\s*\/>/g, '<$1$2></$1>');

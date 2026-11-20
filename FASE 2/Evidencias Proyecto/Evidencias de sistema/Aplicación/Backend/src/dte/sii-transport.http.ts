@@ -2,7 +2,7 @@ import { defaultSqliteClient, SqliteClient } from '../database/sqlite/client';
 import { defaultXmlSigner, XmlSignerService } from './xml-signer.service';
 import { SiiTransport } from './types';
 import { logger } from '../utils/logger';
-import { bytesDelSobre } from './sii-envio.service';
+import { bytesDelSobre } from '../utils/sii.utils';
 
 interface Credenciales {
   certificadoPem: string;

@@ -25,6 +25,10 @@ describe('Pruebas Unitarias: RUT y textos para el XML del SII', () => {
     expect(rutSiiSeguro('76.123.456-7')).toBeNull();
     expect(rutSiiSeguro('S/R')).toBeNull();
     expect(rutSiiSeguro('11.111.111-1')).toBe('11111111-1');
+    // con puntos y sin guion falta el digito: el ultimo numero no se toma como verificador
+    expect(rutSiiSeguro('1.234.579')).toBeNull();
+    expect(rutSiiSeguro('1234579')).toBe('123457-9');
+    expect(rutSiiSeguro('12.345.678-5')).toBe('12345678-5');
   });
 
   test('los textos se limpian y se recortan al largo del esquema', () => {

@@ -96,6 +96,8 @@ export class CafManagerService {
       const endIdx = rawCaf.indexOf('</CAF>') + 6;
       rawCaf = rawCaf.substring(startIdx, endIdx);
     }
+    // el archivo de folios del SII trae saltos de linea entre etiquetas; el DD se firma aplanado
+    rawCaf = rawCaf.replace(/>\s+</g, '><');
 
     const cleanItem = textoSii(params.primerItem, 40);
     const cleanRSR = textoSii(params.receptorRazonSocial, 40);
@@ -105,7 +107,8 @@ export class CafManagerService {
 
     // Firma SHA1withRSA usando la llave privada provista por el SII en el CAF
     const sign = crypto.createSign('RSA-SHA1');
-    sign.update(ddXml);
+    // el documento viaja en ISO-8859-1 y el SII verifica el timbre sobre esos bytes
+    sign.update(Buffer.from(ddXml, 'latin1'));
     const firmaSha1RsaBase64 = sign.sign(params.rsaskPrivateKey, 'base64');
 
     const tedXml = `<TED version="1.0">${ddXml}<FRMT algoritmo="SHA1withRSA">${firmaSha1RsaBase64}</FRMT></TED>`;
