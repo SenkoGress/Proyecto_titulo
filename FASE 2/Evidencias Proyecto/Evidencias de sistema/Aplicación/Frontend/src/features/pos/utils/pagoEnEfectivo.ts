@@ -10,6 +10,12 @@ export type EstadoVuelto = {
   alcanza: boolean
 }
 
+// en efectivo hay que anotar con cuanto paga el cliente: sin eso no hay vuelto que calcular ni
+// registro de lo que entro a la gaveta, y la venta se cerraba igual
+export function faltaElMontoRecibido(metodoPago: string, recibido: number, total: number): boolean {
+  return metodoPago === 'EFECTIVO' && recibido < total
+}
+
 // cuanto falta o cuanto hay que devolver
 export function calcularVuelto(recibido: number, total: number): EstadoVuelto {
   const diferencia = recibido - total

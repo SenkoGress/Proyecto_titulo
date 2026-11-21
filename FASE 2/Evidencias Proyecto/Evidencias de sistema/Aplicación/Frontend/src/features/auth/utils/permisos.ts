@@ -14,6 +14,15 @@ export function puedeEntrar(rol: RolUsuario | undefined, ruta: string): boolean 
   return !esRutaDeAdmin(ruta)
 }
 
+// a donde entra cada uno al iniciar sesion. La pantalla que quedo abierta es de la sesion
+// anterior: al cajero lo dejaba en Configuracion, con la cuenta de otro. Solo el admin vuelve a
+// donde iba, que es lo que sirve cuando se entra a una pantalla por un enlace y pide la clave
+export function destinoTrasEntrar(rol: RolUsuario | undefined, desde: string | undefined): string {
+  if (rol !== 'admin') return '/'
+  if (!desde || desde === '/login') return '/'
+  return desde
+}
+
 export function nombreRol(rol: RolUsuario): string {
   return rol === 'admin' ? 'Administrador' : 'Cajero'
 }

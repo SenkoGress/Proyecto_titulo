@@ -21,7 +21,11 @@ import { buscarPorCodigoBarras } from '@/features/inventario/api/inventario.api'
 import { codigoBuscable } from '@/features/inventario/utils/fichaCodigoBarras'
 import { SugerenciaCodigoBarras } from '@/features/inventario/components/compartidos/SugerenciaCodigoBarras'
 import { CampoFoto } from '@/features/inventario/components/compartidos/CampoFoto'
-import { categoriasExistentes } from '@/features/inventario/utils/categoriasExistentes'
+import {
+  categoriaElegida,
+  categoriasExistentes,
+  opcionesDeCategoria,
+} from '@/features/inventario/utils/categoriasExistentes'
 import { useInventario } from '@/features/inventario/hooks/useInventario'
 import { useCrearProducto, useEditarProducto } from '@/features/inventario/hooks/useInventario'
 import { useProveedores } from '@/features/proveedores/hooks/useProveedores'
@@ -234,15 +238,21 @@ export function DialogoProducto({ abierto, onCerrar, producto }: Props) {
             }}
           />
 
-          {/* se ofrecen las categorias que ya existen, pero deja escribir una nueva: a mano,
-              "Lacteos" y "Lacteos " terminaban siendo dos categorias distintas */}
+          {/* se ofrecen las categorias que ya existen y la lista propone crear la que se escribe:
+              a mano, "Lacteos" y "Lacteos " terminaban siendo dos categorias distintas */}
           <Autocomplete
             freeSolo
             options={categorias}
             value={form.categoria}
-            onChange={(_evento, valor) => cambiar('categoria', valor ?? '')}
-            onInputChange={(_evento, valor) => cambiar('categoria', valor)}
-            renderInput={(params) => <TextField {...params} label="Categoria" />}
+            filterOptions={(opciones, estado) => opcionesDeCategoria(opciones, estado.inputValue)}
+            onChange={(_evento, valor) => cambiar('categoria', categoriaElegida(valor ?? ''))}
+            onInputChange={(_evento, valor, razon) => {
+              // al elegir "Crear la categoria ..." el campo recibe ese texto completo: se ignora
+              if (razon === 'input') cambiar('categoria', valor)
+            }}
+            renderInput={(params) => (
+              <TextField {...params} label="Categoria" helperText="Escribe una nueva si no esta en la lista" />
+            )}
           />
 
           <TextField

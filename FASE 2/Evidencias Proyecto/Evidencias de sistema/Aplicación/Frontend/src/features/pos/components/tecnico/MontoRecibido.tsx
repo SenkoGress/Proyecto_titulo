@@ -1,5 +1,5 @@
 // src/features/pos/components/tecnico/MontoRecibido.tsx
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import TextField from '@mui/material/TextField'
@@ -7,6 +7,7 @@ import InputAdornment from '@mui/material/InputAdornment'
 import Typography from '@mui/material/Typography'
 import { alpha } from '@mui/material/styles'
 import { formatoClp } from '@/shared/utils/formatoClp'
+import { useCarritoStore } from '@/features/pos/stores/carritoStore'
 
 type Props = {
   total: number
@@ -26,10 +27,12 @@ function sugerirMontos(total: number): number[] {
 
 // monto recibido y vuelto (solo efectivo)
 export function MontoRecibido({ total }: Props) {
-  const [recibido, setRecibido] = useState('')
+  const monto = useCarritoStore((estado) => estado.montoRecibido)
+  const fijarMonto = useCarritoStore((estado) => estado.fijarMontoRecibido)
+  const recibido = monto === 0 ? '' : String(monto)
+  const setRecibido = (valor: string) => fijarMonto(Number(valor) || 0)
 
   const sugeridos = useMemo(() => sugerirMontos(total), [total])
-  const monto = Number(recibido) || 0
   const vuelto = monto - total
   const falta = recibido !== '' && vuelto < 0
 

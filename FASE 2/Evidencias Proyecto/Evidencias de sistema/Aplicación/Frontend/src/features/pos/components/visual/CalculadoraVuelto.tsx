@@ -1,5 +1,4 @@
 // src/features/pos/components/visual/CalculadoraVuelto.tsx
-import { useState } from 'react'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import TextField from '@mui/material/TextField'
@@ -12,6 +11,7 @@ import {
   calcularVuelto,
   desglosarVuelto,
 } from '@/features/pos/utils/pagoEnEfectivo'
+import { useCarritoStore } from '@/features/pos/stores/carritoStore'
 
 type Props = {
   total: number
@@ -20,14 +20,8 @@ type Props = {
 // el cliente pasa billetes y monedas de a poco, asi que cada boton suma al monto recibido en vez
 // de reemplazarlo: con 2.300 a pagar y 2.500 en la mano, antes no habia forma de anotarlo
 export function CalculadoraVuelto({ total }: Props) {
-  const [recibido, setRecibido] = useState(0)
-  const [totalAnterior, setTotalAnterior] = useState(total)
-
-  // si cambia el ticket, lo recibido ya no corresponde
-  if (total !== totalAnterior) {
-    setTotalAnterior(total)
-    setRecibido(0)
-  }
+  const recibido = useCarritoStore((estado) => estado.montoRecibido)
+  const setRecibido = useCarritoStore((estado) => estado.fijarMontoRecibido)
 
   const { vuelto, falta, alcanza } = calcularVuelto(recibido, total)
   const piezas = desglosarVuelto(vuelto)

@@ -11,6 +11,7 @@ import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
 import { formatoClp } from '@/shared/utils/formatoClp'
 import { useCarritoStore } from '@/features/pos/stores/carritoStore'
 import { useTotalesCarrito } from '@/features/pos/hooks/useTotalesCarrito'
+import { faltaElMontoRecibido } from '@/features/pos/utils/pagoEnEfectivo'
 import { LineaTicket } from '@/features/pos/components/visual/LineaTicket'
 import { Ayuda } from '@/shared/components/ui/Ayuda'
 import { SelectorMetodoPago } from '@/features/pos/components/visual/SelectorMetodoPago'
@@ -39,12 +40,14 @@ export function PanelTicket({ onCobrar, cobrando, errorCobro, onEmpezarDeNuevo }
   const edadVerificada = useCarritoStore((estado) => estado.edadVerificada)
   const tipoComprobante = useCarritoStore((estado) => estado.tipoComprobante)
   const receptorEmpresa = useCarritoStore((estado) => estado.receptorEmpresa)
+  const montoRecibido = useCarritoStore((estado) => estado.montoRecibido)
 
   const { subtotal, unidades, total, ila, ajusteRedondeo, contieneAlcohol } = useTotalesCarrito()
 
   const hayProductos = lineas.length > 0
   const bloqueadoPorAlcohol = contieneAlcohol && !edadVerificada
   const faltanDatosFactura = tipoComprobante === 'FACTURA' && !receptorEmpresa
+  const faltaElPago = faltaElMontoRecibido(metodoPago, montoRecibido, total)
 
   return (
     <Paper
@@ -168,11 +171,22 @@ export function PanelTicket({ onCobrar, cobrando, errorCobro, onEmpezarDeNuevo }
           size="large"
           fullWidth
           endIcon={cobrando ? <CircularProgress size={18} color="inherit" /> : <ArrowForwardIcon />}
-          disabled={!hayProductos || cobrando || bloqueadoPorAlcohol || faltanDatosFactura || tarjetaYaCobrada}
+          disabled={
+            !hayProductos ||
+            cobrando ||
+            bloqueadoPorAlcohol ||
+            faltanDatosFactura ||
+            tarjetaYaCobrada ||
+            faltaElPago
+          }
           onClick={onCobrar}
           sx={{ py: 1.5, fontSize: '1.05rem' }}
         >
-          {cobrando ? 'Registrando venta...' : `Cobrar venta ${formatoClp(total)}`}
+          {cobrando
+            ? 'Registrando venta...'
+            : faltaElPago
+              ? 'Anota con cuanto paga'
+              : `Cobrar venta ${formatoClp(total)}`}
         </Button>
       </Box>
     </Paper>

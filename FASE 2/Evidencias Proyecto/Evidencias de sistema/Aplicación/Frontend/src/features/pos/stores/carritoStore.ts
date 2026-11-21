@@ -23,6 +23,7 @@ type CarritoState = {
   tipoComprobante: TipoComprobante
   receptorEmpresa: ReceptorEmpresa | null // datos del cliente cuando es factura
   porConfirmarVencido: Producto | null // producto vencido que espera la decision del cajero
+  montoRecibido: number // con cuanto paga el cliente en efectivo
 
   agregar: (producto: Producto) => void
   confirmarVencido: () => void
@@ -36,6 +37,7 @@ type CarritoState = {
   asociarRut: (rut: string | null) => void
   cambiarTipoComprobante: (tipo: TipoComprobante) => void
   fijarReceptorEmpresa: (receptor: ReceptorEmpresa | null) => void
+  fijarMontoRecibido: (monto: number) => void
 }
 
 // estado inicial del ticket
@@ -47,6 +49,7 @@ const ticketVacio = {
   tipoComprobante: 'BOLETA' as TipoComprobante,
   receptorEmpresa: null,
   porConfirmarVencido: null,
+  montoRecibido: 0,
 }
 
 // carrito de la venta actual
@@ -115,6 +118,9 @@ export const useCarritoStore = create<CarritoState>((set) => ({
   limpiar: () => set(ticketVacio),
 
   cambiarMetodoPago: (metodo) => set({ metodoPago: metodo }),
+
+  // no se borra al cambiar el ticket: si el total sube, el boton vuelve a pedir lo que falta
+  fijarMontoRecibido: (monto) => set({ montoRecibido: Math.max(0, Math.round(monto) || 0) }),
 
   marcarEdadVerificada: (verificada) => set({ edadVerificada: verificada }),
 

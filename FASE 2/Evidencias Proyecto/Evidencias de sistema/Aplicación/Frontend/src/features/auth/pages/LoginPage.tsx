@@ -4,16 +4,17 @@ import Box from '@mui/material/Box'
 import Paper from '@mui/material/Paper'
 import Typography from '@mui/material/Typography'
 import { FormularioLogin } from '@/features/auth/components/FormularioLogin'
-import { useHaySesion } from '@/features/auth/stores/sesionStore'
+import { useHaySesion, useUsuario } from '@/features/auth/stores/sesionStore'
+import { destinoTrasEntrar } from '@/features/auth/utils/permisos'
 
 export function LoginPage() {
   const haySesion = useHaySesion()
+  const usuario = useUsuario()
   const ubicacion = useLocation()
 
-  // si ya entro, vuelve a donde queria ir
   if (haySesion) {
-    const destino = (ubicacion.state as { desde?: string } | null)?.desde ?? '/'
-    return <Navigate to={destino} replace />
+    const desde = (ubicacion.state as { desde?: string } | null)?.desde
+    return <Navigate to={destinoTrasEntrar(usuario?.rol, desde)} replace />
   }
 
   return (

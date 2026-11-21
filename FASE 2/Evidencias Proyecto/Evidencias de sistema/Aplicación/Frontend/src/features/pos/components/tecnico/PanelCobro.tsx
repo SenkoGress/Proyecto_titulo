@@ -12,6 +12,7 @@ import HighlightOffIcon from '@mui/icons-material/HighlightOff'
 import { formatoClp } from '@/shared/utils/formatoClp'
 import { useCarritoStore } from '@/features/pos/stores/carritoStore'
 import { useTotalesCarrito } from '@/features/pos/hooks/useTotalesCarrito'
+import { faltaElMontoRecibido } from '@/features/pos/utils/pagoEnEfectivo'
 import { ClienteRut } from '@/features/pos/components/tecnico/ClienteRut'
 import { DesgloseTotales } from '@/features/pos/components/tecnico/DesgloseTotales'
 import { MediosPago } from '@/features/pos/components/tecnico/MediosPago'
@@ -39,11 +40,13 @@ export function PanelCobro({ onCobrar, onCancelar, cobrando, errorCobro, onEmpez
   const edadVerificada = useCarritoStore((estado) => estado.edadVerificada)
   const tipoComprobante = useCarritoStore((estado) => estado.tipoComprobante)
   const receptorEmpresa = useCarritoStore((estado) => estado.receptorEmpresa)
+  const montoRecibido = useCarritoStore((estado) => estado.montoRecibido)
   const { total, cantidadLineas, contieneAlcohol } = useTotalesCarrito()
 
   const hayProductos = cantidadLineas > 0
   const bloqueadoPorAlcohol = contieneAlcohol && !edadVerificada
   const faltanDatosFactura = tipoComprobante === 'FACTURA' && !receptorEmpresa
+  const faltaElPago = faltaElMontoRecibido(metodoPago, montoRecibido, total)
   const esFactura = tipoComprobante === 'FACTURA'
 
   return (
@@ -110,11 +113,22 @@ export function PanelCobro({ onCobrar, onCancelar, cobrando, errorCobro, onEmpez
         variant="contained"
         size="large"
         startIcon={cobrando ? <CircularProgress size={18} color="inherit" /> : <PointOfSaleIcon />}
-        disabled={!hayProductos || cobrando || bloqueadoPorAlcohol || faltanDatosFactura || tarjetaYaCobrada}
+        disabled={
+          !hayProductos ||
+          cobrando ||
+          bloqueadoPorAlcohol ||
+          faltanDatosFactura ||
+          tarjetaYaCobrada ||
+          faltaElPago
+        }
         onClick={onCobrar}
         sx={{ py: 1.5, fontSize: '1.05rem' }}
       >
-        {cobrando ? 'Registrando venta...' : `COBRAR ${formatoClp(total)} [F4]`}
+        {cobrando
+          ? 'Registrando venta...'
+          : faltaElPago
+            ? 'ANOTA CON CUANTO PAGA'
+            : `COBRAR ${formatoClp(total)} [F4]`}
       </Button>
 
       {/* cancelar venta */}
