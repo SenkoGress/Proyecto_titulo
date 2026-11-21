@@ -213,8 +213,9 @@ export async function cargarCatalogoDemo(
     }
   }
 
-  // La nube recibe el mismo catalogo cuando esta disponible, para que los dos motores partan
-  // iguales; si no lo esta, el respaldo del catalogo lo sube en la proxima sincronizacion.
+  // La nube recibe los productos cuando esta disponible, sin el vencimiento ni el impuesto
+  // adicional, que la caja lee de la base local; si no lo esta, el respaldo del catalogo los sube en
+  // la proxima sincronizacion.
   if (pgClient.isCloudAvailable()) {
     for (const proveedor of catalogo.proveedores) {
       try {

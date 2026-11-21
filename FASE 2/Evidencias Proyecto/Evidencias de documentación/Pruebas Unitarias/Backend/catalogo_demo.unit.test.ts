@@ -48,7 +48,8 @@ describe('Pruebas Unitarias: Catalogo de Demostracion', () => {
     };
 
     test('las pruebas corren en la zona de Chile y sobre una carga recien hecha', () => {
-      expect(HOY.getTimezoneOffset()).toBeGreaterThan(0);
+      // la zona exacta: un desfase positivo lo tiene cualquier zona de America
+      expect(Intl.DateTimeFormat().resolvedOptions().timeZone).toBe('America/Santiago');
       expect(primeraCarga.productos_nuevos).toBe(leerCatalogoDemo()!.productos.length);
     });
 
