@@ -10,8 +10,10 @@ import {
 import { clasificarSemaforo, diasHastaVencer, reloj } from '../../backend/src/inventory/vencimiento';
 
 const TENANT = '00000000-0000-0000-0000-000000000001';
-// 23:30 en Chile ya es el dia siguiente en UTC: una fecha calculada con la hora UTC se corre un dia
+// Una hora en que el dia local y el de UTC no coinciden: ahi una fecha calculada con la hora UTC
+// se corre un dia. Al oeste de UTC (Chile) es tarde en la noche; al este, recien pasada la medianoche.
 const HOY = new Date(2026, 6, 15, 23, 30);
+if (HOY.getTimezoneOffset() < 0) HOY.setHours(0, 30);
 
 /**
  * La carpeta de datos del usuario se borra para volver a ver el sistema como lo vera quien lo
@@ -47,9 +49,9 @@ describe('Pruebas Unitarias: Catalogo de Demostracion', () => {
       }));
     };
 
-    test('las pruebas corren en la zona de Chile y sobre una carga recien hecha', () => {
-      // la zona exacta: un desfase positivo lo tiene cualquier zona de America
-      expect(Intl.DateTimeFormat().resolvedOptions().timeZone).toBe('America/Santiago');
+    test('la hora fija cae en otro dia en UTC y sobre una carga recien hecha', () => {
+      // en un equipo en UTC exacto los dos dias coinciden y ese error no puede ocurrir
+      if (HOY.getTimezoneOffset() !== 0) expect(HOY.getUTCDate()).not.toBe(HOY.getDate());
       expect(primeraCarga.productos_nuevos).toBe(leerCatalogoDemo()!.productos.length);
     });
 
