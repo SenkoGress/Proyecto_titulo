@@ -161,4 +161,33 @@ describe('Smart Invoice Ingestion & Resilient OCR Fallback', () => {
     const savedInv = await pgClient.query('SELECT id FROM factura_ingresos WHERE id = $1', [result.invoice_id]);
     expect(savedInv.rows.length).toBe(1);
   });
+
+  test('3. Un item sin SKU queda con el mismo SKU en la nube y en el equipo', async () => {
+    // Cada escritura generaba su propio SKU-AUTO: nacian dos productos distintos y la
+    // sincronizacion los juntaba en la caja con el stock duplicado
+    const ids = createFixtureIds();
+    const tenant = sampleTenant(ids.tenantId);
+    await pgClient.query('INSERT INTO tenants (id, nombre, estado) VALUES ($1, $2, $3)', [tenant.id, tenant.nombre, tenant.estado]);
+    defaultSqliteClient.execute('INSERT OR IGNORE INTO tenants (id, nombre, estado) VALUES (?, ?, ?)', [tenant.id, tenant.nombre, tenant.estado]);
+
+    await ingestionService.ingestInvoice(ids.tenantId, {
+      invoiceData: JSON.stringify({
+        folio_factura: `${Date.now().toString().slice(-7)}`,
+        rut_proveedor: '76.998.776-5',
+        razon_social: 'Distribuidora Central Mayorista Ltda.',
+        fecha_emision: '2026-11-20',
+        items: [{ sku: '', descripcion: 'Producto escrito a mano', cantidad: 3, precio_unitario: 400, subtotal: 1200, fecha_vencimiento: '2099-12-31' }],
+        total: 1200
+      }),
+      fileName: 'factura_sin_sku.pdf'
+    });
+
+    const enLaNube = await pgClient.query<{ sku: string }>(
+      "SELECT sku FROM productos WHERE tenant_id = $1 AND sku LIKE 'SKU-AUTO-%'", [ids.tenantId]);
+    const enElEquipo = defaultSqliteClient.query<{ sku: string }>(
+      "SELECT sku FROM productos WHERE tenant_id = ? AND sku LIKE 'SKU-AUTO-%'", [ids.tenantId]);
+    expect(enLaNube.rows).toHaveLength(1);
+    expect(enElEquipo).toHaveLength(1);
+    expect(enElEquipo[0].sku).toBe(enLaNube.rows[0].sku);
+  });
 });

@@ -365,6 +365,14 @@ describe('Auth Endpoints & RBAC (RF-01, RF-02, RF-03, RNF-SEG-01, RNF-SEG-02)', 
       expect(res.data.success).toBe(true);
     });
 
+    it('el cajero no puede subir ventas a la nube por la ruta de sincronizacion', async () => {
+      // con su token podia escribir ventas inventadas y cambiar el stock de la nube
+      const res = await postJson('/api/v1/sync/push', { tenant_id: tenantId, device_id: 'x', sales: [] }, {
+        Authorization: `Bearer ${cajeroToken}`
+      });
+      expect(res.status).toBe(403);
+    });
+
     it('permite acceso al cajero a rutas operativas del punto de venta (/pos/products)', async () => {
       const res = await getJson('/api/v1/pos/products', {
         Authorization: `Bearer ${cajeroToken}`
@@ -564,6 +572,31 @@ describe('Auth Endpoints & RBAC (RF-01, RF-02, RF-03, RNF-SEG-01, RNF-SEG-02)', 
       expect(res.status).toBe(200);
       expect(res.data.data.every((p: any) => p.tenant_id === otroComercio)).toBe(true);
       expect(res.data.data.some((p: any) => p.tenant_id === tenantId)).toBe(false);
+    });
+
+    it('las rutas de documentos tributarios usan el comercio de la sesion, no el de la demostracion', async () => {
+      // leian tenantId de la peticion y, si no venia, el comercio por defecto
+      defaultSqliteClient.execute(
+        `INSERT OR IGNORE INTO sii_dte_emitidos (id, tenant_id, tipo_dte, folio, fecha_emision, rut_emisor, razon_social_emisor,
+           rut_receptor, monto_neto, monto_iva, monto_total, ted_xml, dte_xml_completo, qr_code_content, estado_sii)
+         VALUES ('dte-del-demo', ?, 39, 991234, datetime('now'), '76123456-0', 'DEMO', '66666666-6', 1000, 190, 1190, '<TED/>', '<DTE/>', '', 'EMITIDO_LOCAL')`,
+        [tenantId]
+      );
+      const token = jwt.sign(
+        { id: 'usuario-de-otro-comercio', tenant_id: '7a1e0000-0000-4000-8000-0000000000ff', email: 'otro@comercio.cl', rol: 'admin', nombre: 'Otro' },
+        getJwtSecret(),
+        { expiresIn: '5m' }
+      );
+      try {
+        const demo = await getJson(`/api/v1/dte/list?tenantId=${tenantId}&limit=500`);
+        expect(demo.data.data.some((d: any) => d.id === 'dte-del-demo')).toBe(true);
+
+        const res = await getJson('/api/v1/dte/list?limit=500', { Authorization: `Bearer ${token}` });
+        expect(res.status).toBe(200);
+        expect(res.data.data.some((d: any) => d.id === 'dte-del-demo')).toBe(false);
+      } finally {
+        defaultSqliteClient.execute("DELETE FROM sii_dte_emitidos WHERE id = 'dte-del-demo'");
+      }
     });
   });
 });

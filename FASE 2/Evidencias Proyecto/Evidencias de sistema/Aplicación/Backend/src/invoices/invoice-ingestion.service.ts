@@ -557,6 +557,12 @@ export class InvoiceIngestionService {
     // El documento se sube a la nube junto con la fila de la factura: la ruta local no sirve de
     // respaldo si se pierde el equipo del local
     const contenidoDocumento = documento ? this.leerDocumento(documento.ruta) : null;
+
+    // Un item sin SKU recibia uno distinto en la nube y en el equipo: nacian dos productos y la
+    // sincronizacion duplicaba su stock. Se fija una sola vez, antes de las dos escrituras.
+    for (const item of invoiceData.items) {
+      if (!item.sku) item.sku = `SKU-AUTO-${uuidv4().slice(0, 8).toUpperCase()}`;
+    }
     let respaldadoEnNube = false;
 
     // 1. Transacción ACID en PostgreSQL Cloud (si está disponible)

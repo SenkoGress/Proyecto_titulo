@@ -32,12 +32,14 @@ import {
 import { generateChileanBarcode } from '../utils/barcode.utils';
 import { detalleError } from '../utils/detalle-error';
 import { rutSiiSeguro } from '../utils/sii.utils';
+import { fechaLocal } from '../utils/fecha-local';
 
 const router = Router();
 const sqlite = defaultSqliteClient;
 
 const MEDIOS_DEVOLUCION = ['TARJETA', 'EFECTIVO', 'TRANSFERENCIA'];
 const PASARELAS_ELECTRONICAS = ['TRANSBANK', 'MERCADOPAGO', 'SUMUP', 'RUTPAY'];
+const MEDIOS_DE_PAGO = ['EFECTIVO', ...PASARELAS_ELECTRONICAS];
 const PASARELAS_CON_TARJETA = ['TRANSBANK', 'MERCADOPAGO', 'SUMUP'];
 const TIPOS_TARJETA = ['CREDITO', 'DEBITO'];
 
@@ -750,7 +752,7 @@ router.post('/checkout', async (req: Request, res: Response): Promise<void> => {
       tenant_id,
       usuario_id,
       items,
-      metodo_pago = 'EFECTIVO',
+      metodo_pago: metodoPagoPedido = 'EFECTIVO',
       tipo_comprobante = 'BOLETA', // 'BOLETA' | 'FACTURA'
       receptor_empresa, // { rut, razon_social, giro, direccion, comuna, ciudad }
       rut_cliente,
@@ -763,6 +765,13 @@ router.post('/checkout', async (req: Request, res: Response): Promise<void> => {
       success: false,
       message: 'Missing required checkout fields: tenant_id, usuario_id, and non-empty items array'
     });
+    return;
+  }
+
+  // un medio desconocido se cobraba en Transbank y se grababa como efectivo, y el cierre lo esperaba en la gaveta
+  const metodo_pago = String(metodoPagoPedido).trim().toUpperCase();
+  if (!MEDIOS_DE_PAGO.includes(metodo_pago)) {
+    res.status(400).json({ success: false, error: 'METODO_PAGO_INVALIDO', message: `El medio de pago debe ser uno de: ${MEDIOS_DE_PAGO.join(', ')}.` });
     return;
   }
 
@@ -865,7 +874,7 @@ router.post('/checkout', async (req: Request, res: Response): Promise<void> => {
       total += montoLinea({ cantidad: item.cantidad, precioUnitario: item.precio_unitario });
       unidades += Number(item.cantidad);
     }
-    if (metodo_pago && String(metodo_pago).trim().toUpperCase() === 'EFECTIVO') {
+    if (metodo_pago === 'EFECTIVO') {
       total = aplicarRedondeoChileno(total);
     }
 
@@ -1108,7 +1117,7 @@ router.post('/checkout', async (req: Request, res: Response): Promise<void> => {
       data: {
         ...checkoutResult,
         dte: dteResult && dteResult.folio
-          ? { ...dteResult, folio_provisional: defaultSiiEnvio.folioEsProvisional(tenant_id, Number(dteResult.tipoDte), Number(dteResult.folio)) }
+          ? { ...dteResult, folio_provisional: dteResult.dteId ? defaultSiiEnvio.folioEsProvisional(tenant_id, dteResult.dteId) : true }
           : dteResult,
         contiene_alcohol: hasAlcohol,
         verificacion_edad_alcohol: hasAlcohol,
@@ -1596,9 +1605,10 @@ router.post('/devolucion', async (req: Request, res: Response): Promise<void> =>
       [venta_id]
     );
 
-    const tipoDocRef = dteOriginal?.tipo_dte || (ventaOriginal.tipo_documento_tributario === 'FACTURA' ? 33 : 39);
-    const folioRef = dteOriginal?.folio || parseInt((ventaOriginal.folio_local_sqlite || '1').replace(/\D/g, ''), 10) || 1;
-    const fechaRef = (dteOriginal?.fecha_emision || ventaOriginal.fecha || new Date().toISOString()).substring(0, 10);
+    // fecha_emision se guarda en UTC; la referencia lleva el dia local, el mismo del FchEmis del original
+    const fechaRefOriginal = dteOriginal
+      ? sqlite.queryOne<{ f: string }>("SELECT date(?, 'localtime') AS f", [dteOriginal.fecha_emision])?.f
+      : null;
 
     // La nota de credito se revisa antes de devolver nada: sin RUT de emisor no se puede emitir, y un
     // RUT de cliente que no se puede leer, guardado antes de la 1.0.4, pasa a cliente anonimo
@@ -1627,7 +1637,8 @@ router.post('/devolucion', async (req: Request, res: Response): Promise<void> =>
       });
       return;
     }
-    if (medioPedido === 'EFECTIVO') {
+    // sin medio declarado, la venta en efectivo tambien se devuelve en efectivo
+    if (medioPedido === 'EFECTIVO' || (medioPedido === null && !ventaElectronica)) {
       // el dinero sale de una gaveta y tiene que restarse de un turno
       const turnoAbierto = sqlite.queryOne<{ id: string }>(
         "SELECT id FROM cierres_caja WHERE tenant_id = ? AND estado = 'ABIERTA' LIMIT 1",
@@ -1777,43 +1788,58 @@ router.post('/devolucion', async (req: Request, res: Response): Promise<void> =>
       tasaIla: it.tasaIla
     }));
 
-    const ncResponse = defaultDteEmitter.emitDocument({
-      tenantId: tenant_id,
-      ventaId: returnSaleId,
-      tipoDte: TipoDTE.NOTA_CREDITO,
-      items: dteItems,
-      metodoPago: 'EFECTIVO',
-      referencia: {
-        nroLineaRef: 1,
-        tipoDocRef,
-        folioRef,
-        fechaRef,
-        codigoRef: 1, // 1: Anula Documento de Referencia
-        razonRef: motivo
-      },
-      receptor: receptorNc ? {
-        rut: receptorNc.rut_receptor,
-        razonSocial: receptorNc.razon_social_receptor || 'CLIENTE'
-      } : undefined
-    });
+    // El dinero y el stock ya se movieron: si la nota de credito no sale, la devolucion igual queda
+    // registrada y la respuesta dice por que falta. Sin documento original no hay a que referenciar.
+    let ncResponse: ReturnType<typeof defaultDteEmitter.emitDocument> | null = null;
+    let avisoNc = '';
+    if (!dteOriginal) {
+      avisoNc = 'La venta no tiene documento tributario, asi que no se emitio nota de credito.';
+    } else {
+      try {
+        ncResponse = defaultDteEmitter.emitDocument({
+          tenantId: tenant_id,
+          ventaId: returnSaleId,
+          tipoDte: TipoDTE.NOTA_CREDITO,
+          items: dteItems,
+          metodoPago: 'EFECTIVO',
+          referencia: {
+            nroLineaRef: 1,
+            tipoDocRef: dteOriginal.tipo_dte,
+            folioRef: dteOriginal.folio,
+            fechaRef: fechaRefOriginal || fechaLocal(),
+            // 1 anula el documento: solo cuando esta devolucion lo deja entero sin efecto; si no, 3 corrige montos
+            codigoRef: vaciaLaVenta && yaDevuelto === 0 ? 1 : 3,
+            razonRef: motivo
+          },
+          receptor: receptorNc ? {
+            rut: receptorNc.rut_receptor,
+            razonSocial: receptorNc.razon_social_receptor || 'CLIENTE'
+          } : undefined
+        });
+      } catch (errNc) {
+        logger.error('PosRoutes', 'La devolucion quedo registrada, pero la nota de credito no se emitio', errNc);
+        avisoNc = `La nota de credito no se emitio: ${detalleError(errNc)}.`;
+      }
+    }
 
     logger.info(
       'PosRoutes',
-      `Devolución procesada con éxito para venta ${venta_id}. NC Folio ${ncResponse.folio}, Stock restituido.`
+      `Devolución procesada para venta ${venta_id}. ${ncResponse ? `NC Folio ${ncResponse.folio}` : 'Sin nota de credito'}, stock restituido.`
     );
 
     res.status(200).json({
       success: true,
-      message: `Devolución procesada exitosamente. Se emitió la Nota de Crédito DTE 61 N° ${ncResponse.folio} y el stock fue restituido.${!reverso ? '' : reverso.status === 'PENDING' ? ` El pago con ${reverso.gateway} no se devolvio automaticamente: ${reverso.metadataResponse.motivo}.` : ` El pago se devolvio a la tarjeta (${reverso.gateway}).`}`,
+      message: `Devolución procesada exitosamente. ${ncResponse ? `Se emitió la Nota de Crédito DTE 61 N° ${ncResponse.folio}` : avisoNc} El stock fue restituido.${!reverso ? '' : reverso.status === 'PENDING' ? ` El pago con ${reverso.gateway} no se devolvio automaticamente: ${reverso.metadataResponse.motivo}.` : ` El pago se devolvio a la tarjeta (${reverso.gateway}).`}`,
       data: {
         devolucion_id: returnSaleId,
-        folio_nc: ncResponse.folio,
+        folio_nc: ncResponse?.folio ?? null,
         monto_total: totalDevuelto,
         total_devuelto: totalDevuelto,
         devuelto_al_cliente: devueltoAlCliente,
         medio_devolucion: medioFinal,
         nota_credito: ncResponse,
         dte_nc: ncResponse,
+        aviso_nota_credito: avisoNc || null,
         items_devueltos: itemsADevolver,
         reverso_tarjeta: reverso ? { pasarela: reverso.gateway, monto: -reverso.amount, manual: reverso.status === 'PENDING', detalle: reverso.metadataResponse } : null
       }

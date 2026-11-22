@@ -5,10 +5,10 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${PGUSER:-gestock_admin}
-      POSTGRES_PASSWORD: ${PGPASSWORD:-gestock_secret_2026}
+      POSTGRES_PASSWORD: ${PGPASSWORD:?Defina PGPASSWORD en el archivo .env}
       POSTGRES_DB: ${PGDATABASE:-gestock_cloud_db}
     ports:
-      - "${PGPORT:-5432}:5432"
+      - "127.0.0.1:${PGPORT:-5432}:5432"
     volumes:
       - gestock_pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -31,7 +31,7 @@ services:
       PGHOST: postgres
       PGPORT: 5432
       PGUSER: ${PGUSER:-gestock_admin}
-      PGPASSWORD: ${PGPASSWORD:-gestock_secret_2026}
+      PGPASSWORD: ${PGPASSWORD:?Defina PGPASSWORD en el archivo .env}
       PGDATABASE: ${PGDATABASE:-gestock_cloud_db}
       SQLITE_DB_PATH: /app/data/gestock_local.sqlite
       NODE_ENV: production

@@ -98,7 +98,7 @@ export class DashboardService {
     }>(
       `SELECT 
         COALESCE(SUM(tv.total), 0) as total_bruto,
-        COUNT(tv.id) as total_transacciones
+        COUNT(CASE WHEN COALESCE(tv.es_devolucion, 0) = 0 THEN 1 END) as total_transacciones
        FROM transacciones_venta tv
        WHERE tv.tenant_id = ? ${dateFilter}`,
       [tenantId]
@@ -117,6 +117,20 @@ export class DashboardService {
        WHERE tv.tenant_id = ? ${dateFilter}`,
       [tenantId]
     ) || { unidades_vendidas: 0, costo_vendido: 0 };
+
+    // La devolucion no tiene detalle: lo devuelto se resta desde el movimiento que repuso el stock
+    const filtroMovimiento = dateFilter.replace(/tv\.fecha/g, 'm.fecha_movimiento');
+    const devueltoAgg = this.sqlite.queryOne<{ unidades: number; costo: number }>(
+      `SELECT
+        COALESCE(SUM(m.cantidad), 0) as unidades,
+        COALESCE(SUM(m.cantidad * COALESCE(p.precio_compra, 0)), 0) as costo
+       FROM movimientos_inventario m
+       LEFT JOIN productos p ON m.producto_id = p.id
+       WHERE m.tenant_id = ? AND m.tipo_origen = 'DEVOLUCION_VENTA' ${filtroMovimiento}`,
+      [tenantId]
+    ) || { unidades: 0, costo: 0 };
+    detalleAgg.unidades_vendidas = Number(detalleAgg.unidades_vendidas || 0) - Number(devueltoAgg.unidades || 0);
+    detalleAgg.costo_vendido = Number(detalleAgg.costo_vendido || 0) - Number(devueltoAgg.costo || 0);
 
     const salesAgg = { ...ventasAgg, ...detalleAgg };
 

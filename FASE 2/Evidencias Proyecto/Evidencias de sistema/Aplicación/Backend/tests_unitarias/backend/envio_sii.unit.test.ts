@@ -173,17 +173,22 @@ describe('Pruebas Unitarias: Envio de Documentos al SII', () => {
   });
 
   describe('El envio', () => {
-    test('sin requisitos no informa un envio: deja el sobre listo y dice que falta', async () => {
+    test('sin requisitos no informa un envio ni arma sobre: el documento sigue en la cola', async () => {
+      // Armar el sobre sin poder enviarlo le ponia envio_id al documento y lo sacaba de la cola
+      // para siempre: ni la pantalla ni el envio automatico lo volvian a ver
       const servicio = new SiiEnvioService();
       emitirDocumento(5004);
 
       const resultado = await servicio.enviar(TENANT);
 
       expect(resultado.enviado).toBe(false);
-      expect(resultado.mensaje).toContain('quedo preparado y firmado');
-      expect(resultado.sobres[0].enviado).toBe(false);
+      expect(resultado.mensaje).toContain('siguen en la cola');
+      expect(resultado.sobres).toHaveLength(0);
       expect(resultado.faltantes.length).toBeGreaterThan(0);
       expect(resultado.track_id).toBeUndefined();
+      expect(servicio.documentosPendientes(TENANT).some((d) => d.folio === 5004)).toBe(true);
+      expect(defaultSqliteClient.queryOne<{ n: number }>(
+        'SELECT COUNT(*) AS n FROM sii_envios WHERE tenant_id = ?', [TENANT])?.n).toBe(0);
 
       // Y el documento no queda marcado como enviado, porque no lo esta
       const estado = defaultSqliteClient.queryOne<{ estado_sii: string }>(
@@ -207,15 +212,18 @@ describe('Pruebas Unitarias: Envio de Documentos al SII', () => {
         `UPDATE sii_caf SET origen = 'SII' WHERE tenant_id = ? AND tipo_dte = ?`,
         [TENANT, TipoDTE.BOLETA_ELECTRONICA]
       );
-      emitirDocumento(5005);
+      emitirDocumento(4005);
+      // fuera de todo CAF del SII: el sobre entero se rechazaria, asi que no viaja
+      emitirDocumento(991005);
 
       const resultado = await servicio.enviar(TENANT);
+      expect(servicio.documentosPendientes(TENANT).some((d) => d.folio === 991005)).toBe(true);
 
       expect(resultado.enviado).toBe(true);
       expect(resultado.track_id).toBe('1234567890');
 
       const fila = defaultSqliteClient.queryOne<{ estado_sii: string; track_id_sii: string }>(
-        'SELECT estado_sii, track_id_sii FROM sii_dte_emitidos WHERE folio = 5005 AND tenant_id = ?',
+        'SELECT estado_sii, track_id_sii FROM sii_dte_emitidos WHERE folio = 4005 AND tenant_id = ?',
         [TENANT]
       );
       expect(fila?.estado_sii).toBe('ENVIADO_SII');
@@ -241,7 +249,7 @@ describe('Pruebas Unitarias: Envio de Documentos al SII', () => {
         `UPDATE sii_caf SET origen = 'SII' WHERE tenant_id = ? AND tipo_dte = ?`,
         [TENANT, TipoDTE.BOLETA_ELECTRONICA]
       );
-      emitirDocumento(5006);
+      emitirDocumento(4006);
 
       const resultado = await servicio.enviar(TENANT);
 
@@ -250,7 +258,7 @@ describe('Pruebas Unitarias: Envio de Documentos al SII', () => {
 
       // El documento vuelve a la cola: un rechazo no puede dejarlo fuera para siempre
       const pendientes = servicio.documentosPendientes(TENANT);
-      expect(pendientes.some((d) => d.folio === 5006)).toBe(true);
+      expect(pendientes.some((d) => d.folio === 4006)).toBe(true);
 
       const envio = defaultSqliteClient.queryOne<{ estado: string; motivo: string }>(
         'SELECT estado, motivo FROM sii_envios WHERE id = ?',

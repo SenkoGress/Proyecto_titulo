@@ -11,6 +11,9 @@ import { TipoDTE, SiiCafRecord, TedResult } from './types';
 import { fechaLocal, marcaLocal } from '../utils/fecha-local';
 import { rutSii, textoSii } from '../utils/sii.utils';
 
+/** Va en la firma del CAF provisional, y por eso en el timbre de cada documento emitido con el. */
+export const MARCA_FOLIO_PROVISIONAL = Buffer.from('FOLIO PROVISIONAL: SIN FIRMA DEL SII').toString('base64');
+
 export class CafManagerService {
   /**
    * Obtiene o genera automáticamente un CAF válido (modo certificación/offline)
@@ -26,6 +29,15 @@ export class CafManagerService {
 
     if (existing) {
       return this.mapRowToCaf(existing);
+    }
+
+    // Con folios del SII ya cargados, volver al rango propio emitiria documentos no enviables sin avisar
+    const tuvoCafDelSii = defaultSqliteClient.queryOne<{ id: string }>(
+      `SELECT id FROM sii_caf WHERE tenant_id = ? AND tipo_dte = ? AND origen = 'SII' LIMIT 1`,
+      [tenantId, tipoDte]
+    );
+    if (tuvoCafDelSii) {
+      throw new Error(`Se agotaron los folios autorizados por el SII para el tipo DTE ${tipoDte}: cargue un CAF nuevo.`);
     }
 
     // El local tiene que poder vender aunque todavia no haya pedido folios al SII, de modo que
@@ -45,7 +57,14 @@ export class CafManagerService {
 
     defaultSqliteClient.withTransaction(() => {
       const activeCaf = this.getOrCreateActiveCaf(tenantId, tipoDte);
-      const nextFolio = Math.max(activeCaf.ultimo_folio_usado + 1, activeCaf.folio_desde);
+      let nextFolio = Math.max(activeCaf.ultimo_folio_usado + 1, activeCaf.folio_desde);
+      // el CAF real empieza donde empezo el rango provisional: un folio ya emitido no se repite
+      while (defaultSqliteClient.queryOne<{ id: string }>(
+        'SELECT id FROM sii_dte_emitidos WHERE tenant_id = ? AND tipo_dte = ? AND folio = ?',
+        [tenantId, tipoDte, nextFolio]
+      )) {
+        nextFolio++;
+      }
 
       if (nextFolio > activeCaf.folio_hasta) {
         throw new Error(`Se han agotado los folios autorizados para el tipo DTE ${tipoDte} (Rango ${activeCaf.folio_desde}-${activeCaf.folio_hasta})`);
@@ -150,6 +169,22 @@ export class CafManagerService {
     const cafBlockMatch = xmlContent.match(/<CAF[\s\S]*?<\/CAF>/i);
     const cafXmlContent = cafBlockMatch ? cafBlockMatch[0] : '';
 
+    const cruzado = defaultSqliteClient.queryOne<{ folio_desde: number; folio_hasta: number }>(
+      `SELECT folio_desde, folio_hasta FROM sii_caf
+        WHERE tenant_id = ? AND tipo_dte = ? AND origen = 'SII' AND folio_desde <= ? AND folio_hasta >= ?`,
+      [tenantId, tipoDte, folioHasta, folioDesde]
+    );
+    if (cruzado) {
+      throw new Error(`Los folios ${folioDesde}-${folioHasta} del tipo ${tipoDte} se cruzan con un CAF ya cargado (${cruzado.folio_desde}-${cruzado.folio_hasta}).`);
+    }
+
+    // El rango provisional deja de usarse: desde aqui se emite con los folios que autorizo el SII
+    defaultSqliteClient.execute(
+      `UPDATE sii_caf SET activo = 0, updated_at = datetime('now')
+        WHERE tenant_id = ? AND tipo_dte = ? AND origen = 'PROVISIONAL' AND activo = 1`,
+      [tenantId, tipoDte]
+    );
+
     const id = uuidv4();
     defaultSqliteClient.execute(
       `INSERT INTO sii_caf 
@@ -193,8 +228,7 @@ export class CafManagerService {
 
     // Estructura con la forma del CAF del SII, pero sin su firma: el nodo FRMA lleva, en Base64, una
     // marca que dice que no es una firma de la autoridad, y por eso el rango queda como PROVISIONAL.
-    const marcaProvisional = Buffer.from('FOLIO PROVISIONAL: SIN FIRMA DEL SII').toString('base64');
-    const cafXml = `<CAF version="1.0"><DA><RE>76123456-7</RE><RS>COMERCIAL DON TITO SPA</RS><TD>${tipoDte}</TD><RNG><D>${desde}</D><H>${hasta}</H></RNG><FA>${fechaHoy}</FA><RSAPK><M>${cleanPubKey.substring(0, 120)}</M><E>AQAB</E></RSAPK><IDK>300</IDK></DA><FRMA algoritmo="SHA1withRSA">${marcaProvisional}</FRMA></CAF>`;
+    const cafXml = `<CAF version="1.0"><DA><RE>76123456-7</RE><RS>COMERCIAL DON TITO SPA</RS><TD>${tipoDte}</TD><RNG><D>${desde}</D><H>${hasta}</H></RNG><FA>${fechaHoy}</FA><RSAPK><M>${cleanPubKey.substring(0, 120)}</M><E>AQAB</E></RSAPK><IDK>300</IDK></DA><FRMA algoritmo="SHA1withRSA">${MARCA_FOLIO_PROVISIONAL}</FRMA></CAF>`;
 
     defaultSqliteClient.execute(
       `INSERT INTO sii_caf 

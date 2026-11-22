@@ -161,9 +161,9 @@ describe('Pruebas Unitarias: Empaquetado de Escritorio', () => {
       );
       expect(bloque).toContain('evento.preventDefault()');
       expect(bloque).toContain('navegacion descartada');
-      expect(bloque).toContain('shell.openExternal(url)');
+      expect(bloque).toContain('abrirFuera(url)');
       // El descarte va ANTES de abrir: si no, el pixel sale igual
-      expect(bloque.indexOf('navegacion descartada')).toBeLessThan(bloque.indexOf('shell.openExternal(url)'));
+      expect(bloque.indexOf('navegacion descartada')).toBeLessThan(bloque.indexOf('abrirFuera(url)'));
     });
 
     test('la ventana que pide el sitio tambien se filtra', () => {
@@ -173,7 +173,16 @@ describe('Pruebas Unitarias: Empaquetado de Escritorio', () => {
         principal.indexOf('const fueraDeSitio')
       );
       expect(bloque).toContain('ventana descartada');
-      expect(bloque.indexOf('ventana descartada')).toBeLessThan(bloque.indexOf('shell.openExternal(url)'));
+      expect(bloque.indexOf('ventana descartada')).toBeLessThan(bloque.indexOf('abrirFuera(url)'));
+    });
+
+    test('al sistema solo se le entregan direcciones https y mailto', () => {
+      // shell.openExternal ejecuta lo que el sistema asocie al esquema: un file: o un ms-msdt:
+      // abriria un programa. Una sola llamada, detras de la lista de esquemas.
+      expect(principal.match(/shell\.openExternal\(/g)).toHaveLength(1);
+      const abrir = principal.slice(principal.indexOf('function abrirFuera'), principal.indexOf('function logger'));
+      expect(abrir).toContain("['https:', 'mailto:'].includes(new URL(url).protocol)");
+      expect(abrir.indexOf('.includes(new URL(url).protocol)')).toBeLessThan(abrir.indexOf('shell.openExternal('));
     });
 
     test('la identificacion del sitio sale al navegador, aunque sea el mismo dominio', () => {

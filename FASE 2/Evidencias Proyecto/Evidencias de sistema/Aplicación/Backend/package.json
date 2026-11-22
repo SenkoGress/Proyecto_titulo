@@ -1,6 +1,6 @@
 {
   "name": "gestock-backend",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "Gestock - Predictive Inventory Management System (Cloud SaaS & POS Offline-First)",
   "main": "electron/main.js",
   "scripts": {

@@ -18,6 +18,7 @@ import app from '../../src/index';
 import { tipoTarjetaDePasarela } from '../../src/routes/pos.routes';
 import { initializeDatabase } from '../../src/database/init-db';
 import { defaultSqliteClient } from '../../src/database/sqlite/client';
+import { defaultDteEmitter } from '../../src/dte/dte-emitter.service';
 
 const STX = 0x02;
 const ETX = 0x03;
@@ -412,6 +413,82 @@ describe('Venta con tarjeta por el SDK oficial de Transbank POS Integrado', () =
       const sumaPorcentajes = cobrados.reduce((s: number, p: any) => s + p.porcentaje, 0);
       expect(sumaPorcentajes).toBeGreaterThanOrEqual(98);
       expect(sumaPorcentajes).toBeLessThanOrEqual(102);
+    });
+
+    describe('la nota de credito de la devolucion', () => {
+      const enEfectivo = (cantidad: number) =>
+        post('/pos/checkout', { metodo_pago: 'EFECTIVO', items: [{ producto_id: otroProducto, cantidad }] });
+      const ncDe = (devolucionId: string) => defaultSqliteClient.queryOne<{ referencia_codigo: number }>(
+        'SELECT referencia_codigo FROM sii_dte_emitidos WHERE venta_id = ? AND tipo_dte = 61', [devolucionId]);
+
+      test('anula el documento solo cuando una sola devolucion deja la venta entera sin efecto', async () => {
+        const entera = await enEfectivo(1);
+        const toda = await devolver(entera.json.data.saleId);
+        expect(Number(ncDe(toda.json.data.devolucion_id)?.referencia_codigo)).toBe(1);
+
+        // dos devoluciones parciales: las dos corrigen montos, aunque la segunda vacie la venta
+        const dos = await enEfectivo(2);
+        const primera = await devolver(dos.json.data.saleId, { items_devolucion: [{ producto_id: otroProducto, cantidad: 1 }] });
+        const segunda = await devolver(dos.json.data.saleId, { items_devolucion: [{ producto_id: otroProducto, cantidad: 1 }] });
+        expect([primera, segunda].map((d) => Number(ncDe(d.json.data.devolucion_id)?.referencia_codigo))).toEqual([3, 3]);
+      });
+
+      test('sin documento original no inventa un folio: devuelve sin nota de credito y lo dice', async () => {
+        const v = await enEfectivo(1);
+        defaultSqliteClient.execute('DELETE FROM sii_dte_emitidos WHERE venta_id = ?', [v.json.data.saleId]);
+        const stock0 = stockOtro();
+
+        const res = await devolver(v.json.data.saleId);
+
+        expect(res.status).toBe(200);
+        expect(res.json.data.folio_nc).toBeNull();
+        expect(res.json.data.nota_credito).toBeNull();
+        expect(res.json.message).toContain('no tiene documento tributario');
+        expect(ncDe(res.json.data.devolucion_id)).toBeUndefined();
+        expect(stockOtro()).toBe(stock0 + 1);
+      });
+
+      test('si la nota de credito falla, la devolucion ya hecha queda registrada y la respuesta lo dice', async () => {
+        const v = await enEfectivo(1);
+        const stock0 = stockOtro();
+        const espia = jest.spyOn(defaultDteEmitter, 'emitDocument').mockImplementationOnce(() => {
+          throw new Error('Se han agotado los folios autorizados');
+        });
+        try {
+          const res = await devolver(v.json.data.saleId);
+          expect(res.status).toBe(200);
+          expect(res.json.data.aviso_nota_credito).toContain('agotado los folios');
+          expect(devolucionesDe(v.json.data.saleId)).toBe(1);
+          expect(stockOtro()).toBe(stock0 + 1);
+        } finally {
+          espia.mockRestore();
+        }
+      });
+
+      test('sin medio declarado, la venta en efectivo exige la caja abierta', async () => {
+        const v = await enEfectivo(1);
+        const turno = defaultSqliteClient.queryOne<{ id: string }>("SELECT id FROM cierres_caja WHERE tenant_id = ? AND estado = 'ABIERTA'", [tenantId])!;
+        defaultSqliteClient.execute("UPDATE cierres_caja SET estado = 'CERRADA' WHERE id = ?", [turno.id]);
+        try {
+          const res = await devolver(v.json.data.saleId);
+          expect([res.status, res.json.error]).toEqual([400, 'TURNO_CERRADO']);
+          expect(devolucionesDe(v.json.data.saleId)).toBe(0);
+        } finally {
+          defaultSqliteClient.execute("UPDATE cierres_caja SET estado = 'ABIERTA' WHERE id = ?", [turno.id]);
+        }
+      });
+    });
+
+    test('el panel no cuenta la devolucion como venta ni deja su costo y sus unidades', async () => {
+      const kpis = async () => ((await (await fetch(`${base}/api/v1/dashboard/overview?tenant_id=${tenantId}&periodo=historico`)).json()) as any).data.kpis;
+      const antes = await kpis();
+      const v = await post('/pos/checkout', { metodo_pago: 'EFECTIVO', items: [{ producto_id: otroProducto, cantidad: 1 }] });
+      await devolver(v.json.data.saleId);
+      const despues = await kpis();
+
+      expect(despues.totalTransacciones).toBe(antes.totalTransacciones + 1);
+      expect(despues.unidadesVendidas).toBe(antes.unidadesVendidas);
+      expect(despues.costoTotalVendido).toBe(antes.costoTotalVendido);
     });
 
     // va al final: cierra el turno de esta prueba

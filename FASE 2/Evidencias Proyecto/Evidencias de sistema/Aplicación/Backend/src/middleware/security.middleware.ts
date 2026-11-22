@@ -289,12 +289,15 @@ export const rbacAuthMiddleware = (req: Request, res: Response, next: NextFuncti
 
     // Sin comercio declarado, las rutas caian al de demostracion y una sesion de otro comercio
     // leia sus datos. Se fija el de la sesion, que es el unico que puede pedir.
+    // Las rutas DTE lo leen como tenantId: se completan las dos formas.
     if (decodedUser.tenant_id) {
-      if (req.query && req.query.tenant_id === undefined) {
-        (req.query as Record<string, unknown>).tenant_id = decodedUser.tenant_id;
-      }
-      if (req.body && typeof req.body === 'object' && !Buffer.isBuffer(req.body) && req.body.tenant_id === undefined) {
-        req.body.tenant_id = decodedUser.tenant_id;
+      for (const campo of ['tenant_id', 'tenantId']) {
+        if (req.query && req.query[campo] === undefined) {
+          (req.query as Record<string, unknown>)[campo] = decodedUser.tenant_id;
+        }
+        if (req.body && typeof req.body === 'object' && !Buffer.isBuffer(req.body) && req.body[campo] === undefined) {
+          req.body[campo] = decodedUser.tenant_id;
+        }
       }
     }
 
@@ -307,7 +310,9 @@ export const rbacAuthMiddleware = (req: Request, res: Response, next: NextFuncti
       (/^\/api\/v1\/(dashboard|invoices|suppliers|replenishment|dte|config)(\/|$)/.test(fullPath) &&
         !isCashierDteRoute(req.method, fullPath)) ||
       isAdminCatalogWrite(req.method, fullPath) ||
-      isAdminCierreCorreccion(fullPath);
+      isAdminCierreCorreccion(fullPath) ||
+      // la interfaz no la usa: el motor de sincronizacion llama al receptor directo
+      /^\/api\/v1\/sync\/push\/?$/.test(fullPath);
     if (isAdminRoute && decodedUser.rol !== 'admin') {
       logger.warn('SecurityMiddleware', `Acceso denegado a ruta admin (${fullPath}) para rol ${decodedUser.rol}`, {
         userId: decodedUser.id,

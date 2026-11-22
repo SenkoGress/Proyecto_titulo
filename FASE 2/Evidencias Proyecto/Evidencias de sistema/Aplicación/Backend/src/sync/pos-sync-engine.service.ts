@@ -1,7 +1,7 @@
 import { SqliteClient, defaultSqliteClient } from '../database/sqlite/client';
 import { DetalleVenta, Producto, TransaccionVenta } from '../database/types';
 import { logger } from '../utils/logger';
-import { ProductoReferenciado, ProveedorReferenciado } from './types';
+import { ProductoReferenciado, ProveedorReferenciado, UsuarioReferenciado } from './types';
 import { defaultCloudSyncReceiver } from './cloud-sync-receiver.service';
 import { ConflictResolver, defaultConflictResolver } from './conflict-resolver';
 import { ExponentialBackoff, defaultBackoff } from './exponential-backoff';
@@ -79,7 +79,12 @@ export class PosSyncEngineService {
           )
         : [];
 
-      items.push({ sale, details, productos, proveedores });
+      const usuario = this.sqlite.queryOne<UsuarioReferenciado>(
+        'SELECT id, nombre, email, rol, password_hash FROM usuarios WHERE id = ? AND tenant_id = ?',
+        [sale.usuario_id, tenantId]
+      ) ?? undefined;
+
+      items.push({ sale, details, productos, proveedores, usuario });
     }
 
     return items;

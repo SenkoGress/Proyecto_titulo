@@ -24,7 +24,7 @@ export class F29ReportService {
     const dtes = defaultSqliteClient.query<any>(
       `SELECT tipo_dte, monto_neto, monto_iva, monto_total, monto_ila 
        FROM sii_dte_emitidos 
-       WHERE tenant_id = ? AND strftime('%Y-%m', fecha_emision) = ? AND estado_sii != 'ANULADO'`,
+       WHERE tenant_id = ? AND strftime('%Y-%m', fecha_emision, 'localtime') = ? AND estado_sii != 'ANULADO'`,
       [tenantId, targetMonth]
     );
 

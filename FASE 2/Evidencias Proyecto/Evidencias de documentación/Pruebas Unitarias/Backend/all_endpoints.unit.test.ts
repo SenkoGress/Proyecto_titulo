@@ -5,6 +5,7 @@ import app from '../../backend/src/index';
 import { initializeDatabase } from '../../backend/src/database/init-db';
 import { defaultPgClient } from '../../backend/src/database/postgres/client';
 import { defaultSqliteClient } from '../../backend/src/database/sqlite/client';
+import { defaultSiiEnvio } from '../../backend/src/dte/sii-envio.service';
 
 const DEMO_TENANT = '00000000-0000-0000-0000-000000000001';
 const DEMO_USER = '00000000-0000-0000-0000-000000000002';
@@ -336,14 +337,19 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (8
       expect(Array.isArray(res.data.data.faltantes)).toBe(true);
     });
 
-    test('24c. POST /api/v1/dte/envio prepara el sobre y declara si no se envio', async () => {
+    test('24c. POST /api/v1/dte/envio sin requisitos no envia ni saca documentos de la cola', async () => {
+      const antes = await requestApi('GET', `/api/v1/dte/envio/pendientes?tenantId=${DEMO_TENANT}`);
       const res = await requestApi('POST', '/api/v1/dte/envio', { tenantId: DEMO_TENANT });
       expect(res.status).toBe(200);
       expect(res.data.success).toBe(true);
-      // Sin certificado ni folios autorizados el sobre queda listo, pero el envio no se afirma
+      // Sin certificado ni folios autorizados no se arma sobre y el envio no se afirma
       expect(res.data.data.enviado).toBe(false);
       expect(res.data.data.faltantes.length).toBeGreaterThan(0);
-      envioId = res.data.data.envio_id;
+      expect(res.data.data.envio_id).toBeUndefined();
+      const despues = await requestApi('GET', `/api/v1/dte/envio/pendientes?tenantId=${DEMO_TENANT}`);
+      expect(JSON.stringify(despues.data.data)).toBe(JSON.stringify(antes.data.data));
+      // el sobre para el portal se arma igual desde el servicio
+      envioId = defaultSiiEnvio.prepararSobres(DEMO_TENANT)[0].envioId;
     });
 
     test('24d. GET /api/v1/dte/envio/:id/sobre entrega el XML firmado para el portal del SII', async () => {
@@ -362,6 +368,8 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (8
       });
       expect([200, 201]).toContain(res.status);
       expect(res.data.success).toBe(true);
+      // el envio por correo no esta implementado: la respuesta no puede decir que salio
+      expect(res.data.message).toContain('no se mando ningun correo');
     });
 
     test('26. GET /api/v1/dte/f29 calcula propuesta mensual de F29', async () => {
@@ -545,9 +553,19 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (8
         tenant_id: DEMO_TENANT,
         usuario_id: DEMO_USER,
         items: [{ producto_id: producto.id, cantidad: 1, precio_unitario: 1 }],
-        metodo_pago: 'TARJETA'
+        metodo_pago: 'TRANSBANK'
       });
       expect(alterada.data.data.total).toBe(Number(producto.precio_venta));
+
+      // Un medio desconocido se cobraba en Transbank y se grababa como efectivo
+      const desconocido = await requestApi('POST', '/api/v1/pos/checkout', {
+        tenant_id: DEMO_TENANT,
+        usuario_id: DEMO_USER,
+        items: [{ producto_id: producto.id, cantidad: 1 }],
+        metodo_pago: 'TARJETA'
+      });
+      expect(desconocido.status).toBe(400);
+      expect(desconocido.data.error).toBe('METODO_PAGO_INVALIDO');
 
       const negativa = await requestApi('POST', '/api/v1/pos/checkout', {
         tenant_id: DEMO_TENANT,

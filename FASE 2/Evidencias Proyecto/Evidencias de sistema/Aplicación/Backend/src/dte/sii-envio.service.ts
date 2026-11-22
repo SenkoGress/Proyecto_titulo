@@ -1,3 +1,4 @@
+import { MARCA_FOLIO_PROVISIONAL } from './caf-manager.service';
 import { v4 as uuidv4 } from 'uuid';
 import { defaultSqliteClient, SqliteClient } from '../database/sqlite/client';
 import { defaultDteEmitter, DteEmitterService } from './dte-emitter.service';
@@ -156,19 +157,27 @@ export class SiiEnvioService {
       folio: Number(fila.folio),
       fecha_emision: fila.fecha_emision,
       monto_total: Number(fila.monto_total),
-      folio_provisional: this.folioEsProvisional(tenantId, Number(fila.tipo_dte), Number(fila.folio))
+      folio_provisional: this.folioEsProvisional(tenantId, fila.id)
     }));
   }
 
-  /** El folio cae en el rango de un CAF autorizado, o en uno provisionado por el equipo. */
-  public folioEsProvisional(tenantId: string, tipoDte: number, folio: number): boolean {
-    const caf = this.sqliteClient.queryOne<{ origen: string }>(
-      `SELECT origen FROM sii_caf
-        WHERE tenant_id = ? AND tipo_dte = ? AND folio_desde <= ? AND folio_hasta >= ?
-        ORDER BY created_at DESC LIMIT 1`,
-      [tenantId, tipoDte, folio, folio]
+  /**
+   * El documento es del SII si un CAF autorizado cubre su folio y su timbre no lleva el CAF
+   * provisional: el CAF real empieza en el 1, igual que el rango provisional, y un folio
+   * provisional emitido antes de cargarlo no pasa a ser autorizado por caer dentro de su rango.
+   */
+  public folioEsProvisional(tenantId: string, dteId: string): boolean {
+    const fila = this.sqliteClient.queryOne<{ del_sii: number }>(
+      `SELECT EXISTS (
+          SELECT 1 FROM sii_caf c
+           WHERE c.tenant_id = d.tenant_id AND c.tipo_dte = d.tipo_dte AND c.origen = 'SII'
+             AND c.folio_desde <= d.folio AND c.folio_hasta >= d.folio
+        ) AND instr(COALESCE(d.ted_xml, ''), ?) = 0 AS del_sii
+         FROM sii_dte_emitidos d
+        WHERE d.id = ? AND d.tenant_id = ?`,
+      [MARCA_FOLIO_PROVISIONAL, dteId, tenantId]
     );
-    return (caf?.origen || 'PROVISIONAL') !== 'SII';
+    return !fila?.del_sii;
   }
 
   /**
@@ -265,30 +274,28 @@ export class SiiEnvioService {
    * esta.
    */
   public async enviar(tenantId: string, dteIds?: string[]): Promise<ResultadoEnvio> {
+    // Sin requisitos no se arma sobre: armarlo sacaba los documentos de la cola sin enviarlos
     const faltantes = this.revisarRequisitos(tenantId);
-    const sobres = this.prepararSobres(tenantId, dteIds);
-    const documentos = sobres.reduce((suma, s) => suma + s.documentos, 0);
-    const nombres = sobres.map((s) => `${s.tipoSobre} (${s.documentos})`).join(' y ');
-
     if (faltantes.length > 0) {
       return {
         enviado: false,
-        mensaje:
-          (sobres.length === 1
-            ? `El sobre ${nombres} quedo preparado y firmado, pero no se envio: `
-            : `Los sobres ${nombres} quedaron preparados y firmados, pero no se enviaron: `) +
-          faltantes.map((f) => f.requisito.toLowerCase()).join(', ') + '.',
-        envio_id: sobres[0].envioId,
-        documentos,
-        sobres: sobres.map((s) => ({
-          envio_id: s.envioId,
-          tipo_sobre: s.tipoSobre,
-          documentos: s.documentos,
-          enviado: false
-        })),
+        mensaje: 'No se envio nada: ' + faltantes.map((f) => f.requisito.toLowerCase()).join(', ') +
+          '. Los documentos siguen en la cola.',
+        documentos: 0,
+        sobres: [],
         faltantes
       };
     }
+
+    // un folio provisional nunca lo autorizo el SII: el sobre entero se rechazaria
+    const enviables = this.documentosPendientes(tenantId)
+      .filter((d) => !d.folio_provisional && (!dteIds?.length || dteIds.includes(d.id)))
+      .map((d) => d.id);
+    if (enviables.length === 0) {
+      throw new Error('No hay documentos con folio del SII pendientes de envio: los de folio provisional no se envian');
+    }
+    const sobres = this.prepararSobres(tenantId, enviables);
+    const documentos = sobres.reduce((suma, s) => suma + s.documentos, 0);
 
     const { emisor } = this.emitter.getTenantFiscalConfig(tenantId);
     const ambiente = this.getAmbiente(tenantId);

@@ -28,7 +28,7 @@ export const postgresConfig: PostgresConfig = {
   host: process.env.PGHOST || 'localhost',
   port: parseInt(process.env.PGPORT || '5432', 10),
   user: process.env.PGUSER || 'gestock_admin',
-  password: process.env.PGPASSWORD || 'gestock_secret_2026',
+  password: process.env.PGPASSWORD || '',
   database: process.env.PGDATABASE || 'gestock_cloud_db',
   ssl: process.env.PGSSL === 'true',
   maxConnections: parseInt(process.env.PG_MAX_CONN || '20', 10),

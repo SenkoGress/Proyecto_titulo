@@ -50,6 +50,19 @@ function sitioPermitido(url) {
   }
 }
 
+// shell.openExternal entrega la direccion al sistema: un file: o un ms-msdt: ejecutaria algo
+function abrirFuera(url) {
+  try {
+    if (['https:', 'mailto:'].includes(new URL(url).protocol)) {
+      shell.openExternal(url);
+      return;
+    }
+  } catch {
+    // direccion que no se puede leer: no se abre
+  }
+  logger('Enlace externo descartado', url);
+}
+
 function logger(mensaje, detalle) {
   console.warn(`[GesTock] ${mensaje}${detalle ? ': ' + detalle : ''}`);
 }
@@ -308,7 +321,7 @@ function crearVentana() {
 
   // Un enlace externo abre en el navegador del sistema y no dentro de la caja
   ventana.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    abrirFuera(url);
     return { action: 'deny' };
   });
 
@@ -398,7 +411,7 @@ if (!app.requestSingleInstanceLock()) {
         logger('Visor del mercado: ventana descartada', url);
         return { action: 'deny' };
       }
-      shell.openExternal(url);
+      abrirFuera(url);
       return { action: 'deny' };
     });
 
@@ -419,7 +432,7 @@ if (!app.requestSingleInstanceLock()) {
       }
 
       logger('Visor del mercado: se abre fuera', url);
-      shell.openExternal(url);
+      abrirFuera(url);
     };
 
     contenido.on('will-navigate', fueraDeSitio);

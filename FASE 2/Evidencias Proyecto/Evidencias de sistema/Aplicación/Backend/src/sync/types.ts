@@ -1,5 +1,14 @@
 import { DetalleVenta, Producto, TransaccionVenta } from '../database/types';
 
+/** Quien hizo la venta: la nube exige el usuario y uno creado sin conexion no existe alla. */
+export interface UsuarioReferenciado {
+  id: string;
+  nombre: string;
+  email: string;
+  rol: string;
+  password_hash: string;
+}
+
 export interface ProveedorReferenciado {
   id: string;
   rut_proveedor: string;
@@ -33,6 +42,7 @@ export interface SyncPushItem {
   productos?: ProductoReferenciado[];
   /** Proveedores de esos productos: sin ellos el producto no se puede crear con su vinculo. */
   proveedores?: ProveedorReferenciado[];
+  usuario?: UsuarioReferenciado;
 }
 
 export interface SyncPushPayload {

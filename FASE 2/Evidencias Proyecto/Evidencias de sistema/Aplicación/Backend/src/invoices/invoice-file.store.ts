@@ -61,6 +61,16 @@ export class InvoiceFileStore {
     return MIME_POR_EXTENSION[extension] || 'application/octet-stream';
   }
 
+  /** La ruta llega del cliente al confirmar una factura: con '../' leia cualquier archivo del equipo. */
+  private dentro(rutaRelativa: string): string {
+    const base = path.resolve(this.baseDir);
+    const absoluta = path.resolve(base, rutaRelativa);
+    if (!absoluta.startsWith(base + path.sep)) {
+      throw new Error('La ruta del documento queda fuera de la carpeta de facturas');
+    }
+    return absoluta;
+  }
+
   private aBuffer(contenido: string | Buffer): Buffer {
     if (Buffer.isBuffer(contenido)) return contenido;
     // El cliente puede enviar el base64 crudo o como data URL
@@ -81,7 +91,7 @@ export class InvoiceFileStore {
 
     const extension = this.resolverExtension(fileName, mimeType);
     const relativa = path.join(tenantId, `${uuidv4()}${extension}`);
-    const absoluta = path.join(this.baseDir, relativa);
+    const absoluta = this.dentro(relativa);
 
     fs.mkdirSync(path.dirname(absoluta), { recursive: true });
     fs.writeFileSync(absoluta, buffer);
@@ -96,17 +106,17 @@ export class InvoiceFileStore {
 
   /** Devuelve el documento en base64 para volver a pasarlo por el OCR. */
   public leerBase64(rutaRelativa: string): string {
-    const absoluta = path.join(this.baseDir, rutaRelativa);
+    const absoluta = this.dentro(rutaRelativa);
     return fs.readFileSync(absoluta).toString('base64');
   }
 
   public leerBuffer(rutaRelativa: string): Buffer {
-    return fs.readFileSync(path.join(this.baseDir, rutaRelativa));
+    return fs.readFileSync(this.dentro(rutaRelativa));
   }
 
   public existe(rutaRelativa: string): boolean {
     try {
-      return fs.existsSync(path.join(this.baseDir, rutaRelativa));
+      return fs.existsSync(this.dentro(rutaRelativa));
     } catch {
       return false;
     }
@@ -114,7 +124,7 @@ export class InvoiceFileStore {
 
   public eliminar(rutaRelativa: string): void {
     try {
-      fs.unlinkSync(path.join(this.baseDir, rutaRelativa));
+      fs.unlinkSync(this.dentro(rutaRelativa));
     } catch (err) {
       logger.warn('InvoiceFileStore', 'No se pudo eliminar el documento almacenado', { ruta: rutaRelativa, error: String(err) });
     }
@@ -122,7 +132,7 @@ export class InvoiceFileStore {
 
   /** Rutas relativas de los documentos de un comercio, para cruzarlas con la base. */
   public inventariar(tenantId: string): string[] {
-    const dir = path.join(this.baseDir, tenantId);
+    const dir = this.dentro(tenantId);
     try {
       return fs.readdirSync(dir).map((nombre) => `${tenantId}/${nombre}`);
     } catch {
@@ -132,7 +142,7 @@ export class InvoiceFileStore {
 
   public antiguedadHoras(rutaRelativa: string): number {
     try {
-      const stat = fs.statSync(path.join(this.baseDir, rutaRelativa));
+      const stat = fs.statSync(this.dentro(rutaRelativa));
       return (Date.now() - stat.mtimeMs) / 3_600_000;
     } catch {
       return 0;

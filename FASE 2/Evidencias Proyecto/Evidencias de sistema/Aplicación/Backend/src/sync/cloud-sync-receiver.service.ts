@@ -19,8 +19,8 @@ import {
  */
 async function idEnNube(
   db: { query: (sql: string, params?: unknown[]) => Promise<{ rows: Array<{ id: string }> }> },
-  tabla: 'productos' | 'proveedores',
-  clave: 'sku' | 'rut_proveedor',
+  tabla: 'productos' | 'proveedores' | 'usuarios',
+  clave: 'sku' | 'rut_proveedor' | 'email',
   tenantId: string,
   id: string,
   valor: string | null
@@ -70,7 +70,7 @@ export class CloudSyncReceiverService {
         const movTipoId = movTipoRes.rows[0].id;
 
         for (const item of payload.sales) {
-          const { sale, details, productos, proveedores } = item;
+          const { sale, details, productos, proveedores, usuario } = item;
 
           try {
             // 1. Idempotencia: Verificar si la transacción ya fue consolidada en la nube
@@ -96,6 +96,20 @@ export class CloudSyncReceiverService {
               }
             }
 
+            // El usuario creado sin conexion no existe en la nube y la venta fallaba por clave foranea
+            // hasta detenerse. Se crea con su clave ya cifrada; si el correo ya esta arriba con otro
+            // id, la venta usa el de la nube.
+            let usuarioEnNube = sale.usuario_id;
+            if (usuario) {
+              await client.query(
+                `INSERT INTO usuarios (id, tenant_id, nombre, email, password_hash, rol)
+                 VALUES ($1, $2, $3, $4, $5, $6)
+                 ON CONFLICT DO NOTHING`,
+                [usuario.id, payload.tenant_id, usuario.nombre, usuario.email, usuario.password_hash, usuario.rol]
+              );
+              usuarioEnNube = await idEnNube(client, 'usuarios', 'email', payload.tenant_id, usuario.id, usuario.email);
+            }
+
             // 2. Insertar cabecera de Transacciones_Venta (El POS manda en Transacciones) con soporte DTE
             await client.query(
               `INSERT INTO transacciones_venta 
@@ -108,7 +122,7 @@ export class CloudSyncReceiverService {
               [
                 sale.id,
                 payload.tenant_id,
-                sale.usuario_id,
+                usuarioEnNube,
                 sale.folio_local_sqlite || null,
                 sale.fecha || new Date().toISOString(),
                 sale.total,

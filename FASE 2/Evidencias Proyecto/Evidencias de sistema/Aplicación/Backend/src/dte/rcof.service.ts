@@ -24,8 +24,8 @@ export class RcofService {
     const boletas = defaultSqliteClient.query<any>(
       `SELECT folio, monto_neto, monto_iva, monto_exento, monto_total
        FROM sii_dte_emitidos 
-       WHERE tenant_id = ? AND tipo_dte = 39 
-       AND strftime('%Y-%m-%d', fecha_emision) = ?
+       WHERE tenant_id = ? AND tipo_dte = 39 AND estado_sii != 'ANULADO'
+       AND strftime('%Y-%m-%d', fecha_emision, 'localtime') = ?
        ORDER BY folio ASC`,
       [tenantId, fecha]
     );

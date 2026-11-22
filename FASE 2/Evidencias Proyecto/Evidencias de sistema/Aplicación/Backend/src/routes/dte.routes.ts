@@ -373,11 +373,13 @@ dteRouter.post('/send-email', (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: 'Debe ingresar una dirección de correo válida' });
     }
 
-    logger.info('DteRoutes', `Simulando despacho de boleta/comprobante a ${email} (DTE: ${dteId || 'N/A'}, Venta: ${ventaId || 'N/A'})`);
+    logger.info('DteRoutes', `Envio de comprobante simulado: no se manda correo a ${email} (DTE: ${dteId || 'N/A'}, Venta: ${ventaId || 'N/A'})`);
 
+    // el envio del comprobante por correo no esta implementado: la respuesta no puede decir que salio
     res.json({
       success: true,
-      message: `Comprobante y Boleta Electrónica despachados exitosamente al correo ${email}. Cumplimiento Res. Ex. N° 53 del SII.`
+      simulado: true,
+      message: `Envio simulado: no se mando ningun correo a ${email}. El envio de comprobantes por correo no esta implementado.`
     });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });

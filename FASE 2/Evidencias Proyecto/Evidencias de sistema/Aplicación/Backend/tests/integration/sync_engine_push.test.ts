@@ -208,4 +208,48 @@ describe('Offline-First Push Sync & Idempotency', () => {
       await otraNube.close();
     }
   });
+
+  test('4. La venta de un usuario que la nube no conoce sube igual, con el usuario o con el de su mismo correo', async () => {
+    // Un cajero creado sin nube no existe arriba: su venta fallaba por clave foranea en cada
+    // intento hasta quedar detenida
+    const ids = createFixtureIds();
+    const tenant = sampleTenant(ids.tenantId);
+    const metodo = sampleMetodoPago(ids.metodoPagoId);
+    const soloLocal = sampleUsuario(ids.usuarioCajeroId, ids.tenantId, 'cajero');
+    const mismoCorreo = sampleUsuario(createFixtureIds().usuarioCajeroId, ids.tenantId, 'cajero');
+    const enLaNubeConOtroId = { ...mismoCorreo, id: createFixtureIds().usuarioCajeroId };
+
+    await pgClient.query('INSERT INTO tenants (id, nombre, estado) VALUES ($1, $2, $3)', [tenant.id, tenant.nombre, tenant.estado]);
+    await pgClient.query('INSERT INTO metodos_pago (id, nombre, descripcion, activo, pasarela) VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING',
+      [metodo.id, metodo.nombre, metodo.descripcion, metodo.activo, metodo.pasarela]);
+    await pgClient.query('INSERT INTO usuarios (id, tenant_id, nombre, email, password_hash, rol) VALUES ($1, $2, $3, $4, $5, $6)',
+      [enLaNubeConOtroId.id, tenant.id, enLaNubeConOtroId.nombre, enLaNubeConOtroId.email, enLaNubeConOtroId.password_hash, 'cajero']);
+
+    sqliteClient.execute('INSERT INTO tenants (id, nombre, estado) VALUES (?, ?, ?)', [tenant.id, tenant.nombre, tenant.estado]);
+    sqliteClient.execute('INSERT OR IGNORE INTO metodos_pago (id, nombre, descripcion, activo, pasarela) VALUES (?, ?, ?, ?, ?)',
+      [metodo.id, metodo.nombre, metodo.descripcion, 1, metodo.pasarela]);
+    const ventas: string[] = [];
+    for (const usuario of [soloLocal, mismoCorreo]) {
+      sqliteClient.execute('INSERT INTO usuarios (id, tenant_id, nombre, email, password_hash, rol) VALUES (?, ?, ?, ?, ?, ?)',
+        [usuario.id, tenant.id, usuario.nombre, usuario.email, usuario.password_hash, usuario.rol]);
+      const venta = createFixtureIds().ventaId;
+      ventas.push(venta);
+      sqliteClient.execute(
+        `INSERT INTO transacciones_venta (id, tenant_id, usuario_id, folio_local_sqlite, total, unidades, estado, metodo_pago_id, is_dirty, sync_status)
+         VALUES (?, ?, ?, ?, 0, 0, 'COMPLETADA', ?, 1, 'PENDING')`,
+        [venta, tenant.id, usuario.id, `FOLIO-USUARIO-${ventas.length}`, metodo.id]
+      );
+    }
+
+    const resultado = await posEngine.syncPush(tenant.id, async (payload) => cloudReceiver.ingestPushBatch(payload));
+
+    expect(resultado.synced_ids).toEqual(expect.arrayContaining(ventas));
+    const autores = await pgClient.query<{ id: string; usuario_id: string }>(
+      'SELECT id, usuario_id FROM transacciones_venta WHERE id IN ($1, $2)', ventas);
+    const autor = new Map(autores.rows.map((r) => [r.id, r.usuario_id]));
+    expect(autor.get(ventas[0])).toBe(soloLocal.id);
+    expect(autor.get(ventas[1])).toBe(enLaNubeConOtroId.id);
+    const creado = await pgClient.query('SELECT email FROM usuarios WHERE id = $1', [soloLocal.id]);
+    expect(creado.rows[0]?.email).toBe(soloLocal.email);
+  });
 });
