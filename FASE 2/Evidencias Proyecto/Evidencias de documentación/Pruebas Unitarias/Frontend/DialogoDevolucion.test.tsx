@@ -58,7 +58,7 @@ const opciones = () =>
 
 describe('DialogoDevolucion: como se devuelve la plata', () => {
   beforeEach(() => {
-    mutate.mockClear()
+    mutate.mockReset()
     estado.error = null
     // al cerrarse, el dialogo de MUI devuelve el foco a donde estaba: en jsdom tiene que haber
     // un elemento que lo acepte, si no el desmontaje revienta
@@ -142,7 +142,6 @@ describe('DialogoDevolucion: como se devuelve la plata', () => {
     expect(screen.getByText(/La caja esta cerrada/)).toBeTruthy()
     fireEvent.click(botonDevolver())
     expect(mutate).toHaveBeenLastCalledWith(expect.objectContaining({ medioDevolucion: 'EFECTIVO' }), expect.anything())
-    mutate.mockReset()
   })
 
   it('una devolucion ya en curso se avisa sin alarmar', () => {

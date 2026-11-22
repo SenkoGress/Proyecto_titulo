@@ -215,12 +215,12 @@ export class DashboardService {
     };
 
     // 5. Desglose por Medio de Pago (incluyendo RutPay)
-    const payRows = this.sqlite.query<{ metodo_pago: string; total: number; cantidad: number }>(
+    const payRows = this.sqlite.query<{ metodo_pago: string; total: number; cantidad: number; es_devolucion: number }>(
       // lo devuelto por transferencia no salio de la gaveta ni de la tarjeta: va en su propio rubro,
       // como en el resumen del turno. Lo devuelto por otro medio va en su propia fila, en negativo,
       // separada de lo cobrado con ese medio: sumadas, la fila de lo cobrado mostraba el neto
       `SELECT CASE WHEN tv.medio_devolucion = 'TRANSFERENCIA' THEN 'TRANSFERENCIA' ELSE COALESCE(mp.pasarela, 'EFECTIVO') END as metodo_pago,
-              SUM(tv.total) as total, COUNT(*) as cantidad
+              SUM(tv.total) as total, COUNT(*) as cantidad, COALESCE(tv.es_devolucion, 0) as es_devolucion
        FROM transacciones_venta tv
        LEFT JOIN metodos_pago mp ON tv.metodo_pago_id = mp.id
        WHERE tv.tenant_id = ? ${dateFilter}
@@ -230,13 +230,18 @@ export class DashboardService {
       [tenantId]
     );
 
+    // el porcentaje es sobre lo cobrado: con las devoluciones en filas aparte, dividir por el total
+    // neto del periodo dejaba un medio por encima del 100 %
+    const totalCobrado = payRows
+      .filter((r) => Number(r.es_devolucion) === 0)
+      .reduce((suma, r) => suma + Number(r.total || 0), 0);
     const paymentsBreakdown: PaymentBreakdownItem[] = payRows.map(r => {
       const tot = Number(r.total || 0);
       return {
         metodo: r.metodo_pago,
         total: tot,
         cantidad: Number(r.cantidad || 0),
-        porcentaje: totalVentasBruto > 0 ? Math.round((tot / totalVentasBruto) * 100) : 0
+        porcentaje: totalCobrado > 0 ? Math.round((tot / totalCobrado) * 100) : 0
       };
     });
 

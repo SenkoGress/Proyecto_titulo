@@ -406,6 +406,12 @@ describe('Venta con tarjeta por el SDK oficial de Transbank POS Integrado', () =
       const panel: any = await (await fetch(`${base}/api/v1/dashboard/overview?tenant_id=${tenantId}&periodo=historico`)).json();
       const efectivo = panel.data.paymentsBreakdown.filter((p: any) => p.metodo === 'EFECTIVO');
       expect(efectivo.map((p: any) => p.total).sort((x: number, y: number) => y - x)).toEqual([suma(0), suma(1)]);
+      // el porcentaje es sobre lo cobrado: ningun medio pasa de 100 y los cobrados suman cerca de 100
+      const cobrados = panel.data.paymentsBreakdown.filter((p: any) => p.total > 0);
+      expect(Math.max(...cobrados.map((p: any) => p.porcentaje))).toBeLessThanOrEqual(100);
+      const sumaPorcentajes = cobrados.reduce((s: number, p: any) => s + p.porcentaje, 0);
+      expect(sumaPorcentajes).toBeGreaterThanOrEqual(98);
+      expect(sumaPorcentajes).toBeLessThanOrEqual(102);
     });
 
     // va al final: cierra el turno de esta prueba

@@ -110,7 +110,6 @@ export function DialogoDevolucion({ venta, onCerrar }: Props) {
       onError: (error) => {
         if (!esReversoManual(error)) return
         setMaquinaFallo(true)
-        setMedio((actual) => (actual === 'TARJETA' ? 'EFECTIVO' : actual))
       },
     })
   }
