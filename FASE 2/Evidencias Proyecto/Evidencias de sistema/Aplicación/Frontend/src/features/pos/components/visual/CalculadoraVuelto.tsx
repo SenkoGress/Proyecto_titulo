@@ -3,6 +3,7 @@ import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import TextField from '@mui/material/TextField'
 import InputAdornment from '@mui/material/InputAdornment'
+import { alpha } from '@mui/material/styles'
 import Typography from '@mui/material/Typography'
 import BackspaceOutlinedIcon from '@mui/icons-material/BackspaceOutlined'
 import { formatoClp } from '@/shared/utils/formatoClp'
@@ -70,16 +71,28 @@ export function CalculadoraVuelto({ total }: Props) {
 
       {recibido > 0 && (
         <Box sx={{ mt: 1 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-            <Typography variant="body2" color="text.secondary">
-              Recibido {formatoClp(recibido)}
-            </Typography>
+          <Box
+            sx={{
+              bgcolor: (tema) =>
+                alpha(alcanza ? tema.palette.success.main : tema.palette.error.main, 0.12),
+              borderRadius: 2,
+              px: 2,
+              py: 1.25,
+            }}
+          >
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
+                {alcanza ? 'VUELTO A ENTREGAR' : 'FALTA'}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                recibido {formatoClp(recibido)}
+              </Typography>
+            </Box>
             <Typography
-              variant="body2"
-              sx={{ fontWeight: 700 }}
+              sx={{ fontWeight: 700, fontSize: '1.9rem', lineHeight: 1.1 }}
               color={alcanza ? 'success.main' : 'error.main'}
             >
-              {alcanza ? `Vuelto ${formatoClp(vuelto)}` : `Faltan ${formatoClp(falta)}`}
+              {formatoClp(alcanza ? vuelto : falta)}
             </Typography>
           </Box>
 

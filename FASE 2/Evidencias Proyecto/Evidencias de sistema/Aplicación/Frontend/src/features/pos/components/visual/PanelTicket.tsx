@@ -12,7 +12,6 @@ import { formatoClp } from '@/shared/utils/formatoClp'
 import { useCarritoStore } from '@/features/pos/stores/carritoStore'
 import { useTotalesCarrito } from '@/features/pos/hooks/useTotalesCarrito'
 import { faltaElMontoRecibido } from '@/features/pos/utils/pagoEnEfectivo'
-import { LineaTicket } from '@/features/pos/components/visual/LineaTicket'
 import { Ayuda } from '@/shared/components/ui/Ayuda'
 import { SelectorMetodoPago } from '@/features/pos/components/visual/SelectorMetodoPago'
 import { CalculadoraVuelto } from '@/features/pos/components/visual/CalculadoraVuelto'
@@ -85,17 +84,13 @@ export function PanelTicket({ onCobrar, cobrando, errorCobro, onEmpezarDeNuevo }
 
       <Divider />
 
-      {/* productos */}
-      <Box sx={{ flexGrow: 1, overflowY: 'auto', px: 2 }}>
+      {/* lo que lleva el cliente se ve en grande a la izquierda; aca va el cobro */}
+      <Box sx={{ flexGrow: 1, overflowY: 'auto', px: 2, pb: 1 }}>
         {!hayProductos && (
-          <Typography color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>
+          <Typography color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>
             Agrega productos desde el catalogo o escanea un codigo de barras.
           </Typography>
         )}
-
-        {lineas.map((linea) => (
-          <LineaTicket key={linea.producto.id} linea={linea} />
-        ))}
       </Box>
 
       {/* totales y pago */}
