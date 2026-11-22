@@ -60,7 +60,7 @@ export function CalculadoraVuelto({ total }: Props) {
             key={valor}
             size="small"
             variant="outlined"
-            onClick={() => setRecibido((previo) => previo + valor)}
+            onClick={() => setRecibido(useCarritoStore.getState().montoRecibido + valor)}
             sx={{ px: 0.5, fontSize: 12 }}
           >
             {formatoClp(valor)}
