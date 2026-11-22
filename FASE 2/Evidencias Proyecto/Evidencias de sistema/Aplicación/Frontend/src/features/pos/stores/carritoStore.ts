@@ -1,6 +1,6 @@
 // src/features/pos/stores/carritoStore.ts
 import { create } from 'zustand'
-import type { MetodoPago, Producto, ReceptorEmpresa, TipoComprobante } from '@/features/pos/types'
+import type { MetodoPago, Producto, ReceptorEmpresa, TipoComprobante, TipoTarjeta } from '@/features/pos/types'
 import { diasParaVencer, esFechaDeVencimientoValida } from '@/features/invoices/utils/vencimientoFactura'
 
 // d.s. 977/96: vencido es anterior a hoy. la fecha puede venir con hora, valen sus diez primeros caracteres
@@ -24,6 +24,7 @@ type CarritoState = {
   receptorEmpresa: ReceptorEmpresa | null // datos del cliente cuando es factura
   porConfirmarVencido: Producto | null // producto vencido que espera la decision del cajero
   montoRecibido: number // con cuanto paga el cliente en efectivo
+  tipoTarjeta: TipoTarjeta | null // credito o debito, cuando se cobra con tarjeta
 
   agregar: (producto: Producto) => void
   confirmarVencido: () => void
@@ -38,6 +39,7 @@ type CarritoState = {
   cambiarTipoComprobante: (tipo: TipoComprobante) => void
   fijarReceptorEmpresa: (receptor: ReceptorEmpresa | null) => void
   fijarMontoRecibido: (monto: number) => void
+  cambiarTipoTarjeta: (tipo: TipoTarjeta | null) => void
 }
 
 // estado inicial del ticket
@@ -50,6 +52,7 @@ const ticketVacio = {
   receptorEmpresa: null,
   porConfirmarVencido: null,
   montoRecibido: 0,
+  tipoTarjeta: null,
 }
 
 // carrito de la venta actual
@@ -121,6 +124,8 @@ export const useCarritoStore = create<CarritoState>((set) => ({
 
   // no se borra al cambiar el ticket: si el total sube, el boton vuelve a pedir lo que falta
   fijarMontoRecibido: (monto) => set({ montoRecibido: Math.max(0, Math.round(monto) || 0) }),
+
+  cambiarTipoTarjeta: (tipo) => set({ tipoTarjeta: tipo }),
 
   marcarEdadVerificada: (verificada) => set({ edadVerificada: verificada }),
 

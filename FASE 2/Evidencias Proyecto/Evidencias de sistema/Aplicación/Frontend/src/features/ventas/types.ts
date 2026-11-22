@@ -32,6 +32,10 @@ export type Transaccion = {
   referencia_venta_id: string | null
   rut_cliente: string | null
   tipo_documento_tributario: string | null
+  // credito o debito; null en efectivo, en RutPay y en las ventas anteriores a la 1.0.6
+  tipo_tarjeta: string | null
+  // como se devolvio la plata, en las filas que son devolucion
+  medio_devolucion: string | null
   monto_ila: number
   items: ItemTransaccion[]
 }
@@ -70,6 +74,9 @@ export type ItemDevolucion = {
   cantidad: number
 }
 
+// como se le devolvio la plata al cliente
+export type MedioDevolucion = 'TARJETA' | 'EFECTIVO' | 'TRANSFERENCIA'
+
 export type RespuestaDevolucion = {
   success: boolean
   message: string
@@ -78,6 +85,11 @@ export type RespuestaDevolucion = {
     folio_nc: number
     monto_total: number
     total_devuelto: number
+    // lo que registro el servidor; null en una devolucion anterior a la 1.0.6
+    medio_devolucion: MedioDevolucion | null
+    // lo que se le entrega al cliente: redondeado si fue en efectivo. total_devuelto es el monto
+    // de la nota de credito, que va exacto
+    devuelto_al_cliente: number
     // el proveedor no permite devolver el pago desde la caja: la nota de credito se emite igual
     reverso_tarjeta: { pasarela: string; monto: number; manual: boolean } | null
   }

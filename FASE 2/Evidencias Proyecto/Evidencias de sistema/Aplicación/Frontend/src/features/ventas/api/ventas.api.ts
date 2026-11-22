@@ -4,6 +4,7 @@ import { endpoints } from '@/lib/api/endpoints'
 import { tenantActual, usuarioActualId } from '@/features/auth/utils/identidad'
 import type {
   ItemDevolucion,
+  MedioDevolucion,
   RespuestaDevolucion,
   RespuestaDtes,
   RespuestaTransacciones,
@@ -38,12 +39,14 @@ export async function registrarDevolucion(variables: {
   ventaId: string
   motivo: string
   items?: ItemDevolucion[]
+  medioDevolucion?: MedioDevolucion
 }) {
   const { data } = await httpClient.post<RespuestaDevolucion>(endpoints.pos.devolucion, {
     tenant_id: tenantActual(),
     usuario_id: usuarioActualId(),
     venta_id: variables.ventaId,
     motivo: variables.motivo,
+    medio_devolucion: variables.medioDevolucion,
     items_devolucion: variables.items,
   }, { timeout: 180000 }) // si se pago con tarjeta, el servidor espera a que la maquina anule el cobro
   return data

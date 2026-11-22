@@ -16,6 +16,7 @@ import { LineaTicket } from '@/features/pos/components/visual/LineaTicket'
 import { Ayuda } from '@/shared/components/ui/Ayuda'
 import { SelectorMetodoPago } from '@/features/pos/components/visual/SelectorMetodoPago'
 import { CalculadoraVuelto } from '@/features/pos/components/visual/CalculadoraVuelto'
+import { SelectorTipoTarjeta } from '@/features/pos/components/compartidos/SelectorTipoTarjeta'
 import { VerificacionEdad } from '@/features/pos/components/compartidos/VerificacionEdad'
 import { SelectorComprobante } from '@/features/pos/components/compartidos/SelectorComprobante'
 import { BotonBolsa } from '@/features/pos/components/compartidos/BotonBolsa'
@@ -158,6 +159,8 @@ export function PanelTicket({ onCobrar, cobrando, errorCobro, onEmpezarDeNuevo }
 
         {/* vuelto (solo efectivo) */}
         {metodoPago === 'EFECTIVO' && hayProductos && <CalculadoraVuelto total={total} />}
+
+        {hayProductos && <SelectorTipoTarjeta />}
 
         {contieneAlcohol && <VerificacionEdad />}
 

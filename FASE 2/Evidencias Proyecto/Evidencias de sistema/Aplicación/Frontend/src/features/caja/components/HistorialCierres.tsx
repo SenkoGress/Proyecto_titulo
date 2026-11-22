@@ -1,4 +1,5 @@
 // src/features/caja/components/HistorialCierres.tsx
+import { useState } from 'react'
 import Paper from '@mui/material/Paper'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
@@ -11,9 +12,15 @@ import TableContainer from '@mui/material/TableContainer'
 import Chip from '@mui/material/Chip'
 import Skeleton from '@mui/material/Skeleton'
 import HistoryIcon from '@mui/icons-material/History'
+import EditNoteOutlined from '@mui/icons-material/EditNoteOutlined'
+import Button from '@mui/material/Button'
 import { formatoClp } from '@/shared/utils/formatoClp'
 import { formatFecha } from '@/shared/utils/formatFecha'
 import { useHistorialCaja } from '@/features/caja/hooks/useCaja'
+import { usePuedeAdministrar } from '@/features/auth/stores/sesionStore'
+import { DialogoCorregirCierre } from '@/features/caja/components/DialogoCorregirCierre'
+import { conteoVigente, diferenciaVigente, estaCorregido, sePuedeCorregir } from '@/features/caja/utils/correccionCierre'
+import type { CierreHistorial } from '@/features/caja/types'
 
 // color y texto de la diferencia del arqueo
 function Diferencia({ monto }: { monto: number | null | undefined }) {
@@ -44,6 +51,8 @@ function Diferencia({ monto }: { monto: number | null | undefined }) {
 // cierres Z anteriores del local
 export function HistorialCierres() {
   const { data: cierres, isPending, isError } = useHistorialCaja()
+  const esAdmin = usePuedeAdministrar()
+  const [aCorregir, setACorregir] = useState<CierreHistorial | null>(null)
 
   return (
     <Paper variant="outlined" sx={{ p: 2 }}>
@@ -81,6 +90,7 @@ export function HistorialCierres() {
                 <TableCell align="right">Efectivo real</TableCell>
                 <TableCell>Diferencia</TableCell>
                 <TableCell>Estado</TableCell>
+                {esAdmin && <TableCell align="right">Conteo</TableCell>}
               </TableRow>
             </TableHead>
 
@@ -103,12 +113,21 @@ export function HistorialCierres() {
                   </TableCell>
                   <TableCell align="right">{formatoClp(cierre.monto_esperado_efectivo)}</TableCell>
                   <TableCell align="right">
-                    {cierre.monto_real_efectivo === null || cierre.monto_real_efectivo === undefined
-                      ? '—'
-                      : formatoClp(cierre.monto_real_efectivo)}
+                    {conteoVigente(cierre) === null ? '—' : formatoClp(conteoVigente(cierre) as number)}
+                    {estaCorregido(cierre) && (
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                        antes {formatoClp(cierre.monto_real_efectivo ?? 0)}
+                      </Typography>
+                    )}
                   </TableCell>
                   <TableCell>
-                    <Diferencia monto={cierre.estado === 'ABIERTA' ? null : cierre.diferencia_efectivo} />
+                    <Diferencia monto={cierre.estado === 'ABIERTA' ? null : diferenciaVigente(cierre)} />
+                    {estaCorregido(cierre) && (
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                        {cierre.motivo_correccion ?? 'corregida'}
+                        {cierre.corregido_por_nombre ? ` · ${cierre.corregido_por_nombre}` : ''}
+                      </Typography>
+                    )}
                   </TableCell>
                   <TableCell>
                     <Chip
@@ -119,12 +138,26 @@ export function HistorialCierres() {
                       sx={{ fontWeight: 700 }}
                     />
                   </TableCell>
+                  {esAdmin && (
+                    <TableCell align="right">
+                      <Button
+                        size="small"
+                        startIcon={<EditNoteOutlined fontSize="small" />}
+                        disabled={!sePuedeCorregir(cierre, esAdmin)}
+                        onClick={() => setACorregir(cierre)}
+                      >
+                        {estaCorregido(cierre) ? 'Ver o corregir' : 'Corregir'}
+                      </Button>
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         </TableContainer>
       )}
+
+      {aCorregir && <DialogoCorregirCierre cierre={aCorregir} onCerrar={() => setACorregir(null)} />}
 
       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5 }}>
         Mientras el turno esta abierto, la fila "En curso" muestra los montos con que se guardo la sesion, no el

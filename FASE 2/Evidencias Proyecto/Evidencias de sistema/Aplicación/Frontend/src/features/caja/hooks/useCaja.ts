@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   abrirCaja,
   cerrarCaja,
+  corregirCierre,
+  obtenerCorreccionesCierre,
   obtenerHistorialCaja,
   obtenerResumenCaja,
   registrarMovimiento,
@@ -62,5 +64,26 @@ export function useHistorialCaja() {
   return useQuery({
     queryKey: ['caja', 'historial'],
     queryFn: obtenerHistorialCaja,
+  })
+}
+
+// el rastro de correcciones de un cierre. Solo lo pide el administrador, cuando abre el detalle
+export function useCorreccionesCierre(cierreId: string | null) {
+  return useQuery({
+    queryKey: ['caja', 'correcciones', cierreId],
+    queryFn: () => obtenerCorreccionesCierre(cierreId as string),
+    enabled: Boolean(cierreId),
+  })
+}
+
+export function useCorregirCierre() {
+  const clienteQuery = useQueryClient()
+
+  return useMutation({
+    mutationFn: corregirCierre,
+    onSuccess: (_datos, variables) => {
+      clienteQuery.invalidateQueries({ queryKey: ['caja', 'historial'] })
+      clienteQuery.invalidateQueries({ queryKey: ['caja', 'correcciones', variables.cierreId] })
+    },
   })
 }

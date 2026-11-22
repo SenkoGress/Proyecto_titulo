@@ -36,6 +36,14 @@ export type SesionCaja = {
   monto_esperado_efectivo: number
   monto_real_efectivo?: number | null
   diferencia_efectivo?: number | null
+  // el conteo original nunca se modifica: la correccion vive en estos campos
+  monto_corregido_efectivo?: number | null
+  diferencia_corregida?: number | null
+  corregido_por?: string | null
+  corregido_por_nombre?: string | null
+  corregido_at?: string | null
+  motivo_correccion?: string | null
+  devoluciones_transferencia?: number
   estado: 'ABIERTA' | 'CERRADA'
   observaciones?: string | null
   transacciones_count?: number
@@ -54,6 +62,30 @@ export type CierreHistorial = SesionCaja & {
   is_dirty: number
   sync_status: string
   created_at: string
+}
+
+// una correccion del conteo. El rastro solo crece: no se edita ni se borra
+export type CorreccionCierre = {
+  id: string
+  cierre_id: string
+  correlativo: number
+  monto_anterior: number
+  monto_nuevo: number
+  motivo: string
+  usuario_id: string
+  usuario_nombre?: string | null
+  created_at: string
+}
+
+export type RespuestaCorreccion = {
+  success: boolean
+  message?: string
+  data: { cierre: CierreHistorial; correccion: CorreccionCierre }
+}
+
+export type RespuestaCorrecciones = {
+  success: boolean
+  data: CorreccionCierre[]
 }
 
 export type RespuestaHistorialCaja = {

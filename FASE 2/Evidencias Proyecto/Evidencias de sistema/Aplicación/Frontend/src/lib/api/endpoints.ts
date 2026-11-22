@@ -88,5 +88,7 @@ export const endpoints = {
     cerrar: `${API_V1}/caja/cerrar`,
     historial: `${API_V1}/caja/historial`,
     movimiento: `${API_V1}/caja/movimiento`,
+    correccion: (cierreId: string) => `${API_V1}/caja/cierres/${cierreId}/correccion`,
+    correcciones: (cierreId: string) => `${API_V1}/caja/cierres/${cierreId}/correcciones`,
   },
 } as const

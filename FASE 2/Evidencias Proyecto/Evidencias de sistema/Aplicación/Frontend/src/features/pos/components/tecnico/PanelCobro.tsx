@@ -17,6 +17,7 @@ import { ClienteRut } from '@/features/pos/components/tecnico/ClienteRut'
 import { DesgloseTotales } from '@/features/pos/components/tecnico/DesgloseTotales'
 import { MediosPago } from '@/features/pos/components/tecnico/MediosPago'
 import { MontoRecibido } from '@/features/pos/components/tecnico/MontoRecibido'
+import { SelectorTipoTarjeta } from '@/features/pos/components/compartidos/SelectorTipoTarjeta'
 import { VerificacionEdad } from '@/features/pos/components/compartidos/VerificacionEdad'
 import { SelectorComprobante } from '@/features/pos/components/compartidos/SelectorComprobante'
 import { BotonBolsa } from '@/features/pos/components/compartidos/BotonBolsa'
@@ -101,6 +102,8 @@ export function PanelCobro({ onCobrar, onCancelar, cobrando, errorCobro, onEmpez
 
       {/* vuelto (solo efectivo) */}
       {metodoPago === 'EFECTIVO' && hayProductos && <MontoRecibido total={total} />}
+
+      {hayProductos && <SelectorTipoTarjeta />}
 
       {contieneAlcohol && <VerificacionEdad />}
 

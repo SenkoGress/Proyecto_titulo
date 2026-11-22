@@ -13,6 +13,8 @@ import Typography from '@mui/material/Typography'
 import Alert from '@mui/material/Alert'
 import AlertTitle from '@mui/material/AlertTitle'
 import Divider from '@mui/material/Divider'
+import ToggleButton from '@mui/material/ToggleButton'
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import AssignmentReturnOutlined from '@mui/icons-material/AssignmentReturnOutlined'
 import CloseOutlined from '@mui/icons-material/CloseOutlined'
 import AddOutlined from '@mui/icons-material/AddOutlined'
@@ -23,7 +25,16 @@ import { useDevolucion } from '@/features/ventas/hooks/useVentas'
 import { obtenerMensajeError } from '@/lib/api/apiError'
 import { AvisoEsperaPago } from '@/features/pos/components/compartidos/AvisoEsperaPago'
 import { avisoReversoManual, hayQueDevolverAMano } from '@/features/ventas/utils/reversoManual'
+import {
+  esDevolucionEnCurso,
+  esReversoManual,
+  medioPorDefecto,
+  mediosPosibles,
+  mediosSinMaquina,
+  nombreMedio,
+} from '@/features/ventas/utils/medioDevolucion'
 import type { FilaVenta } from '@/features/ventas/utils/filaVenta'
+import type { MedioDevolucion } from '@/features/ventas/types'
 
 type Props = {
   venta: FilaVenta
@@ -69,6 +80,13 @@ export function DialogoDevolucion({ venta, onCerrar }: Props) {
     Object.fromEntries(venta.items.map((item) => [item.id, item.cantidad])),
   )
   const [motivo, setMotivo] = useState(MOTIVO_POR_DEFECTO)
+  const [medio, setMedio] = useState<MedioDevolucion>(() => medioPorDefecto(venta.medio_pago_tipo))
+
+  // el terminal no pudo anular el pago: el servidor no registro nada y hay que decirle como se
+  // devolvio la plata. Desde aca la maquina deja de ser una opcion
+  const reversoFallado = esReversoManual(devolucion.error)
+  const opciones = reversoFallado ? mediosSinMaquina() : mediosPosibles(venta.medio_pago_tipo)
+  const elegido = opciones.some((opcion) => opcion.valor === medio) ? medio : opciones[0].valor
 
   const aDevolver = venta.items.filter((item) => (cantidades[item.id] ?? 0) > 0)
   const total = aDevolver.reduce((suma, item) => suma + item.precio_unitario * cantidades[item.id], 0)
@@ -85,6 +103,7 @@ export function DialogoDevolucion({ venta, onCerrar }: Props) {
       items: esTotal
         ? undefined
         : aDevolver.map((item) => ({ producto_id: item.producto_id, cantidad: cantidades[item.id] })),
+      medioDevolucion: elegido,
     })
   }
 
@@ -120,6 +139,13 @@ export function DialogoDevolucion({ venta, onCerrar }: Props) {
             <Typography variant="body2" sx={{ mt: 1 }}>
               Nota de credito N° {devolucion.data.data.folio_nc} por{' '}
               {formatoClp(devolucion.data.data.total_devuelto)}. El stock ya volvio al inventario.
+            </Typography>
+
+            <Typography variant="body2" sx={{ mt: 1 }}>
+              Se le entregaron {formatoClp(devolucion.data.data.devuelto_al_cliente)},{' '}
+              {nombreMedio(devolucion.data.data.medio_devolucion)}.
+              {devolucion.data.data.devuelto_al_cliente !== devolucion.data.data.total_devuelto &&
+                ' La diferencia es el redondeo de la Ley 20.956, que solo rige para el efectivo.'}
             </Typography>
           </Alert>
         ) : (
@@ -180,6 +206,31 @@ export function DialogoDevolucion({ venta, onCerrar }: Props) {
               </Alert>
             )}
 
+            {/* como se le devuelve la plata. Con tarjeta la maquina va primero: es lo unico que
+                deja la caja cuadrada sin que el cajero haga nada */}
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
+                COMO SE LE DEVUELVE LA PLATA
+              </Typography>
+              <ToggleButtonGroup
+                exclusive
+                fullWidth
+                size="small"
+                value={elegido}
+                onChange={(_evento, valor) => valor && setMedio(valor as MedioDevolucion)}
+                sx={{ mt: 0.5 }}
+              >
+                {opciones.map((opcion) => (
+                  <ToggleButton key={opcion.valor} value={opcion.valor}>
+                    {opcion.etiqueta}
+                  </ToggleButton>
+                ))}
+              </ToggleButtonGroup>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                {opciones.find((opcion) => opcion.valor === elegido)?.ayuda}
+              </Typography>
+            </Box>
+
             <TextField
               label="Motivo"
               fullWidth
@@ -207,7 +258,25 @@ export function DialogoDevolucion({ venta, onCerrar }: Props) {
               </Box>
             )}
 
-            {devolucion.isError && (
+            {devolucion.isError && reversoFallado && (
+              <Alert severity="warning" sx={{ mt: 2 }}>
+                <AlertTitle sx={{ fontWeight: 700 }}>La maquina no pudo anular el pago</AlertTitle>
+                {obtenerMensajeError(devolucion.error)}
+                <Typography variant="body2" sx={{ mt: 1, fontWeight: 700 }}>
+                  No se registro nada todavia: elige como le vas a devolver la plata y vuelve a
+                  confirmar.
+                </Typography>
+              </Alert>
+            )}
+
+            {devolucion.isError && esDevolucionEnCurso(devolucion.error) && (
+              <Alert severity="info" sx={{ mt: 2 }}>
+                <AlertTitle sx={{ fontWeight: 700 }}>Esta venta ya se esta devolviendo</AlertTitle>
+                {obtenerMensajeError(devolucion.error)}
+              </Alert>
+            )}
+
+            {devolucion.isError && !reversoFallado && !esDevolucionEnCurso(devolucion.error) && (
               <Alert severity="error" sx={{ mt: 2 }}>
                 {obtenerMensajeError(devolucion.error)}
               </Alert>
@@ -225,7 +294,11 @@ export function DialogoDevolucion({ venta, onCerrar }: Props) {
           <>
             <Button onClick={onCerrar}>Cancelar</Button>
             <Button variant="contained" color="warning" onClick={confirmar} disabled={!puedeConfirmar}>
-              {devolucion.isPending ? 'Procesando...' : `Devolver ${formatoClp(total)}`}
+              {devolucion.isPending
+                ? 'Procesando...'
+                : reversoFallado
+                  ? `Devolver ${formatoClp(total)} a mano`
+                  : `Devolver ${formatoClp(total)}`}
             </Button>
           </>
         )}

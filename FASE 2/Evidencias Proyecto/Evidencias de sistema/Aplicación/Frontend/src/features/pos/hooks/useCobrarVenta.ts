@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { useRegistrarVenta } from '@/features/pos/hooks/usePos'
 import { useCarritoStore } from '@/features/pos/stores/carritoStore'
 import { tieneAlcohol } from '@/features/pos/utils/alcohol'
+import { tipoTarjetaParaCobro } from '@/features/pos/utils/tipoTarjeta'
 import type { ItemCheckout, VentaRegistrada } from '@/features/pos/types'
 import { tenantActual, usuarioActualId } from '@/features/auth/utils/identidad'
 
@@ -13,7 +14,7 @@ export function useCobrarVenta() {
 
   // enviar venta al backend
   function cobrar() {
-    const { lineas, metodoPago, rutCliente, edadVerificada, tipoComprobante, receptorEmpresa, limpiar } =
+    const { lineas, metodoPago, tipoTarjeta, rutCliente, edadVerificada, tipoComprobante, receptorEmpresa, limpiar } =
       useCarritoStore.getState()
 
     // nada que cobrar o ya cobrando
@@ -44,6 +45,7 @@ export function useCobrarVenta() {
         tipo_comprobante: tipoComprobante,
         rut_cliente: rutCliente ?? undefined,
         receptor_empresa: receptorEmpresa ?? undefined,
+        tipo_tarjeta: tipoTarjetaParaCobro(metodoPago, tipoTarjeta),
       },
       {
         onSuccess: (venta) => {

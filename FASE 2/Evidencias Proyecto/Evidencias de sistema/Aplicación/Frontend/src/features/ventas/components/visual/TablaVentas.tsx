@@ -17,6 +17,7 @@ import ReceiptLongOutlined from '@mui/icons-material/ReceiptLongOutlined'
 import AssignmentReturnOutlined from '@mui/icons-material/AssignmentReturnOutlined'
 import CloudOffOutlined from '@mui/icons-material/CloudOffOutlined'
 import { formatoClp } from '@/shared/utils/formatoClp'
+import { etiquetaMedioPago } from '@/features/ventas/utils/etiquetaMedioPago'
 import { formatFecha } from '@/shared/utils/formatFecha'
 import { detalleProductos } from '@/features/ventas/utils/filaVenta'
 import { estadoEnLaNube, noSubio } from '@/features/ventas/utils/sincronizacionVenta'
@@ -128,7 +129,7 @@ export function TablaVentas({
                 <TableCell>{venta.cajero_nombre}</TableCell>
 
                 <TableCell>
-                  <Chip label={venta.medio_pago_nombre} size="small" variant="outlined" />
+                  <Chip label={etiquetaMedioPago(venta)} size="small" variant="outlined" />
                 </TableCell>
 
                 <TableCell align="right">

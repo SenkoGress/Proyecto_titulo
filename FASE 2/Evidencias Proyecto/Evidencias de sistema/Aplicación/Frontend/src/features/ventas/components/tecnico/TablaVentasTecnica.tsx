@@ -8,6 +8,7 @@ import { DataGrid, type GridColDef } from '@mui/x-data-grid'
 import ReceiptLongOutlined from '@mui/icons-material/ReceiptLongOutlined'
 import AssignmentReturnOutlined from '@mui/icons-material/AssignmentReturnOutlined'
 import { formatoClp } from '@/shared/utils/formatoClp'
+import { detalleMedioPago, etiquetaMedioPago } from '@/features/ventas/utils/etiquetaMedioPago'
 import { formatFecha } from '@/shared/utils/formatFecha'
 import { nombreCortoDte, nombreDocumentoDte } from '@/features/dte/utils/nombreDte'
 import { detalleProductos } from '@/features/ventas/utils/filaVenta'
@@ -66,8 +67,8 @@ function armarColumnas(
       headerName: 'Medio de pago',
       width: 140,
       renderCell: (parametros) => (
-        <Tooltip title={`Pasarela: ${parametros.row.medio_pago_tipo}`}>
-          <Chip label={parametros.row.medio_pago_nombre} size="small" variant="outlined" />
+        <Tooltip title={detalleMedioPago(parametros.row)}>
+          <Chip label={etiquetaMedioPago(parametros.row)} size="small" variant="outlined" />
         </Tooltip>
       ),
     },

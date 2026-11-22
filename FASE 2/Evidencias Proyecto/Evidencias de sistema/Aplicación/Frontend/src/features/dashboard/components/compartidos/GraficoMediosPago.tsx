@@ -4,7 +4,9 @@ import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import { PieChart } from '@mui/x-charts/PieChart'
 import CreditCardOutlined from '@mui/icons-material/CreditCardOutlined'
+import Divider from '@mui/material/Divider'
 import { formatoClp } from '@/shared/utils/formatoClp'
+import { porcentajeDeLoCobrado, repartirMediosPago } from '@/features/dashboard/utils/mediosPago'
 import type { MedioPagoDashboard } from '@/features/dashboard/types'
 
 type Props = {
@@ -13,7 +15,9 @@ type Props = {
 
 // reparto de las ventas por medio de pago
 export function GraficoMediosPago({ medios }: Props) {
-  const datos = medios.map((medio, indice) => ({
+  const { cobros, devoluciones, totalCobrado, totalDevuelto, neto } = repartirMediosPago(medios)
+
+  const datos = cobros.map((medio, indice) => ({
     id: indice,
     value: medio.total,
     label: medio.metodo,
@@ -26,6 +30,11 @@ export function GraficoMediosPago({ medios }: Props) {
         <Typography variant="h6" sx={{ fontWeight: 700 }}>
           Ventas por medio de pago
         </Typography>
+        {totalDevuelto > 0 && (
+          <Typography variant="caption" color="text.secondary">
+            (lo cobrado)
+          </Typography>
+        )}
       </Box>
 
       {datos.length === 0 ? (
@@ -49,16 +58,45 @@ export function GraficoMediosPago({ medios }: Props) {
 
       {/* el detalle en texto, que el grafico solo no alcanza a mostrar */}
       <Box sx={{ mt: 'auto', pt: 1 }}>
-        {medios.map((medio) => (
+        {cobros.map((medio) => (
           <Box key={medio.metodo} sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, py: 0.25 }}>
             <Typography variant="body2" sx={{ fontWeight: 600 }}>
               {medio.metodo}
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              {formatoClp(medio.total)} · {medio.cantidad} tx · {medio.porcentaje}%
+              {formatoClp(medio.total)} · {medio.cantidad} tx ·{' '}
+              {porcentajeDeLoCobrado(medio.total, totalCobrado)}%
             </Typography>
           </Box>
         ))}
+
+        {/* lo devuelto sale de la torta: es plata que salio, no una porcion de lo que entro */}
+        {devoluciones.length > 0 && (
+          <>
+            <Divider sx={{ my: 0.75 }} />
+            {devoluciones.map((medio) => (
+              <Box
+                key={medio.metodo}
+                sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, py: 0.25 }}
+              >
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  Devuelto por {medio.metodo.toLowerCase()}
+                </Typography>
+                <Typography variant="body2" sx={{ color: 'error.main' }}>
+                  −{formatoClp(Math.abs(medio.total))} · {medio.cantidad} tx
+                </Typography>
+              </Box>
+            ))}
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, pt: 0.5 }}>
+              <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                Queda
+              </Typography>
+              <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                {formatoClp(neto)}
+              </Typography>
+            </Box>
+          </>
+        )}
       </Box>
     </Paper>
   )

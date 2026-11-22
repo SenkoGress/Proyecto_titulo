@@ -45,6 +45,9 @@ export type ModoPagos = 'simulado' | 'sandbox' | 'produccion'
 // pasarelas de la tabla metodos_pago
 export type MetodoPago = 'EFECTIVO' | 'TRANSBANK' | 'MERCADOPAGO' | 'SUMUP' | 'RUTPAY'
 
+// con tarjeta, lo que declara el cajero. Si el terminal informa el tipo, manda el terminal
+export type TipoTarjeta = 'CREDITO' | 'DEBITO'
+
 // boleta (39) o factura (33) electronica
 export type TipoComprobante = 'BOLETA' | 'FACTURA'
 
@@ -77,6 +80,7 @@ export type PeticionCheckout = {
   tipo_comprobante: TipoComprobante
   rut_cliente?: string
   receptor_empresa?: ReceptorEmpresa
+  tipo_tarjeta?: TipoTarjeta
 }
 
 // resultado tributario: con tarjeta puede ser voucher en vez de boleta
