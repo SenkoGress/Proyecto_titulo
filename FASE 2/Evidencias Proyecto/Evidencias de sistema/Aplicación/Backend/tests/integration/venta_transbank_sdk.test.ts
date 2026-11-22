@@ -394,6 +394,20 @@ describe('Venta con tarjeta por el SDK oficial de Transbank POS Integrado', () =
       expect(primera.json.data.devuelto_al_cliente + segunda.json.data.devuelto_al_cliente).toBe(3790);
     });
 
+    test('el panel separa lo cobrado en efectivo de lo devuelto en efectivo', async () => {
+      const efectivoId = defaultSqliteClient.queryOne<{ id: string }>("SELECT id FROM metodos_pago WHERE pasarela = 'EFECTIVO' ORDER BY id LIMIT 1")!.id;
+      const suma = (devolucion: 0 | 1) => Number(defaultSqliteClient.queryOne<{ t: number }>(
+        `SELECT COALESCE(SUM(total), 0) AS t FROM transacciones_venta
+         WHERE tenant_id = ? AND metodo_pago_id = ? AND COALESCE(es_devolucion, 0) = ?`,
+        [tenantId, efectivoId, devolucion])!.t);
+      // esta prueba ya tiene ventas en efectivo y devoluciones en efectivo de esas ventas
+      expect(suma(1)).toBeLessThan(0);
+
+      const panel: any = await (await fetch(`${base}/api/v1/dashboard/overview?tenant_id=${tenantId}&periodo=historico`)).json();
+      const efectivo = panel.data.paymentsBreakdown.filter((p: any) => p.metodo === 'EFECTIVO');
+      expect(efectivo.map((p: any) => p.total).sort((x: number, y: number) => y - x)).toEqual([suma(0), suma(1)]);
+    });
+
     // va al final: cierra el turno de esta prueba
     test('el panel y el cierre muestran lo devuelto por transferencia en su propio rubro', async () => {
       const transferido = Number(defaultSqliteClient.queryOne<{ t: number }>(

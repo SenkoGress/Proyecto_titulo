@@ -139,6 +139,41 @@ describe('Correccion del conteo de un cierre de caja', () => {
     expect(cuerpo.totales_registros.correcciones_cierre_caja).toBeGreaterThanOrEqual(3);
   });
 
+  test('el rastro trae el nombre de quien corrigio, no el de quien abrio y cerro el turno', async () => {
+    // el turno lo abre y lo cierra el cajero; lo corrige el administrador
+    defaultSqliteClient.execute("UPDATE cierres_caja SET estado = 'CERRADA' WHERE tenant_id = ? AND estado = 'ABIERTA'", [TENANT]);
+    await pedir('POST', '/caja/abrir', { tenant_id: TENANT, usuario_id: CAJERO, monto_apertura: 1000 }, tokenCajero);
+    const cerrado = await pedir('POST', '/caja/cerrar', { tenant_id: TENANT, usuario_id: CAJERO, monto_real_efectivo: 1000 }, tokenCajero);
+    const id = cerrado.json.data.id;
+    expect((await corregir({ monto_real_efectivo: 900, motivo: 'Conteo del administrador' }, tokenAdmin, id)).status).toBe(200);
+
+    // una correccion de un usuario que ya no existe y otra de un usuario de otro comercio
+    const otro = '11111111-aaaa-4bbb-8ccc-000000000099';
+    defaultSqliteClient.execute("INSERT OR IGNORE INTO tenants (id, nombre, estado) VALUES (?, 'Otro almacen', 'ACTIVO')", [otro]);
+    defaultSqliteClient.execute(
+      `INSERT OR IGNORE INTO usuarios (id, tenant_id, nombre, email, password_hash, rol)
+       VALUES ('usuario-de-otro', ?, 'Alguien de otro almacen', 'otro.almacen@gestock.cl', 'x', 'admin')`,
+      [otro]
+    );
+    for (const [correlativo, usuario] of [[2, 'usuario-que-no-existe'], [3, 'usuario-de-otro']] as const) {
+      defaultSqliteClient.execute(
+        `INSERT INTO correcciones_cierre_caja (id, correlativo, tenant_id, cierre_id, monto_anterior, monto_nuevo, motivo, usuario_id)
+         VALUES (?, ?, ?, ?, 900, 900, 'sin nombre', ?)`,
+        [`correccion-${correlativo}-${id}`, correlativo, TENANT, id, usuario]
+      );
+    }
+
+    const rastro = await pedir('GET', `/caja/cierres/${id}/correcciones?tenant_id=${TENANT}`, undefined, tokenAdmin);
+    const nombreAdmin = defaultSqliteClient.queryOne<{ nombre: string }>('SELECT nombre FROM usuarios WHERE id = ?', [ADMIN])!.nombre;
+    const nombreCajero = defaultSqliteClient.queryOne<{ nombre: string }>('SELECT nombre FROM usuarios WHERE id = ?', [CAJERO])!.nombre;
+    expect(nombreAdmin).not.toBe(nombreCajero);
+    expect(rastro.json.data.map((r: any) => [r.correlativo, r.usuario_nombre])).toEqual([
+      [1, nombreAdmin],
+      [2, null],
+      [3, null]
+    ]);
+  });
+
   test('un administrador que solo corrigio un cierre se desactiva en vez de borrarse', async () => {
     const alta = await pedir('POST', '/auth/register',
       { tenant_id: TENANT, nombre: 'Supervisora de prueba', email: 'supervisora.correccion@gestock.cl', password: 'clave-segura-1', rol: 'admin' }, tokenAdmin);

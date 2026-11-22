@@ -56,6 +56,7 @@ export interface CorreccionCierre {
   monto_nuevo: number;
   motivo: string;
   usuario_id: string;
+  usuario_nombre?: string | null;
   created_at: string;
 }
 
@@ -510,8 +511,12 @@ export class CierreCajaService {
   /** Rastro de las correcciones de un cierre, en el orden en que se hicieron. */
   public obtenerCorrecciones(tenantId: string, cierreId: string): CorreccionCierre[] {
     return this.sqliteClient.query<CorreccionCierre>(
-      `SELECT id, correlativo, cierre_id, monto_anterior, monto_nuevo, motivo, usuario_id, created_at
-       FROM correcciones_cierre_caja WHERE tenant_id = ? AND cierre_id = ? ORDER BY correlativo`,
+      // el nombre solo si quien corrigio es del mismo comercio; si ya no existe, la correccion se ve igual
+      `SELECT cc.id, cc.correlativo, cc.cierre_id, cc.monto_anterior, cc.monto_nuevo, cc.motivo, cc.usuario_id,
+              u.nombre AS usuario_nombre, cc.created_at
+       FROM correcciones_cierre_caja cc
+       LEFT JOIN usuarios u ON u.id = cc.usuario_id AND u.tenant_id = cc.tenant_id
+       WHERE cc.tenant_id = ? AND cc.cierre_id = ? ORDER BY cc.correlativo`,
       [tenantId, cierreId]
     );
   }

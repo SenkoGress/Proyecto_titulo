@@ -1,6 +1,6 @@
 // src/features/ventas/components/compartidos/DialogoDevolucion.test.tsx
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { AxiosError, AxiosHeaders } from 'axios'
 import { DialogoDevolucion } from '@/features/ventas/components/compartidos/DialogoDevolucion'
 import type { FilaVenta } from '@/features/ventas/utils/filaVenta'
@@ -84,7 +84,7 @@ describe('DialogoDevolucion: como se devuelve la plata', () => {
     expect(opciones()).toEqual(['En la maquina', 'En efectivo', 'Por transferencia'])
 
     fireEvent.click(botonDevolver())
-    expect(mutate).toHaveBeenCalledWith(expect.objectContaining({ medioDevolucion: 'TARJETA' }))
+    expect(mutate).toHaveBeenCalledWith(expect.objectContaining({ medioDevolucion: 'TARJETA' }), expect.anything())
   })
 
   it('el cajero puede elegir efectivo y eso es lo que se manda', () => {
@@ -93,7 +93,7 @@ describe('DialogoDevolucion: como se devuelve la plata', () => {
     fireEvent.click(screen.getByText('En efectivo'))
     fireEvent.click(botonDevolver())
 
-    expect(mutate).toHaveBeenCalledWith(expect.objectContaining({ medioDevolucion: 'EFECTIVO' }))
+    expect(mutate).toHaveBeenCalledWith(expect.objectContaining({ medioDevolucion: 'EFECTIVO' }), expect.anything())
   })
 
   // el servidor responde 409 REVERSO_MANUAL y no registra nada: desde ahi la maquina no sirve y
@@ -114,7 +114,35 @@ describe('DialogoDevolucion: como se devuelve la plata', () => {
 
     fireEvent.click(botonDevolver())
 
-    expect(mutate).toHaveBeenCalledWith(expect.objectContaining({ medioDevolucion: 'EFECTIVO' }))
+    expect(mutate).toHaveBeenCalledWith(expect.objectContaining({ medioDevolucion: 'EFECTIVO' }), expect.anything())
+  })
+
+  // debito y caja cerrada: la maquina no anula (409) y el reenvio en efectivo choca con la caja
+  // cerrada (400). El dialogo no puede volver a ofrecer la maquina por el solo hecho de que el
+  // ultimo error ya no es el del reverso
+  it('si despues del reverso fallado llega otro error, la maquina sigue fuera', () => {
+    const errores = [
+      rechazo('REVERSO_MANUAL', 'El debito en Transbank no se puede anular desde la caja.'),
+      rechazo('TURNO_CERRADO', 'La caja esta cerrada. Abre la caja antes de devolver dinero en efectivo.'),
+    ]
+    mutate.mockImplementation((_variables, opciones?: { onError?: (error: unknown) => void }) => {
+      const error = errores.shift() ?? null
+      estado.error = error
+      if (error) act(() => opciones?.onError?.(error))
+    })
+    const props = { venta: venta('TRANSBANK'), onCerrar: vi.fn() }
+    const { rerender } = render(<DialogoDevolucion {...props} />)
+
+    fireEvent.click(botonDevolver())
+    rerender(<DialogoDevolucion {...props} />)
+    fireEvent.click(botonDevolver())
+    rerender(<DialogoDevolucion {...props} />)
+
+    expect(opciones()).toEqual(['En efectivo', 'Por transferencia'])
+    expect(screen.getByText(/La caja esta cerrada/)).toBeTruthy()
+    fireEvent.click(botonDevolver())
+    expect(mutate).toHaveBeenLastCalledWith(expect.objectContaining({ medioDevolucion: 'EFECTIVO' }), expect.anything())
+    mutate.mockReset()
   })
 
   it('una devolucion ya en curso se avisa sin alarmar', () => {

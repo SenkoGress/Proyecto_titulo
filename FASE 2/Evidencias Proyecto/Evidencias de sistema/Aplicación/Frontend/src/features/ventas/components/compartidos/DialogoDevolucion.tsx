@@ -81,10 +81,12 @@ export function DialogoDevolucion({ venta, onCerrar }: Props) {
   )
   const [motivo, setMotivo] = useState(MOTIVO_POR_DEFECTO)
   const [medio, setMedio] = useState<MedioDevolucion>(() => medioPorDefecto(venta.medio_pago_tipo))
-
   // el terminal no pudo anular el pago: el servidor no registro nada y hay que decirle como se
-  // devolvio la plata. Desde aca la maquina deja de ser una opcion
-  const reversoFallado = esReversoManual(devolucion.error)
+  // devolvio la plata. Desde aca la maquina deja de ser una opcion, aunque el intento siguiente
+  // traiga otro error (por ejemplo la caja cerrada): devolucion.error cambia con cada intento
+  const [maquinaFallo, setMaquinaFallo] = useState(false)
+
+  const reversoFallado = maquinaFallo || esReversoManual(devolucion.error)
   const opciones = reversoFallado ? mediosSinMaquina() : mediosPosibles(venta.medio_pago_tipo)
   const elegido = opciones.some((opcion) => opcion.valor === medio) ? medio : opciones[0].valor
 
@@ -104,6 +106,12 @@ export function DialogoDevolucion({ venta, onCerrar }: Props) {
         ? undefined
         : aDevolver.map((item) => ({ producto_id: item.producto_id, cantidad: cantidades[item.id] })),
       medioDevolucion: elegido,
+    }, {
+      onError: (error) => {
+        if (!esReversoManual(error)) return
+        setMaquinaFallo(true)
+        setMedio((actual) => (actual === 'TARJETA' ? 'EFECTIVO' : actual))
+      },
     })
   }
 
@@ -258,7 +266,7 @@ export function DialogoDevolucion({ venta, onCerrar }: Props) {
               </Box>
             )}
 
-            {devolucion.isError && reversoFallado && (
+            {devolucion.isError && esReversoManual(devolucion.error) && (
               <Alert severity="warning" sx={{ mt: 2 }}>
                 <AlertTitle sx={{ fontWeight: 700 }}>La maquina no pudo anular el pago</AlertTitle>
                 {obtenerMensajeError(devolucion.error)}
@@ -276,7 +284,7 @@ export function DialogoDevolucion({ venta, onCerrar }: Props) {
               </Alert>
             )}
 
-            {devolucion.isError && !reversoFallado && !esDevolucionEnCurso(devolucion.error) && (
+            {devolucion.isError && !esReversoManual(devolucion.error) && !esDevolucionEnCurso(devolucion.error) && (
               <Alert severity="error" sx={{ mt: 2 }}>
                 {obtenerMensajeError(devolucion.error)}
               </Alert>
