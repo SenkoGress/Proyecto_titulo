@@ -163,15 +163,28 @@ export class LotesService {
     fechaVencimiento: string | null | undefined,
     codigoLote?: string | null,
     folio?: string | null,
-    pg: PostgresClient = defaultPgClient
+    pg: PostgresClient = defaultPgClient,
+    sku?: string | null
   ): Promise<void> {
     if (!fechaVencimiento || Number(cantidad) <= 0 || !pg.isCloudAvailable()) return;
 
     try {
+      // La factura escribe el producto en la nube y en la caja con ids propios: el lote va con el de
+      // la nube, que se reconoce por id o por SKU. Si la nube no tiene el producto, se salta.
+      const enNube = await pg.query<{ id: string }>(
+        `SELECT id FROM productos WHERE tenant_id = $1 AND (id = $2 OR sku = $3)
+         ORDER BY (id = $2) DESC LIMIT 1`,
+        [tenantId, productoId, sku ?? null]
+      );
+      const productoEnNube = enNube.rows[0]?.id;
+      if (!productoEnNube) {
+        logger.warn('LotesService', 'El producto del lote no esta en la nube: el lote queda solo en el equipo', { productoId, sku });
+        return;
+      }
       await pg.query(
         `INSERT INTO lotes (tenant_id, producto_id, codigo_lote, cantidad, fecha_vencimiento, factura_origen_folio, origen)
          VALUES ($1, $2, $3, $4, $5, $6, 'INGESTA')`,
-        [tenantId, productoId, codigoLote ?? null, Number(cantidad), fechaVencimiento, folio ?? null]
+        [tenantId, productoEnNube, codigoLote ?? null, Number(cantidad), fechaVencimiento, folio ?? null]
       );
     } catch (error) {
       logger.warn('LotesService', 'No fue posible replicar el lote en la nube', {

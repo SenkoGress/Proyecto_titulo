@@ -19,6 +19,7 @@ import { tipoTarjetaDePasarela } from '../../src/routes/pos.routes';
 import { initializeDatabase } from '../../src/database/init-db';
 import { defaultSqliteClient } from '../../src/database/sqlite/client';
 import { defaultDteEmitter } from '../../src/dte/dte-emitter.service';
+import { defaultPaymentDispatcher } from '../../src/payments/payment-dispatcher.service';
 
 const STX = 0x02;
 const ETX = 0x03;
@@ -489,6 +490,175 @@ describe('Venta con tarjeta por el SDK oficial de Transbank POS Integrado', () =
       expect(despues.totalTransacciones).toBe(antes.totalTransacciones + 1);
       expect(despues.unidadesVendidas).toBe(antes.unidadesVendidas);
       expect(despues.costoTotalVendido).toBe(antes.costoTotalVendido);
+    });
+
+    test('los rankings del panel no muestran un producto vendido y devuelto entero', async () => {
+      const devueltoId = 'aaaaaaaa-0000-4000-8000-00000000tbk5';
+      defaultSqliteClient.execute(
+        `INSERT OR IGNORE INTO productos (id, tenant_id, sku, nombre, categoria, stock_actual, stock_minimo, precio_compra, precio_venta, activo)
+         VALUES (?, ?, 'TBK-SDK-5', 'Turron que se devuelve', 'Categoria devuelta', 50, 1, 500, 900, 1)`,
+        [devueltoId, tenantId]
+      );
+      // dos lineas del mismo producto: la resta no se duplica
+      const v = await post('/pos/checkout', { metodo_pago: 'EFECTIVO', items: [{ producto_id: devueltoId, cantidad: 2 }, { producto_id: devueltoId, cantidad: 3 }] });
+      const panel = async () => ((await (await fetch(`${base}/api/v1/dashboard/overview?tenant_id=${tenantId}&periodo=historico`)).json()) as any).data;
+      expect((await panel()).topProducts.some((p: any) => p.sku === 'TBK-SDK-5')).toBe(true);
+
+      await devolver(v.json.data.saleId);
+
+      const despues = await panel();
+      expect(despues.topProducts.some((p: any) => p.sku === 'TBK-SDK-5')).toBe(false);
+      expect(despues.categoryBreakdown.some((c: any) => c.categoria === 'Categoria devuelta')).toBe(false);
+    });
+
+    test('mover stock no marca el producto como editado: no le gana a un precio cambiado en la nube', async () => {
+      const marca = () => defaultSqliteClient.queryOne<{ u: string }>('SELECT updated_at AS u FROM productos WHERE id = ?', [otroProducto])!.u;
+      defaultSqliteClient.execute("UPDATE productos SET updated_at = '2026-01-01 00:00:00' WHERE id = ?", [otroProducto]);
+      const ajuste = await fetch(`${base}/api/v1/pos/products/${otroProducto}/stock`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tenant_id: tenantId, nuevo_stock: stockOtro() + 5, motivo: 'conteo' }),
+      });
+      expect(ajuste.status).toBe(200);
+      const v = await post('/pos/checkout', { metodo_pago: 'EFECTIVO', items: [{ producto_id: otroProducto, cantidad: 1 }] });
+      await devolver(v.json.data.saleId);
+      expect(marca()).toBe('2026-01-01 00:00:00');
+    });
+
+    describe('el cobro con el id de la venta y varias cajas', () => {
+      const cobrosReales = () => defaultPaymentDispatcher.cobrar;
+      const conTarjeta = (ventaId: string) =>
+        post('/pos/checkout', { venta_id: ventaId, metodo_pago: 'TRANSBANK', items: [{ producto_id: otroProducto, cantidad: 1 }] });
+      const ventas = (id: string) => Number(defaultSqliteClient.queryOne<{ n: number }>('SELECT COUNT(*) AS n FROM transacciones_venta WHERE id = ?', [id])!.n);
+
+      beforeAll(() => { process.env.PAGOS_MODO = 'simulado'; });
+      afterAll(() => { process.env.PAGOS_MODO = 'produccion'; });
+
+      test('el mismo id de venta no cobra ni descuenta dos veces, y responde la venta para imprimir', async () => {
+        const id = '9b2f0c1e-0000-4000-8000-000000000001';
+        const espia = jest.spyOn(defaultPaymentDispatcher, 'cobrar');
+        try {
+          const stock0 = stockOtro();
+          const primero = await conTarjeta(id);
+          const segundo = await conTarjeta(id);
+
+          expect(primero.status).toBe(201);
+          expect(segundo.status).toBe(200);
+          expect(segundo.json.duplicada).toBe(true);
+          expect(segundo.json.data).toMatchObject({ saleId: id, total: primero.json.data.total });
+          expect(segundo.json.data.dte.folio).toBe(primero.json.data.dte.folio);
+          expect(espia).toHaveBeenCalledTimes(1);
+          expect(stockOtro()).toBe(stock0 - 1);
+          expect((await conTarjeta('no-es-un-uuid')).json.error).toBe('VENTA_ID_INVALIDO');
+        } finally {
+          espia.mockRestore();
+        }
+      });
+
+      test('un reintento mientras la tarjeta espera no cobra: responde que el cobro esta en curso', async () => {
+        const id = '9b2f0c1e-0000-4000-8000-000000000002';
+        const original = cobrosReales().bind(defaultPaymentDispatcher);
+        let soltar: () => void = () => undefined;
+        const espera = new Promise<void>((listo) => { soltar = listo; });
+        const espia = jest.spyOn(defaultPaymentDispatcher, 'cobrar').mockImplementation(async (req) => {
+          await espera;
+          return original(req);
+        });
+        try {
+          const primero = conTarjeta(id);
+          await new Promise((listo) => setTimeout(listo, 50));
+          const reintento = await conTarjeta(id);
+          soltar();
+
+          expect([reintento.status, reintento.json.error]).toEqual([409, 'COBRO_EN_CURSO']);
+          expect((await primero).status).toBe(201);
+          expect(espia).toHaveBeenCalledTimes(1);
+          expect(ventas(id)).toBe(1);
+        } finally {
+          espia.mockRestore();
+        }
+      });
+
+      test('si otra caja vende la ultima unidad mientras la tarjeta espera, no hay venta y el cobro se devuelve', async () => {
+        const ultimo = 'aaaaaaaa-0000-4000-8000-00000000tbk6';
+        defaultSqliteClient.execute(
+          `INSERT OR IGNORE INTO productos (id, tenant_id, sku, nombre, stock_actual, stock_minimo, precio_compra, precio_venta, activo)
+           VALUES (?, ?, 'TBK-SDK-6', 'Ultima unidad', 1, 0, 500, 990, 1)`,
+          [ultimo, tenantId]
+        );
+        const original = cobrosReales().bind(defaultPaymentDispatcher);
+        const devolver = jest.spyOn(defaultPaymentDispatcher, 'devolverCobro');
+        const espia = jest.spyOn(defaultPaymentDispatcher, 'cobrar').mockImplementationOnce(async (req) => {
+          // la otra caja vende en efectivo mientras esta espera la tarjeta
+          defaultSqliteClient.execute('UPDATE productos SET stock_actual = 0 WHERE id = ?', [ultimo]);
+          return original(req);
+        });
+        try {
+          const id = '9b2f0c1e-0000-4000-8000-000000000003';
+          const res = await post('/pos/checkout', { venta_id: id, metodo_pago: 'TRANSBANK', items: [{ producto_id: ultimo, cantidad: 1 }] });
+
+          expect([res.status, res.json.error, res.json.cobro_devuelto]).toEqual([409, 'STOCK_INSUFICIENTE', true]);
+          expect(res.json.productos[0]).toMatchObject({ producto_id: ultimo, disponible: 0, pedida: 1 });
+          expect(ventas(id)).toBe(0);
+          expect(devolver).toHaveBeenCalledTimes(1);
+          expect(defaultSqliteClient.queryOne<{ s: number }>('SELECT stock_actual AS s FROM productos WHERE id = ?', [ultimo])!.s).toBe(0);
+        } finally {
+          espia.mockRestore();
+          devolver.mockRestore();
+        }
+      });
+
+      test('si cierran la caja mientras la tarjeta espera, no hay venta y el cobro se devuelve', async () => {
+        const original = cobrosReales().bind(defaultPaymentDispatcher);
+        const turno = defaultSqliteClient.queryOne<{ id: string }>("SELECT id FROM cierres_caja WHERE tenant_id = ? AND estado = 'ABIERTA'", [tenantId])!;
+        const espia = jest.spyOn(defaultPaymentDispatcher, 'cobrar').mockImplementationOnce(async (req) => {
+          defaultSqliteClient.execute("UPDATE cierres_caja SET estado = 'CERRADA' WHERE id = ?", [turno.id]);
+          return original(req);
+        });
+        try {
+          const id = '9b2f0c1e-0000-4000-8000-000000000004';
+          const res = await conTarjeta(id);
+          expect([res.status, res.json.error, res.json.cobro_devuelto]).toEqual([400, 'TURNO_CERRADO', true]);
+          expect(ventas(id)).toBe(0);
+        } finally {
+          espia.mockRestore();
+          defaultSqliteClient.execute("UPDATE cierres_caja SET estado = 'ABIERTA' WHERE id = ?", [turno.id]);
+        }
+      });
+    });
+
+    test('el historial trae todas las ventas del ultimo mes, o el rango pedido, y cuantas hay en total', async () => {
+      const efectivoId = defaultSqliteClient.queryOne<{ id: string }>("SELECT id FROM metodos_pago WHERE pasarela = 'EFECTIVO' ORDER BY id LIMIT 1")!.id;
+      for (let i = 0; i < 120; i++) {
+        defaultSqliteClient.execute(
+          `INSERT INTO transacciones_venta (id, tenant_id, usuario_id, folio_local_sqlite, total, unidades, estado, metodo_pago_id, fecha)
+           VALUES (?, ?, ?, ?, 1000, 1, 'COMPLETADA', ?, datetime('now', '-3 days'))`,
+          [`historial-${i}`, tenantId, usuarioId, `HIST-${i}`, efectivoId]
+        );
+      }
+      // y una vieja, fuera del mes
+      defaultSqliteClient.execute(
+        `INSERT INTO transacciones_venta (id, tenant_id, usuario_id, folio_local_sqlite, total, unidades, estado, metodo_pago_id, fecha)
+         VALUES ('historial-vieja', ?, ?, 'HIST-VIEJA', 1000, 1, 'COMPLETADA', ?, datetime('now', '-90 days'))`,
+        [tenantId, usuarioId, efectivoId]
+      );
+      // y otra mas vieja, antes del rango: sin el filtro desde, apareceria
+      defaultSqliteClient.execute(
+        `INSERT INTO transacciones_venta (id, tenant_id, usuario_id, folio_local_sqlite, total, unidades, estado, metodo_pago_id, fecha)
+         VALUES ('historial-mas-vieja', ?, ?, 'HIST-MAS-VIEJA', 1000, 1, 'COMPLETADA', ?, datetime('now', '-120 days'))`,
+        [tenantId, usuarioId, efectivoId]
+      );
+      const pedir = async (consulta = '') => (await (await fetch(`${base}/api/v1/pos/transactions?tenant_id=${tenantId}${consulta}`)).json()) as any;
+
+      const mes = await pedir();
+      expect(mes.data.filter((v: any) => String(v.id).startsWith('historial-') && v.id !== 'historial-vieja')).toHaveLength(120);
+      expect(mes.total).toBeGreaterThan(mes.count);
+      expect(mes.data.find((v: any) => v.id === mes.data[0].id).items).toBeDefined();
+
+      const vieja = new Date(Date.now() - 90 * 86400000);
+      const dia = `${vieja.getFullYear()}-${String(vieja.getMonth() + 1).padStart(2, '0')}-${String(vieja.getDate()).padStart(2, '0')}`;
+      const rango = await pedir(`&desde=${dia}&hasta=${dia}`);
+      expect(rango.data.map((v: any) => v.id)).toEqual(['historial-vieja']);
+      expect((await fetch(`${base}/api/v1/pos/transactions?tenant_id=${tenantId}&desde=22-11-2026`)).status).toBe(400);
     });
 
     // va al final: cierra el turno de esta prueba

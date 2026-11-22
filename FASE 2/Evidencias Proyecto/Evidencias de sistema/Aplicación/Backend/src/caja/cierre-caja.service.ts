@@ -3,6 +3,28 @@ import { PostgresClient, defaultPgClient } from '../database/postgres/client';
 import { defaultSqliteClient, SqliteClient } from '../database/sqlite/client';
 import { asegurarMigracionesNube } from '../database/postgres/migraciones-al-dia';
 import { logger } from '../utils/logger';
+import { marcaNube, segundosUtc } from '../sync/marca-edicion';
+
+// Columnas que la caja y la nube tienen en comun: is_dirty y sync_status del cierre son solo de la caja
+const COLUMNAS_CIERRE = ['id', 'tenant_id', 'usuario_id', 'fecha_apertura', 'fecha_cierre', 'monto_apertura',
+  'ventas_efectivo', 'ventas_transbank', 'ventas_mercadopago', 'ventas_sumup', 'total_ventas',
+  'monto_esperado_efectivo', 'monto_real_efectivo', 'diferencia_efectivo', 'estado', 'observaciones',
+  'created_at', 'updated_at', 'devoluciones_transferencia', 'monto_corregido_efectivo', 'diferencia_corregida',
+  'corregido_por', 'corregido_at'];
+const COLUMNAS_MOVIMIENTO = ['id', 'tenant_id', 'sesion_caja_id', 'tipo', 'monto', 'motivo', 'usuario_id', 'created_at'];
+const COLUMNAS_CORRECCION = ['id', 'correlativo', 'tenant_id', 'cierre_id', 'monto_anterior', 'monto_nuevo', 'motivo',
+  'usuario_id', 'created_at'];
+const FECHAS = new Set(['fecha_apertura', 'fecha_cierre', 'created_at', 'updated_at', 'corregido_at']);
+
+/** Fecha de la caja (texto UTC sin zona, o ISO con Z) para la nube, con zona explicita. */
+const fechaParaNube = (valor: unknown) => (valor ? marcaNube(segundosUtc(valor)) : null);
+
+export interface ResultadoRespaldoCaja {
+  cierres: number;
+  movimientos: number;
+  correcciones: number;
+  omitidos: number;
+}
 
 export interface MovimientoCaja {
   id: string;
@@ -509,6 +531,116 @@ export class CierreCajaService {
   }
 
   /** Rastro de las correcciones de un cierre, en el orden en que se hicieron. */
+  /**
+   * Sube a la nube los turnos de la caja con sus movimientos y correcciones. Al abrir, mover, cerrar
+   * o corregir solo se copia en el momento: si la nube no estaba, se perdian alla. Se reenvia todo
+   * el historial de la caja en cada sincronizacion (son pocas filas por dia): el cierre se
+   * actualiza, porque cambia al cerrarse y al corregirse, y movimientos y correcciones solo crecen.
+   */
+  public async respaldarEnNube(tenantId: string): Promise<ResultadoRespaldoCaja> {
+    const resultado: ResultadoRespaldoCaja = { cierres: 0, movimientos: 0, correcciones: 0, omitidos: 0 };
+    if (!this.pgClient.isCloudAvailable()) return resultado;
+    await asegurarMigracionesNube(this.pgClient);
+
+    const cierres = this.sqliteClient.query<Record<string, unknown>>(
+      `SELECT ${COLUMNAS_CIERRE.join(', ')} FROM cierres_caja WHERE tenant_id = ? ORDER BY fecha_apertura`,
+      [tenantId]
+    );
+
+    for (const cierre of cierres) {
+      try {
+        await this.pgClient.withTransaction(async (client) => {
+          // El usuario creado sin conexion no existe en la nube; si su correo ya esta alla con otro
+          // id, se usa ese. El cierre exige usuario: sin el, no sube.
+          const usuarios = new Map<string, string | null>();
+          const usuarioEnNube = async (id: unknown): Promise<string | null> => {
+            if (!id) return null;
+            const clave = String(id);
+            if (usuarios.has(clave)) return usuarios.get(clave) ?? null;
+            const local = this.sqliteClient.queryOne<{ id: string; nombre: string; email: string; password_hash: string; rol: string }>(
+              'SELECT id, nombre, email, password_hash, rol FROM usuarios WHERE id = ? AND tenant_id = ?',
+              [clave, tenantId]
+            );
+            let enNube: string | null = null;
+            if (local) {
+              await client.query(
+                `INSERT INTO usuarios (id, tenant_id, nombre, email, password_hash, rol)
+                 VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING`,
+                [local.id, tenantId, local.nombre, local.email, local.password_hash, local.rol]
+              );
+              const fila = await client.query<{ id: string }>(
+                `SELECT id FROM usuarios WHERE tenant_id = $1 AND (id = $2 OR email = $3)
+                 ORDER BY (id = $2) DESC LIMIT 1`,
+                [tenantId, local.id, local.email]
+              );
+              enNube = fila.rows[0]?.id ?? null;
+            }
+            usuarios.set(clave, enNube);
+            return enNube;
+          };
+          const valores = async (fila: Record<string, unknown>, columnas: string[]) => {
+            const lista: unknown[] = [];
+            for (const columna of columnas) {
+              const valor = fila[columna];
+              if (FECHAS.has(columna)) lista.push(fechaParaNube(valor));
+              else if (columna === 'usuario_id' || columna === 'corregido_por') lista.push(await usuarioEnNube(valor));
+              else lista.push(valor ?? null);
+            }
+            return lista;
+          };
+          const marcadores = (n: number) => Array.from({ length: n }, (_, i) => `$${i + 1}`).join(', ');
+
+          const datosCierre = await valores(cierre, COLUMNAS_CIERRE);
+          if (!datosCierre[COLUMNAS_CIERRE.indexOf('usuario_id')]) {
+            throw new Error(`el usuario del turno ${String(cierre.id)} no existe en la caja`);
+          }
+          const actualizar = COLUMNAS_CIERRE.filter((c) => c !== 'id' && c !== 'tenant_id')
+            .map((c) => `${c} = EXCLUDED.${c}`)
+            .join(', ');
+          await client.query(
+            `INSERT INTO cierres_caja (${COLUMNAS_CIERRE.join(', ')}) VALUES (${marcadores(COLUMNAS_CIERRE.length)})
+             ON CONFLICT (id) DO UPDATE SET ${actualizar}`,
+            datosCierre
+          );
+
+          const movimientos = this.sqliteClient.query<Record<string, unknown>>(
+            `SELECT ${COLUMNAS_MOVIMIENTO.join(', ')} FROM caja_movimientos WHERE tenant_id = ? AND sesion_caja_id = ?`,
+            [tenantId, cierre.id as string]
+          );
+          for (const movimiento of movimientos) {
+            const res = await client.query(
+              `INSERT INTO caja_movimientos (${COLUMNAS_MOVIMIENTO.join(', ')}) VALUES (${marcadores(COLUMNAS_MOVIMIENTO.length)})
+               ON CONFLICT DO NOTHING`,
+              await valores(movimiento, COLUMNAS_MOVIMIENTO)
+            );
+            resultado.movimientos += res.rowCount || 0;
+          }
+
+          const correcciones = this.sqliteClient.query<Record<string, unknown>>(
+            `SELECT ${COLUMNAS_CORRECCION.join(', ')} FROM correcciones_cierre_caja WHERE tenant_id = ? AND cierre_id = ?`,
+            [tenantId, cierre.id as string]
+          );
+          for (const correccion of correcciones) {
+            const res = await client.query(
+              `INSERT INTO correcciones_cierre_caja (${COLUMNAS_CORRECCION.join(', ')}) VALUES (${marcadores(COLUMNAS_CORRECCION.length)})
+               ON CONFLICT DO NOTHING`,
+              await valores(correccion, COLUMNAS_CORRECCION)
+            );
+            resultado.correcciones += res.rowCount || 0;
+          }
+        });
+        resultado.cierres++;
+      } catch (error) {
+        resultado.omitidos++;
+        logger.warn('CierreCajaService', 'Un turno no se pudo respaldar en la nube', {
+          cierreId: cierre.id,
+          error: error instanceof Error ? error.message : String(error)
+        });
+      }
+    }
+    return resultado;
+  }
+
   public obtenerCorrecciones(tenantId: string, cierreId: string): CorreccionCierre[] {
     return this.sqliteClient.query<CorreccionCierre>(
       // el nombre solo si quien corrigio es del mismo comercio; si ya no existe, la correccion se ve igual

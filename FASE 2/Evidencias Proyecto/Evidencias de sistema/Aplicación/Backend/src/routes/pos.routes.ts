@@ -1,9 +1,9 @@
 import { Router, Request, Response } from 'express';
-import { v4 as uuidv4 } from 'uuid';
+import { v4 as uuidv4, validate as esUuid } from 'uuid';
 import { defaultPgClient } from '../database/postgres/client';
 import { defaultSqliteClient, SqliteClient } from '../database/sqlite/client';
 import { defaultPaymentDispatcher } from '../payments/payment-dispatcher.service';
-import { PaymentTransactionResult } from '../payments/types';
+import { AvisoDeCobro, PaymentTransactionResult } from '../payments/types';
 import { configPagos } from '../payments/pagos.config';
 import { defaultPosSyncEngine, TOPE_REINTENTOS_VENTA } from '../sync/pos-sync-engine.service';
 import { aplicarRedondeoChileno } from '../utils/pricing';
@@ -32,6 +32,7 @@ import {
 import { generateChileanBarcode } from '../utils/barcode.utils';
 import { detalleError } from '../utils/detalle-error';
 import { rutSiiSeguro } from '../utils/sii.utils';
+import { defaultCierreCajaService, ResultadoRespaldoCaja } from '../caja/cierre-caja.service';
 import { fechaLocal } from '../utils/fecha-local';
 
 const router = Router();
@@ -53,6 +54,60 @@ export function tipoTarjetaDePasarela(metadata: Record<string, unknown> | undefi
 // Una devolucion espera a la maquina antes de registrar: otra de la misma venta en ese lapso
 // calcularia lo disponible sin ver la primera y devolveria dos veces
 const devolucionesEnCurso = new Set<string>();
+
+// Ventas que se estan cobrando, por su id: si la respuesta se pierde mientras la tarjeta espera y la
+// caja reintenta con el mismo id, el reintento no cobra de nuevo.
+const cobrosEnCurso = new Set<string>();
+
+/** Una regla de la venta que dejo de cumplirse mientras se esperaba la tarjeta (otra caja vendio o cerro). */
+class ReglaDeVenta extends Error {
+  constructor(public readonly status: number, public readonly codigo: string, mensaje: string, public readonly productos?: unknown[]) {
+    super(mensaje);
+  }
+}
+
+class VentaYaRegistrada extends Error {}
+
+/** La venta ya registrada, con la forma de la respuesta del cobro, para imprimir su ticket. */
+function ventaRegistrada(tenantId: string, ventaId: string) {
+  const venta = sqlite.queryOne<{ id: string; folio_local_sqlite: string; total: number; unidades: number }>(
+    'SELECT id, folio_local_sqlite, total, unidades FROM transacciones_venta WHERE id = ? AND tenant_id = ?',
+    [ventaId, tenantId]
+  );
+  if (!venta) return null;
+  const dte = sqlite.queryOne<any>(
+    `SELECT id, folio, tipo_dte, ted_xml, dte_xml_completo, qr_code_content,
+            monto_neto, monto_iva, monto_exento, monto_total, monto_ila
+     FROM sii_dte_emitidos WHERE venta_id = ? AND tenant_id = ? ORDER BY fecha_emision DESC LIMIT 1`,
+    [ventaId, tenantId]
+  );
+  return {
+    saleId: venta.id,
+    folio: venta.folio_local_sqlite,
+    total: Number(venta.total),
+    unidades: Number(venta.unidades),
+    duplicada: true,
+    dte: dte
+      ? {
+          dteId: dte.id,
+          folio: Number(dte.folio),
+          tipoDte: Number(dte.tipo_dte),
+          tedXml: dte.ted_xml,
+          xmlDte: dte.dte_xml_completo,
+          qrUrl: dte.qr_code_content,
+          esTributarioDte: true,
+          totales: {
+            montoNeto: Number(dte.monto_neto),
+            montoIva: Number(dte.monto_iva),
+            montoExento: Number(dte.monto_exento),
+            montoTotal: Number(dte.monto_total),
+            montoIla: Number(dte.monto_ila || 0)
+          },
+          folio_provisional: defaultSiiEnvio.folioEsProvisional(tenantId, dte.id)
+        }
+      : null
+  };
+}
 
 /**
  * Modo de cobro y maquinas que el local tiene configuradas, para que la caja muestre solo esas.
@@ -459,7 +514,8 @@ router.patch('/products/:id/stock', async (req: Request, res: Response): Promise
 
     // Transacción atómica en SQLite Local
     sqlite.withTransaction(() => {
-      sqlite.execute("UPDATE productos SET stock_actual = ?, updated_at = datetime('now') WHERE id = ?", [targetStock, id]);
+      // solo stock: no marca edicion, para no ganarle a un precio cambiado en la nube
+      sqlite.execute('UPDATE productos SET stock_actual = ? WHERE id = ?', [targetStock, id]);
 
       sqlite.execute(
         `INSERT INTO historial_stock 
@@ -547,7 +603,7 @@ router.post('/mermas', async (req: Request, res: Response): Promise<void> => {
         [mermaId, tenant_id, producto_id, cant, motivo, observaciones, usuario_id]
       );
 
-      sqlite.execute("UPDATE productos SET stock_actual = ?, updated_at = datetime('now') WHERE id = ?", [nuevoStock, producto_id]);
+      sqlite.execute('UPDATE productos SET stock_actual = ? WHERE id = ?', [nuevoStock, producto_id]);
 
       // Una merma suele ser justamente el lote vencido: se descuenta por el mismo orden
       defaultLotesService.consumirFefo(tenant_id, producto_id, Number(cantidad));
@@ -768,6 +824,40 @@ router.post('/checkout', async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
+  // Idempotencia: la caja manda el id de la venta. Si ya se registro, se responde esa venta sin
+  // cobrar ni descontar; si se esta cobrando, el reintento espera. Va antes de las reglas de stock:
+  // un reintento de una venta ya hecha no puede fallar por el stock que ella misma descontó.
+  const ventaIdPedido = req.body?.venta_id;
+  if (ventaIdPedido !== undefined && ventaIdPedido !== null && ventaIdPedido !== '' && !esUuid(String(ventaIdPedido))) {
+    res.status(400).json({ success: false, error: 'VENTA_ID_INVALIDO', message: 'El id de la venta debe ser un UUID.' });
+    return;
+  }
+  const saleId = ventaIdPedido ? String(ventaIdPedido) : uuidv4();
+  if (ventaIdPedido) {
+    const yaEsta = sqlite.queryOne<{ tenant_id: string }>('SELECT tenant_id FROM transacciones_venta WHERE id = ?', [saleId]);
+    if (yaEsta && yaEsta.tenant_id !== tenant_id) {
+      res.status(409).json({ success: false, error: 'VENTA_ID_EN_USO', message: 'Ese id de venta ya lo usa otra venta.' });
+      return;
+    }
+    if (yaEsta) {
+      res.status(200).json({
+        success: true,
+        duplicada: true,
+        message: 'La venta ya estaba registrada: no se cobro de nuevo.',
+        data: ventaRegistrada(tenant_id, saleId)
+      });
+      return;
+    }
+    if (cobrosEnCurso.has(saleId)) {
+      res.status(409).json({
+        success: false,
+        error: 'COBRO_EN_CURSO',
+        message: 'Esta venta se esta cobrando. Espera la respuesta de la maquina antes de reintentar.'
+      });
+      return;
+    }
+  }
+
   // un medio desconocido se cobraba en Transbank y se grababa como efectivo, y el cierre lo esperaba en la gaveta
   const metodo_pago = String(metodoPagoPedido).trim().toUpperCase();
   if (!MEDIOS_DE_PAGO.includes(metodo_pago)) {
@@ -862,10 +952,11 @@ router.post('/checkout', async (req: Request, res: Response): Promise<void> => {
   }
 
   const startTime = Date.now();
-  const saleId = uuidv4();
   const folio = `POS-${Date.now()}`;
   let cobroAprobado: PaymentTransactionResult | null = null;
 
+  // desde aqui hasta responder no hay ninguna espera antes de marcarla: el reintento la ve en curso
+  cobrosEnCurso.add(saleId);
   try {
     let total = 0;
     let unidades = 0;
@@ -890,7 +981,9 @@ router.post('/checkout', async (req: Request, res: Response): Promise<void> => {
         });
       } catch (payError) {
         logger.warn('PosRoutes', 'La maquina de pago no pudo cobrar', { payError: detalleError(payError) });
-        res.status(402).json({ success: false, message: `No se pudo cobrar con tarjeta: ${detalleError(payError)}` });
+        // en produccion el detalle interno no se envia, pero un aviso para el cajero si
+        const aviso = payError instanceof AvisoDeCobro ? payError.message : detalleError(payError);
+        res.status(402).json({ success: false, message: `No se pudo cobrar con tarjeta${aviso ? `: ${aviso}` : '.'}` });
         return;
       }
       if (cobro.status !== 'APPROVED') {
@@ -910,6 +1003,29 @@ router.post('/checkout', async (req: Request, res: Response): Promise<void> => {
     // 2. Ejecutar venta transaccional en SQLite
     cobroAprobado = cobro;
     const checkoutResult = sqlite.withTransaction(() => {
+      // Mientras la tarjeta esperaba (hasta 120 s), otra caja pudo vender la ultima unidad o cerrar
+      // el turno: se revisa de nuevo dentro de la transaccion, donde ya nadie mas escribe.
+      if (sqlite.queryOne<{ id: string }>('SELECT id FROM transacciones_venta WHERE id = ?', [saleId])) {
+        throw new VentaYaRegistrada();
+      }
+      if (!sqlite.queryOne<{ id: string }>("SELECT id FROM cierres_caja WHERE tenant_id = ? AND estado = 'ABIERTA' LIMIT 1", [tenant_id])) {
+        throw new ReglaDeVenta(400, 'TURNO_CERRADO', 'La caja se cerro mientras se cobraba: la venta no se registro.');
+      }
+      const faltan = [...pedidoPorProducto.entries()]
+        .map(([producto_id, pedido]) => ({
+          producto_id,
+          nombre: pedido.nombre,
+          disponible: Number(sqlite.queryOne<{ s: number }>('SELECT stock_actual AS s FROM productos WHERE id = ?', [producto_id])?.s ?? 0),
+          pedida: pedido.pedida
+        }))
+        .filter((pedido) => pedido.pedida > pedido.disponible);
+      if (faltan.length > 0) {
+        const detalle = faltan
+          .map((pedido) => `${pedido.nombre} (quedan ${Math.max(0, pedido.disponible)}, se piden ${pedido.pedida})`)
+          .join('; ');
+        throw new ReglaDeVenta(409, 'STOCK_INSUFICIENTE', `Otra caja vendio primero y ya no hay stock suficiente: ${detalle}.`, faltan);
+      }
+
       const hoy = reloj.ahora();
       const vencidos = new Map<string, { producto_id: string; nombre: string; fecha_vencimiento: string; cantidad: number }>();
       // El descuento por lote actualiza la fecha del producto: con el mismo producto en dos lineas,
@@ -1130,6 +1246,15 @@ router.post('/checkout', async (req: Request, res: Response): Promise<void> => {
       }
     });
   } catch (error) {
+    if (error instanceof VentaYaRegistrada) {
+      res.status(200).json({
+        success: true,
+        duplicada: true,
+        message: 'La venta ya estaba registrada: no se cobro de nuevo.',
+        data: ventaRegistrada(tenant_id, saleId)
+      });
+      return;
+    }
     logger.error('PosRoutes', 'Checkout transaction failed in SQLite', error);
     if (cobroAprobado) {
       // La tarjeta ya se cobro y la venta no quedo: se devuelve, para que reintentar no cobre dos veces
@@ -1140,6 +1265,16 @@ router.post('/checkout', async (req: Request, res: Response): Promise<void> => {
         monto: cobroAprobado.amount,
         detalle: devolucion.detalle
       });
+      if (error instanceof ReglaDeVenta && devolucion.devuelto) {
+        res.status(error.status).json({
+          success: false,
+          error: error.codigo,
+          cobro_devuelto: true,
+          message: `${error.message} El cobro con tarjeta se devolvio.`,
+          productos: error.productos
+        });
+        return;
+      }
       res.status(500).json({
         success: false,
         error: devolucion.devuelto ? 'COBRO_DEVUELTO' : 'COBRO_SIN_VENTA',
@@ -1150,11 +1285,17 @@ router.post('/checkout', async (req: Request, res: Response): Promise<void> => {
       });
       return;
     }
+    if (error instanceof ReglaDeVenta) {
+      res.status(error.status).json({ success: false, error: error.codigo, message: error.message, productos: error.productos });
+      return;
+    }
     res.status(500).json({
       success: false,
       message: 'Checkout failed due to transaction error',
       error: detalleError(error)
     });
+  } finally {
+    cobrosEnCurso.delete(saleId);
   }
 });
 
@@ -1164,7 +1305,9 @@ router.post('/checkout', async (req: Request, res: Response): Promise<void> => {
  * que la nube no responda: un push parcial no cancela el resto, porque la bajada del catálogo, la
  * cola de facturas y el respaldo documental no dependen de la venta que quedó abajo.
  * 1. Push: envía a la nube las ventas pendientes locales, cada una en su propio envío
- * 2. Respaldo del catálogo: sube los productos y proveedores que la nube no tiene
+ * 1b. Respaldo de la caja: turnos, movimientos y correcciones
+ * 2. Respaldo del catálogo: sube los productos y proveedores que la nube no tiene, las ediciones
+ *    hechas en la caja que son más nuevas que las de la nube, y el stock de la caja
  * 3. Pull: descarga actualizaciones del catálogo (precios, stock) desde la nube
  * 4. Cola de facturas: reintenta las que quedaron sin digitalizar
  * 5. Respaldo documental: sube los archivos de factura que quedaron solo en disco
@@ -1192,14 +1335,26 @@ router.post('/sync', async (req: Request, res: Response): Promise<void> => {
     // la cola de facturas y el respaldo de documentos, que no dependen de esa venta.
     const fracasoTotal = !result.success && result.synced_ids.length === 0;
 
+    // 1b. Respaldar la caja: turnos, movimientos y correcciones hechos sin nube
+    let respaldoCaja: ResultadoRespaldoCaja = { cierres: 0, movimientos: 0, correcciones: 0, omitidos: 0 };
+    try {
+      respaldoCaja = await defaultCierreCajaService.respaldarEnNube(tenantId);
+    } catch (cajaErr) {
+      logger.warn('PosRoutes', 'El respaldo de la caja no pudo completarse en esta sincronización', {
+        error: cajaErr instanceof Error ? cajaErr.message : String(cajaErr)
+      });
+    }
+
     // 2. Respaldar el catalogo del local en la nube (RF-59)
     let respaldoCatalogo = { productos_nuevos: 0, proveedores_nuevos: 0 };
+    let productosActualizadosEnNube = 0;
     try {
       const resultadoCatalogo = await defaultPosSyncEngine.respaldarCatalogoEnNube(tenantId);
       respaldoCatalogo = {
         productos_nuevos: resultadoCatalogo.productos_nuevos,
         proveedores_nuevos: resultadoCatalogo.proveedores_nuevos
       };
+      productosActualizadosEnNube = resultadoCatalogo.productos_actualizados ?? 0;
     } catch (catErr) {
       logger.warn('PosRoutes', 'El respaldo del catálogo no pudo completarse en esta sincronización', {
         error: catErr instanceof Error ? catErr.message : String(catErr)
@@ -1292,6 +1447,8 @@ router.post('/sync', async (req: Request, res: Response): Promise<void> => {
       catalog_updated_count: catalogUpdatedCount,
       catalog_pull_error: catalogPullError,
       catalog_backup: respaldoCatalogo,
+      catalog_updated_in_cloud: productosActualizadosEnNube,
+      cash_backup: respaldoCaja,
       pending_dirty_count: dirtyCountResult?.count || 0,
       invoice_queue: colaFacturas,
       invoice_document_backup: respaldoNube,
@@ -1426,10 +1583,34 @@ router.post('/transactions/:id/reintentar-sincronizacion', (req: Request, res: R
  */
 router.get('/transactions', (req: Request, res: Response): void => {
   const tenantId = (req.query.tenant_id as string) || '00000000-0000-0000-0000-000000000001';
+  const desde = req.query.desde as string | undefined;
+  const hasta = req.query.hasta as string | undefined;
+  const esDia = (valor?: string) => !valor || /^\d{4}-\d{2}-\d{2}$/.test(valor);
+  if (!esDia(desde) || !esDia(hasta)) {
+    res.status(400).json({ success: false, message: 'desde y hasta van en formato AAAA-MM-DD' });
+    return;
+  }
 
   try {
+    // Con desde/hasta, exactamente ese rango de dias locales. Sin ellos, los ultimos 31 dias
+    // completos y como minimo las 100 mas recientes: con un tope fijo de 100, la pantalla de Ventas
+    // resumia "semana" y "mes" sobre una parte de las ventas sin decirlo.
+    const filtros: string[] = ['v.tenant_id = ?'];
+    const parametros: unknown[] = [tenantId];
+    if (desde) { filtros.push("DATE(v.fecha, 'localtime') >= ?"); parametros.push(desde); }
+    if (hasta) { filtros.push("DATE(v.fecha, 'localtime') <= ?"); parametros.push(hasta); }
+    let limite = 20000;
+    if (!desde && !hasta) {
+      const delMes = sqlite.queryOne<{ n: number }>(
+        "SELECT COUNT(*) AS n FROM transacciones_venta WHERE tenant_id = ? AND DATE(fecha, 'localtime') >= DATE('now', 'localtime', '-31 days')",
+        [tenantId]
+      );
+      limite = Math.max(100, Number(delMes?.n ?? 0));
+    }
+    const elegidas = `SELECT v.id FROM transacciones_venta v WHERE ${filtros.join(' AND ')} ORDER BY v.fecha DESC LIMIT ?`;
+
     const sales = sqlite.query<any>(
-      `SELECT v.id, v.folio_local_sqlite as folio, v.fecha, v.total, v.unidades, v.estado, 
+      `SELECT v.id, v.folio_local_sqlite as folio, v.fecha, v.total, v.unidades, v.estado,
               v.sync_status, v.observaciones, v.es_devolucion, v.referencia_venta_id,
               COALESCE(v.sync_attempts, 0) as sync_attempts,
               (v.sync_status = 'FAILED' AND COALESCE(v.sync_attempts, 0) >= ?) as sync_detenida,
@@ -1439,27 +1620,29 @@ router.get('/transactions', (req: Request, res: Response): void => {
        FROM transacciones_venta v
        LEFT JOIN usuarios u ON v.usuario_id = u.id
        LEFT JOIN metodos_pago mp ON v.metodo_pago_id = mp.id
-       WHERE v.tenant_id = ?
-       ORDER BY v.fecha DESC LIMIT 100`,
-      [TOPE_REINTENTOS_VENTA, tenantId]
+       WHERE ${filtros.join(' AND ')}
+       ORDER BY v.fecha DESC LIMIT ?`,
+      [TOPE_REINTENTOS_VENTA, ...parametros, limite]
     );
 
-    const salesWithDetails = sales.map(sale => {
-      const details = sqlite.query<any>(
-        `SELECT dv.id, dv.producto_id, dv.cantidad, dv.precio_unitario, dv.subtotal, 
-                p.nombre as producto_nombre, p.sku, p.codigo_barra
-         FROM detalle_venta dv
-         LEFT JOIN productos p ON dv.producto_id = p.id
-         WHERE dv.venta_id = ?`,
-        [sale.id]
-      );
-      return {
-        ...sale,
-        items: details
-      };
-    });
+    // El detalle sale en una sola consulta: una por venta eran miles cada minuto, y la base local
+    // atiende al cobro en el mismo hilo
+    const detalles = sqlite.query<any>(
+      `SELECT dv.venta_id, dv.id, dv.producto_id, dv.cantidad, dv.precio_unitario, dv.subtotal,
+              p.nombre as producto_nombre, p.sku, p.codigo_barra
+       FROM detalle_venta dv
+       LEFT JOIN productos p ON dv.producto_id = p.id
+       WHERE dv.venta_id IN (${elegidas})`,
+      [...parametros, limite]
+    );
+    const porVenta = new Map<string, any[]>();
+    for (const { venta_id, ...detalle } of detalles) {
+      porVenta.set(venta_id, [...(porVenta.get(venta_id) ?? []), detalle]);
+    }
+    const salesWithDetails = sales.map((sale) => ({ ...sale, items: porVenta.get(sale.id) ?? [] }));
+    const total = Number(sqlite.queryOne<{ n: number }>('SELECT COUNT(*) AS n FROM transacciones_venta WHERE tenant_id = ?', [tenantId])?.n ?? 0);
 
-    res.status(200).json({ success: true, count: salesWithDetails.length, data: salesWithDetails });
+    res.status(200).json({ success: true, count: salesWithDetails.length, total, data: salesWithDetails });
   } catch (error) {
     logger.error('PosRoutes', 'Error retrieving sales transactions', error);
     res.status(500).json({ success: false, message: 'Failed to retrieve transactions' });
@@ -1722,7 +1905,7 @@ router.post('/devolucion', async (req: Request, res: Response): Promise<void> =>
         // Reponer stock
         sqlite.execute(
           `UPDATE productos 
-           SET stock_actual = ?, updated_at = datetime('now')
+           SET stock_actual = ?
            WHERE id = ?`,
           [newStock, item.producto_id]
         );

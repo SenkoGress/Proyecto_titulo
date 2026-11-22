@@ -61,3 +61,6 @@ export interface PaymentTransactionResult {
   usedFallback: boolean;
   createdAt: string;
 }
+
+/** Falla del cobro que el cajero tiene que leer tal cual, tambien en produccion. */
+export class AvisoDeCobro extends Error {}

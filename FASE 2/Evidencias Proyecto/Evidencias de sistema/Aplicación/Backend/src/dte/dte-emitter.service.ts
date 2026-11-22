@@ -227,6 +227,9 @@ export class DteEmitterService {
     const rutReceptor = rutSii(receptor.rut);
     const rutChofer = tipoDte === TipoDTE.GUIA_DESPACHO && req.transporte ? rutSii(req.transporte.choferRut || emisor.rut) : '';
 
+    // El folio y el documento se graban juntos: si el timbre, la firma o la insercion fallan, el
+    // folio no queda gastado sin documento
+    const emitido = defaultSqliteClient.withTransaction(() => {
     // 1. Asignar folio correlativo atómico con el CAF activo
     const { folio, caf } = defaultCafManager.consumeNextFolio(req.tenantId, tipoDte);
 
@@ -376,6 +379,9 @@ export class DteEmitterService {
         [tipoDocLabel, folio, dteId, totales.montoIla || 0, req.ventaId]
       );
     }
+    return { folio, dteId, tedResult, fullDteXml, qrUrl, tipoDocLabel };
+    });
+    const { folio, dteId, tedResult, fullDteXml, qrUrl, tipoDocLabel } = emitido;
 
     logger.info('DteEmitter', `DTE Tipo ${tipoDte} Folio ${folio} (${tipoDocLabel}) emitido y registrado exitosamente.`);
 

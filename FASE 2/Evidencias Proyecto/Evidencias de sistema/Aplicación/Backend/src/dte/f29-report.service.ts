@@ -34,6 +34,11 @@ export class F29ReportService {
     let boletasTotal = 0;
     let boletasIla = 0;
 
+    // el impuesto adicional de las facturas suma y el de sus notas de credito resta: la boleta lo
+    // trae en cero, asi que solo con boletas el F29 lo dejaba fuera
+    let facturasIla = 0;
+    let ncIla = 0;
+
     let facturasCount = 0;
     let facturasNeto = 0;
     let facturasIva = 0;
@@ -58,11 +63,13 @@ export class F29ReportService {
         boletasIla += ila;
       } else if (d.tipo_dte === 33 || d.tipo_dte === 34) {
         facturasCount++;
+        facturasIla += ila;
         facturasNeto += neto;
         facturasIva += iva;
         facturasTotal += total;
       } else if (d.tipo_dte === 61) {
         ncCount++;
+        ncIla += ila;
         ncNeto += neto;
         ncIva += iva;
         ncTotal += total;
@@ -133,7 +140,7 @@ export class F29ReportService {
     const totalVentasNeto = boletasNeto + facturasNeto + vouchersNeto - ncNeto;
     const totalIvaDebito = boletasIva + facturasIva + vouchersIva - ncIva;
     const totalVentasBruto = boletasTotal + facturasTotal + vouchersTotal - ncTotal;
-    const totalIla = boletasIla;
+    const totalIla = boletasIla + facturasIla - ncIla;
 
     // 3. CRÉDITO FISCAL (COMPRAS): Facturas de proveedores respaldadas en factura_ingresos
     const compras = defaultSqliteClient.query<any>(

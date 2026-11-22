@@ -1,10 +1,11 @@
 import { SqliteClient, defaultSqliteClient } from '../database/sqlite/client';
 import { DetalleVenta, Producto, TransaccionVenta } from '../database/types';
 import { logger } from '../utils/logger';
-import { ProductoReferenciado, ProveedorReferenciado, UsuarioReferenciado } from './types';
+import { PagoReferenciado, ProductoReferenciado, ProveedorReferenciado, UsuarioReferenciado } from './types';
 import { defaultCloudSyncReceiver } from './cloud-sync-receiver.service';
 import { ConflictResolver, defaultConflictResolver } from './conflict-resolver';
 import { ExponentialBackoff, defaultBackoff } from './exponential-backoff';
+import { marcaSqlite, segundosUtc } from './marca-edicion';
 import {
   RespaldoCatalogoResultado,
   SyncPullRequest,
@@ -84,7 +85,13 @@ export class PosSyncEngineService {
         [sale.usuario_id, tenantId]
       ) ?? undefined;
 
-      items.push({ sale, details, productos, proveedores, usuario });
+      const pagos = this.sqlite.query<PagoReferenciado>(
+        `SELECT id, pasarela, transaction_token, monto, estado_transaccion, metadata_response
+         FROM payment_transactions WHERE sale_id = ?`,
+        [sale.id]
+      );
+
+      items.push({ sale, details, productos, proveedores, usuario, pagos });
     }
 
     return items;
@@ -285,7 +292,7 @@ export class PosSyncEngineService {
 
     const productos = this.sqlite.query<ProductoReferenciado>(
       `SELECT id, sku, codigo_barra, nombre, precio_compra, precio_venta, proveedor_id,
-              stock_actual, stock_minimo, activo, imagen,
+              stock_actual, stock_minimo, activo, imagen, categoria, updated_at,
               impuesto_adicional_codigo, impuesto_adicional_tasa, factura_origen_folio
        FROM productos WHERE tenant_id = ?`,
       [tenantId]
@@ -351,6 +358,13 @@ export class PosSyncEngineService {
             [tenantId, cloudProd.id, cloudProd.sku, cloudProd.id]
           );
 
+          // Gana la edicion mas nueva: un precio cambiado en la caja sin conexion ya subio en el
+          // respaldo del catalogo, y la bajada no lo revierte con el de la nube
+          const editadoEnNube = segundosUtc(cloudProd.updated_at);
+          if (localProd && editadoEnNube <= segundosUtc(localProd.updated_at)) {
+            continue;
+          }
+
           if (localProd) {
             // Aplicar política: La Nube manda en Catálogo (precios y productos)
             const reconciled = this.resolver.resolveCatalogConflict(localProd, cloudProd);
@@ -361,7 +375,7 @@ export class PosSyncEngineService {
                    impuesto_adicional_codigo = CASE WHEN ? > 0 THEN ? ELSE impuesto_adicional_codigo END,
                    impuesto_adicional_tasa = CASE WHEN ? > 0 THEN ? ELSE impuesto_adicional_tasa END,
                    factura_origen_folio = COALESCE(factura_origen_folio, ?),
-                   updated_at = datetime('now')
+                   updated_at = ?
                WHERE id = ? AND tenant_id = ?`,
               [
                 reconciled.precio_compra,
@@ -372,6 +386,7 @@ export class PosSyncEngineService {
                 codigoIla, codigoIla,
                 codigoIla, tasaIla,
                 cloudProd.factura_origen_folio ?? null,
+                marcaSqlite(editadoEnNube),
                 localProd.id,
                 tenantId
               ]
@@ -382,8 +397,8 @@ export class PosSyncEngineService {
             this.sqlite.execute(
               `INSERT INTO productos 
                (id, tenant_id, proveedor_id, codigo_barra, sku, nombre, stock_actual, stock_minimo, precio_compra, precio_venta, categoria, activo, imagen,
-                impuesto_adicional_codigo, impuesto_adicional_tasa, factura_origen_folio)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                impuesto_adicional_codigo, impuesto_adicional_tasa, factura_origen_folio, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
               [
                 cloudProd.id,
                 tenantId,
@@ -400,7 +415,8 @@ export class PosSyncEngineService {
                 cloudProd.imagen ?? null,
                 codigoIla,
                 tasaIla,
-                cloudProd.factura_origen_folio ?? null
+                cloudProd.factura_origen_folio ?? null,
+                marcaSqlite(editadoEnNube)
               ]
             );
             updatedCount++;

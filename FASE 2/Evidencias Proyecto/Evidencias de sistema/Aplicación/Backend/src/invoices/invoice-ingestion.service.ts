@@ -534,7 +534,7 @@ export class InvoiceIngestionService {
       ...invoiceData,
       items: invoiceData.items.map((item) => (item.no_vence ? { ...item, fecha_vencimiento: undefined } : item))
     };
-    const lotesParaLaNube: Array<{ productoId: string; cantidad: number; fechaVencimiento: string; codigoLote: string | null }> = [];
+    const lotesParaLaNube: Array<{ productoId: string; sku: string; cantidad: number; fechaVencimiento: string; codigoLote: string | null }> = [];
 
     // Una factura ya ingresada no se vuelve a aceptar: el stock y el credito fiscal de esa
     // compra ya estan contados. Se compara folio con proveedor, porque dos proveedores pueden
@@ -898,6 +898,7 @@ export class InvoiceIngestionService {
           if (item.fecha_vencimiento) {
             lotesParaLaNube.push({
               productoId: productId,
+              sku: itemSku,
               cantidad: itemCantidad,
               fechaVencimiento: item.fecha_vencimiento,
               codigoLote: item.lote ?? null
@@ -949,7 +950,9 @@ export class InvoiceIngestionService {
         l.cantidad,
         l.fechaVencimiento,
         l.codigoLote,
-        invoiceData.folio_factura
+        invoiceData.folio_factura,
+        undefined,
+        l.sku
       );
     }
 

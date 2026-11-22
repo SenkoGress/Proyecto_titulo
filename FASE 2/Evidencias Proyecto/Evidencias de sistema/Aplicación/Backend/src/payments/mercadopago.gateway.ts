@@ -10,6 +10,7 @@ import {
 } from './types';
 import { logger } from '../utils/logger';
 import { configPagos, esperar, exigir } from './pagos.config';
+import { AvisoDeCobro } from './types';
 
 const API = 'https://api.mercadopago.com';
 // Estados finales de una orden Point; processed es la unica aprobada
@@ -129,10 +130,18 @@ export class MercadoPagoGateway implements IPaymentGateway {
     }
 
     if (!FINALES.includes(orden.status)) {
-      // Nadie pago a tiempo: se retira la orden de la maquina para que no cobre despues
+      // Nadie pago a tiempo: se retira la orden de la maquina para que no cobre despues. La orden
+      // se vuelve a consultar: si el cliente pago justo mientras se cancelaba, darla por rechazada
+      // dejaba un cobro sin venta y el cajero cobraba de nuevo.
       await this.llamar('POST', `/v1/orders/${req.token}/cancel`, undefined,
         { 'x-allow-cancelable-status': 'at_terminal' }).catch(() => undefined);
-      orden = { ...orden, status: 'expired', status_detail: 'sin respuesta del cliente' };
+      for (let intento = 0; intento < 3 && !FINALES.includes(orden.status); intento++) {
+        if (intento > 0) await esperar(1000);
+        orden = await this.llamar('GET', `/v1/orders/${req.token}`).catch(() => orden);
+      }
+      if (!FINALES.includes(orden.status)) {
+        throw new AvisoDeCobro('No se pudo retirar la orden de la maquina de Mercado Pago. Revisa el Point antes de cobrar de nuevo: el cliente pudo haber pagado.');
+      }
     }
 
     const pago = orden.transactions?.payments?.[0] ?? {};

@@ -259,19 +259,42 @@ export class DashboardService {
       };
     });
 
+    // Lo vendido por producto menos lo devuelto en el periodo: la devolucion no tiene detalle, y el
+    // producto devuelto seguia en el top. Lo devuelto se valora al precio medio de su venta original
+    // (el mismo producto puede venir en dos lineas).
+    const netoPorProducto = `
+      WITH vendido AS (
+        SELECT dv.producto_id, SUM(dv.cantidad) AS unidades, SUM(dv.subtotal) AS ingresos
+        FROM detalle_venta dv
+        JOIN transacciones_venta tv ON dv.venta_id = tv.id
+        WHERE tv.tenant_id = ? ${dateFilter}
+        GROUP BY dv.producto_id
+      ), devuelto AS (
+        SELECT m.producto_id, SUM(m.cantidad) AS unidades,
+               SUM(m.cantidad * COALESCE((
+                 SELECT SUM(d2.subtotal) / NULLIF(SUM(d2.cantidad), 0) FROM detalle_venta d2
+                 WHERE d2.venta_id = m.id_origen AND d2.producto_id = m.producto_id), 0)) AS ingresos
+        FROM movimientos_inventario m
+        WHERE m.tenant_id = ? AND m.tipo_origen = 'DEVOLUCION_VENTA' ${filtroMovimiento}
+        GROUP BY m.producto_id
+      ), neto AS (
+        SELECT p.nombre, p.sku, p.categoria,
+               COALESCE(v.unidades, 0) - COALESCE(d.unidades, 0) AS unidades,
+               COALESCE(v.ingresos, 0) - COALESCE(d.ingresos, 0) AS ingresos
+        FROM productos p
+        LEFT JOIN vendido v ON v.producto_id = p.id
+        LEFT JOIN devuelto d ON d.producto_id = p.id
+        WHERE p.tenant_id = ? AND (v.producto_id IS NOT NULL OR d.producto_id IS NOT NULL)
+      )`;
+
     // 6. Top Productos Más Vendidos
     const topProdRows = this.sqlite.query<any>(
-      `SELECT p.nombre, p.sku, p.categoria,
-              SUM(dv.cantidad) as unidades,
-              SUM(dv.subtotal) as ingresos
-       FROM detalle_venta dv
-       JOIN transacciones_venta tv ON dv.venta_id = tv.id
-       JOIN productos p ON dv.producto_id = p.id
-       WHERE tv.tenant_id = ? ${dateFilter}
-       GROUP BY p.id, p.nombre, p.sku, p.categoria
+      `${netoPorProducto}
+       SELECT nombre, sku, categoria, unidades, ingresos FROM neto
+       WHERE unidades > 0
        ORDER BY unidades DESC
        LIMIT 8`,
-      [tenantId]
+      [tenantId, tenantId, tenantId]
     );
 
     const topProducts: TopProductItem[] = topProdRows.map(r => ({
@@ -284,16 +307,15 @@ export class DashboardService {
 
     // 7. Desglose por Categoría
     const catRows = this.sqlite.query<any>(
-      `SELECT COALESCE(p.categoria, 'Otras') as categoria,
-              SUM(dv.subtotal) as total,
-              SUM(dv.cantidad) as unidades
-       FROM detalle_venta dv
-       JOIN transacciones_venta tv ON dv.venta_id = tv.id
-       JOIN productos p ON dv.producto_id = p.id
-       WHERE tv.tenant_id = ? ${dateFilter}
-       GROUP BY categoria
+      `${netoPorProducto}
+       SELECT COALESCE(categoria, 'Otras') as categoria,
+              SUM(ingresos) as total,
+              SUM(unidades) as unidades
+       FROM neto
+       GROUP BY COALESCE(categoria, 'Otras')
+       HAVING SUM(unidades) > 0
        ORDER BY total DESC`,
-      [tenantId]
+      [tenantId, tenantId, tenantId]
     );
 
     const categoryBreakdown = catRows.map(r => ({

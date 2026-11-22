@@ -11,6 +11,8 @@ export interface SqliteRunResult {
 
 export class SqliteClient {
   private db: DatabaseSync;
+  private profundidad = 0;
+  private correlativoSavepoint = 0;
   private inMemory: boolean;
 
   constructor(customPath?: string, inMemoryOverride?: boolean) {
@@ -96,8 +98,28 @@ export class SqliteClient {
   }
 
   public withTransaction<T>(callback: () => T): T {
+    // Dentro de otra transaccion se usa un savepoint: un BEGIN anidado falla, y quien llama no
+    // tiene por que saber si ya hay una abierta (la emision del documento corre dentro y fuera)
+    if (this.profundidad > 0) {
+      const punto = `sp_${++this.correlativoSavepoint}`;
+      this.db.exec(`SAVEPOINT ${punto};`);
+      this.profundidad++;
+      try {
+        const result = callback();
+        this.db.exec(`RELEASE ${punto};`);
+        return result;
+      } catch (error) {
+        this.db.exec(`ROLLBACK TO ${punto};`);
+        this.db.exec(`RELEASE ${punto};`);
+        throw error;
+      } finally {
+        this.profundidad--;
+      }
+    }
+
     const start = Date.now();
     this.db.exec('BEGIN TRANSACTION;');
+    this.profundidad = 1;
     try {
       const result = callback();
       this.db.exec('COMMIT;');
@@ -108,6 +130,8 @@ export class SqliteClient {
       this.db.exec('ROLLBACK;');
       logger.error('SqliteClient', 'Transaction rolled back due to error', error);
       throw error;
+    } finally {
+      this.profundidad = 0;
     }
   }
 

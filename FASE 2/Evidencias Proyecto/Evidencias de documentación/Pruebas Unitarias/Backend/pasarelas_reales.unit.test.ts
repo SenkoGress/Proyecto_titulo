@@ -84,6 +84,37 @@ describe('Mercado Pago Point', () => {
     expect(fin.metadataResponse.status_detail).toBe('rejected_by_issuer');
   });
 
+  test('si el cliente paga justo mientras se cancela por tiempo, el pago se toma como aprobado', async () => {
+    // antes se daba por rechazado sin mirar la orden: cobro sin venta, y el cajero cobraba de nuevo
+    process.env.PAGOS_ESPERA_MAXIMA_MS = '1';
+    // responde segun la ruta: la espera de 1 ms puede alcanzar o no a consultar una vez mas
+    let cancelada = false;
+    const urls: string[] = [];
+    const http = (async (url: string) => {
+      urls.push(url);
+      if (url.endsWith('/cancel')) {
+        cancelada = true;
+        return { ok: false, status: 409, text: async () => '{"message":"la orden ya no se puede cancelar"}' };
+      }
+      const orden = cancelada
+        ? { id: 'ORD03', status: 'processed', transactions: { payments: [{ id: 'PAY03', amount: '1890' }] } }
+        : { id: 'ORD03', status: 'at_terminal' };
+      return { ok: true, status: 200, text: async () => JSON.stringify(orden) };
+    }) as unknown as typeof fetch;
+    const fin = await new MercadoPagoGateway(http).confirmPayment({ token: 'ORD03', saleId: venta.saleId, tenantId: 't1', gateway: 'MercadoPago' });
+    expect(urls).toContain('https://api.mercadopago.com/v1/orders/ORD03/cancel');
+    expect(fin).toMatchObject({ status: 'APPROVED', transactionId: 'PAY03' });
+  });
+
+  test('si la orden no se puede retirar de la maquina, el cobro falla con un aviso para revisar el Point', async () => {
+    process.env.PAGOS_ESPERA_MAXIMA_MS = '1';
+    const http = (async (url: string) => (url.endsWith('/cancel')
+      ? { ok: false, status: 500, text: async () => '{}' }
+      : { ok: true, status: 200, text: async () => JSON.stringify({ id: 'ORD04', status: 'at_terminal' }) })) as unknown as typeof fetch;
+    await expect(new MercadoPagoGateway(http).confirmPayment({ token: 'ORD04', saleId: venta.saleId, tenantId: 't1', gateway: 'MercadoPago' }))
+      .rejects.toThrow(/Revisa el Point antes de cobrar de nuevo/);
+  });
+
   test('sin Access Token no llama a Mercado Pago y dice que falta', async () => {
     delete process.env.MP_ACCESS_TOKEN;
     const { http, llamadas } = proveedorFalso([]);

@@ -136,6 +136,66 @@ describe('Pruebas Unitarias: Folios, set de prueba, fecha del RCOF y archivos de
       "SELECT COUNT(*) AS n FROM sii_caf WHERE tenant_id = ? AND tipo_dte = 39 AND activo = 1 AND origen = 'PROVISIONAL'", [TENANT])).toBe(0);
   });
 
+  test('el F29 suma el impuesto adicional de las facturas y resta el de sus notas de credito', () => {
+    const mes = fechaLocal().slice(0, 7);
+    const antes = defaultF29ReportService.generateMonthlyF29(TENANT, mes).debitoFiscal.totalIla;
+    const fila = (id: string, tipo: number, folio: number, ila: number) => defaultSqliteClient.execute(
+      `INSERT INTO sii_dte_emitidos (id, tenant_id, tipo_dte, folio, fecha_emision, rut_emisor, razon_social_emisor,
+         rut_receptor, monto_neto, monto_iva, monto_total, monto_ila, ted_xml, dte_xml_completo, qr_code_content, estado_sii)
+       VALUES (?, ?, ?, ?, datetime('now'), '76123456-0', 'ALMACEN', '77777777-7', 1000, 190, 1490, ?, '<TED/>', '<DTE/>', '', 'EMITIDO_LOCAL')`,
+      [id, TENANT, tipo, folio, ila]
+    );
+    fila('f29-factura', 33, 880001, 300);
+    fila('f29-nota', 61, 880002, 100);
+    try {
+      expect(defaultF29ReportService.generateMonthlyF29(TENANT, mes).debitoFiscal.totalIla).toBe(antes + 200);
+    } finally {
+      defaultSqliteClient.execute("DELETE FROM sii_dte_emitidos WHERE id IN ('f29-factura', 'f29-nota')");
+    }
+  });
+
+  test('si el documento no se puede grabar, su folio no queda gastado', () => {
+    const ultimo = () => defaultSqliteClient.queryOne<{ u: number }>(
+      "SELECT MAX(ultimo_folio_usado) AS u FROM sii_caf WHERE tenant_id = ? AND tipo_dte = 33", [TENANT])?.u ?? 0;
+    const factura = () => defaultDteEmitter.emitDocument({
+      tenantId: TENANT,
+      tipoDte: TipoDTE.FACTURA_ELECTRONICA,
+      metodoPago: 'EFECTIVO',
+      receptor: { rut: '77777777-7', razonSocial: 'CLIENTE SPA', giro: 'COMERCIO', direccion: 'CALLE 1', comuna: 'SANTIAGO' },
+      items: [{ nroLinea: 1, nombre: 'Harina', cantidad: 1, precioUnitario: 1190, subtotal: 1190 }]
+    });
+    factura();
+    const antes = ultimo();
+    const original = defaultSqliteClient.execute.bind(defaultSqliteClient);
+    const espia = jest.spyOn(defaultSqliteClient, 'execute').mockImplementation((sql: string, params?: any[]) => {
+      if (sql.includes('INSERT INTO sii_dte_emitidos')) throw new Error('disco lleno');
+      return original(sql, params);
+    });
+    try {
+      expect(factura).toThrow('disco lleno');
+    } finally {
+      espia.mockRestore();
+    }
+    expect(ultimo()).toBe(antes);
+    expect(Number(factura().folio)).toBe(antes + 1);
+  });
+
+  test('una transaccion dentro de otra deshace solo lo suyo si falla', () => {
+    defaultSqliteClient.execute('CREATE TABLE IF NOT EXISTS prueba_anidada (v TEXT)');
+    defaultSqliteClient.withTransaction(() => {
+      defaultSqliteClient.execute("INSERT INTO prueba_anidada (v) VALUES ('exterior')");
+      try {
+        defaultSqliteClient.withTransaction(() => {
+          defaultSqliteClient.execute("INSERT INTO prueba_anidada (v) VALUES ('interior')");
+          throw new Error('falla adentro');
+        });
+      } catch {
+        // el exterior sigue
+      }
+    });
+    expect(defaultSqliteClient.query<{ v: string }>('SELECT v FROM prueba_anidada').map((f) => f.v)).toEqual(['exterior']);
+  });
+
   test('la ruta del documento de una factura no sale de la carpeta de facturas', () => {
     const base = fs.mkdtempSync(path.join(os.tmpdir(), 'facturas-'));
     const afuera = path.join(path.dirname(base), `clave-${path.basename(base)}`);

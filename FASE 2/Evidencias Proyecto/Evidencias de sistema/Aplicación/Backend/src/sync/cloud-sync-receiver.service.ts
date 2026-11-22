@@ -1,10 +1,34 @@
-import { v4 as uuidv4 } from 'uuid';
+import { v4 as uuidv4, v5 as uuidv5, validate as esUuid } from 'uuid';
 import { PostgresClient, defaultPgClient } from '../database/postgres/client';
 import { asegurarMigracionesNube } from '../database/postgres/migraciones-al-dia';
 import { Producto } from '../database/types';
 import { logger } from '../utils/logger';
+import { marcaNube, segundosUtc } from './marca-edicion';
+
+// El id local de un pago es el de la pasarela, que puede no ser UUID: se deriva uno fijo de el
+const ESPACIO_PAGOS = '6b1d2f3e-4a5c-4e7d-9f80-1a2b3c4d5e6f';
+const idDePagoEnNube = (id: string) => (esUuid(id) ? id : uuidv5(String(id), ESPACIO_PAGOS));
+
+/** Graba en la nube los cobros y reversos de una venta que ya esta alla. Repetirlo no duplica. */
+async function subirPagos(
+  db: { query: (sql: string, params?: unknown[]) => Promise<unknown> },
+  ventaId: string,
+  pagos: PagoReferenciado[] | undefined
+): Promise<void> {
+  for (const pago of pagos || []) {
+    await db.query(
+      `INSERT INTO payment_transactions
+       (id, sale_id, pasarela, transaction_token, monto, estado_transaccion, metadata_response)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT DO NOTHING`,
+      [idDePagoEnNube(pago.id), ventaId, pago.pasarela, pago.transaction_token, Number(pago.monto) || 0,
+       pago.estado_transaccion, pago.metadata_response]
+    );
+  }
+}
 import { defaultLotesService } from '../inventory/lotes.service';
 import {
+  PagoReferenciado,
   ProductoReferenciado,
   ProveedorReferenciado,
   RespaldoCatalogoResultado,
@@ -70,7 +94,7 @@ export class CloudSyncReceiverService {
         const movTipoId = movTipoRes.rows[0].id;
 
         for (const item of payload.sales) {
-          const { sale, details, productos, proveedores, usuario } = item;
+          const { sale, details, productos, proveedores, usuario, pagos } = item;
 
           try {
             // 1. Idempotencia: Verificar si la transacción ya fue consolidada en la nube
@@ -81,6 +105,8 @@ export class CloudSyncReceiverService {
 
             if (existingSale.rows.length > 0) {
               logger.info('CloudSyncReceiver', `Sale ${sale.id} already exists in cloud. Skipping duplicate ingestion.`);
+              // una venta que subio antes de la 1.0.8 todavia no tiene sus pagos arriba
+              await subirPagos(client, sale.id, pagos);
               syncedIds.push(sale.id);
               continue;
             }
@@ -141,6 +167,7 @@ export class CloudSyncReceiverService {
                 (sale as any).medio_devolucion || null
               ]
             );
+            await subirPagos(client, sale.id, pagos);
 
             // El terminal y la nube pueden tener el mismo proveedor (por RUT) o el mismo producto
             // (por SKU) con distinto id: uno entro por factura y el otro lo sembro el catalogo. Se
@@ -221,7 +248,7 @@ export class CloudSyncReceiverService {
                 // Actualizar stock neto en la nube (preserva modificaciones concurrentes de otros canales)
                 await client.query(
                   `UPDATE productos 
-                   SET stock_actual = $1, updated_at = now() 
+                   SET stock_actual = $1
                    WHERE id = $2 AND tenant_id = $3`,
                   [newCloudStock, productoId, payload.tenant_id]
                 );
@@ -333,6 +360,7 @@ export class CloudSyncReceiverService {
     }
 
     let productosNuevos = 0;
+    let productosActualizados = 0;
     let proveedoresNuevos = 0;
 
     try {
@@ -379,6 +407,47 @@ export class CloudSyncReceiverService {
         );
         productosNuevos += res.rowCount || 0;
 
+        if (!res.rowCount) {
+          const enNube = await this.pgClient.query<{ id: string; updated_at: unknown }>(
+            `SELECT id, updated_at FROM productos WHERE tenant_id = $1 AND (id = $2 OR sku = $3)
+             ORDER BY (id = $2) DESC LIMIT 1`,
+            [tenantId, producto.id, producto.sku]
+          );
+          const fila = enNube.rows[0];
+          if (fila) {
+            // En el stock manda la caja: es la unica base del local (RF-23), y la nube no recibe
+            // devoluciones, ajustes ni facturas ingresadas sin conexion. No marca edicion.
+            await this.pgClient.query('UPDATE productos SET stock_actual = $1 WHERE id = $2', [
+              Number(producto.stock_actual ?? 0),
+              fila.id
+            ]);
+
+            // Una edicion hecha en la caja sin conexion sube si es mas nueva que la de la nube
+            const editadoEnCaja = segundosUtc(producto.updated_at);
+            if (editadoEnCaja > segundosUtc(fila.updated_at)) {
+              await this.pgClient.query(
+                `UPDATE productos
+                 SET nombre = $1, codigo_barra = $2, precio_compra = $3, precio_venta = $4,
+                     stock_minimo = $5, categoria = $6, activo = $7, imagen = $8, updated_at = $9
+                 WHERE id = $10`,
+                [
+                  producto.nombre,
+                  producto.codigo_barra,
+                  producto.precio_compra,
+                  producto.precio_venta,
+                  producto.stock_minimo ?? 0,
+                  producto.categoria ?? null,
+                  producto.activo === undefined ? true : Boolean(producto.activo),
+                  producto.imagen ?? null,
+                  marcaNube(editadoEnCaja),
+                  fila.id
+                ]
+              );
+              productosActualizados++;
+            }
+          }
+        }
+
         // La fila que la nube ya tenia pudo subir antes de que el impuesto y el folio viajaran:
         // se completan solo si alla estan vacios, sin pisar lo que la nube ya sabe.
         if (!res.rowCount && (Number(producto.impuesto_adicional_codigo) > 0 || producto.factura_origen_folio)) {
@@ -410,6 +479,7 @@ export class CloudSyncReceiverService {
       return {
         success: true,
         productos_nuevos: productosNuevos,
+        productos_actualizados: productosActualizados,
         proveedores_nuevos: proveedoresNuevos,
         message: productosNuevos + proveedoresNuevos === 0
           ? 'La nube ya tiene todo el catalogo del local.'

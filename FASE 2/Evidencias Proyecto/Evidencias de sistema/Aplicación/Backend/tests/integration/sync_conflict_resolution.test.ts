@@ -33,7 +33,10 @@ describe('Conflict Resolution Policies (Net Stock Delta & Catalog Primacy)', () 
     sqliteClient.close();
   });
 
-  test('1. Resolución de Stock No Destructiva por Delta Neto No sobreescribe con el valor absoluto local', async () => {
+  // La recepcion de una venta resta su cantidad del stock de la nube (diferencia neta). Desde la
+  // 1.0.8, el respaldo del catalogo que corre despues en /pos/sync iguala ese stock al de la caja,
+  // que es la unica base del local: esta prueba solo mira la recepcion de la venta.
+  test('1. La recepcion de una venta resta su cantidad del stock de la nube, sin copiar el valor absoluto local', async () => {
     const ids = createFixtureIds();
     const tenant = sampleTenant(ids.tenantId);
     const user = sampleUsuario(ids.usuarioCajeroId, ids.tenantId, 'cajero');
@@ -103,11 +106,12 @@ describe('Conflict Resolution Policies (Net Stock Delta & Catalog Primacy)', () 
     const tenant = sampleTenant(ids.tenantId);
     const prod = sampleProducto(ids.productoId, ids.tenantId);
 
-    // Producto inicial en SQLite con precio de venta $1.000
+    // Producto inicial en SQLite con precio de venta $1.000, editado antes que en la nube: gana la
+    // edicion mas nueva, y la de la nube es posterior
     sqliteClient.execute('INSERT INTO tenants (id, nombre, estado) VALUES (?, ?, ?)', [tenant.id, tenant.nombre, tenant.estado]);
     sqliteClient.execute(
-      `INSERT INTO productos (id, tenant_id, sku, nombre, stock_actual, precio_compra, precio_venta)
-       VALUES (?, ?, ?, ?, 50.0, 500, 1000)`,
+      `INSERT INTO productos (id, tenant_id, sku, nombre, stock_actual, precio_compra, precio_venta, updated_at)
+       VALUES (?, ?, ?, ?, 50.0, 500, 1000, '2026-01-01 00:00:00')`,
       [prod.id, prod.tenant_id, prod.sku, prod.nombre]
     );
 
@@ -194,8 +198,8 @@ describe('Conflict Resolution Policies (Net Stock Delta & Catalog Primacy)', () 
 
     sqliteClient.execute('INSERT INTO tenants (id, nombre, estado) VALUES (?, ?, ?)', [tenant.id, tenant.nombre, tenant.estado]);
     sqliteClient.execute(
-      `INSERT INTO productos (id, tenant_id, sku, nombre, stock_actual, precio_compra, precio_venta)
-       VALUES (?, ?, ?, 'Crema de leche', 10.0, 500, 1000)`,
+      `INSERT INTO productos (id, tenant_id, sku, nombre, stock_actual, precio_compra, precio_venta, updated_at)
+       VALUES (?, ?, ?, 'Crema de leche', 10.0, 500, 1000, '2026-01-01 00:00:00')`,
       [idLocal, ids.tenantId, sku]
     );
     await pgClient.query(`INSERT INTO tenants (id, nombre, estado) VALUES ($1, $2, $3)`, [tenant.id, tenant.nombre, tenant.estado]);

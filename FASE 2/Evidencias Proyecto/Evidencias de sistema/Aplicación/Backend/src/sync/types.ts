@@ -33,6 +33,9 @@ export interface ProductoReferenciado {
   impuesto_adicional_codigo?: number | null;
   impuesto_adicional_tasa?: number | null;
   factura_origen_folio?: string | null;
+  categoria?: string | null;
+  /** Marca de la ultima edicion en la caja: gana la edicion mas nueva entre la caja y la nube. */
+  updated_at?: string | null;
 }
 
 export interface SyncPushItem {
@@ -43,6 +46,17 @@ export interface SyncPushItem {
   /** Proveedores de esos productos: sin ellos el producto no se puede crear con su vinculo. */
   proveedores?: ProveedorReferenciado[];
   usuario?: UsuarioReferenciado;
+  /** Cobros y reversos de la venta: al cobrar, la nube aun no tiene la venta y no se pueden grabar. */
+  pagos?: PagoReferenciado[];
+}
+
+export interface PagoReferenciado {
+  id: string;
+  pasarela: string;
+  transaction_token: string;
+  monto: number;
+  estado_transaccion: string;
+  metadata_response: string | null;
 }
 
 export interface SyncPushPayload {
@@ -83,5 +97,7 @@ export interface RespaldoCatalogoResultado {
   success: boolean;
   productos_nuevos: number;
   proveedores_nuevos: number;
+  /** Productos que la nube ya tenia y tomaron la edicion de la caja, por ser mas nueva. */
+  productos_actualizados?: number;
   message: string;
 }
