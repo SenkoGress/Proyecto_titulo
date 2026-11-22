@@ -1660,7 +1660,7 @@ router.post('/devolucion', async (req: Request, res: Response): Promise<void> =>
         return;
       }
     }
-    if (medioPedido === 'TARJETA' && ventaElectronica && (!reverso || reverso.status === 'PENDING')) {
+    if (medioPedido === 'TARJETA' && (!reverso || reverso.status === 'PENDING')) {
       res.status(409).json({
         success: false,
         error: 'REVERSO_MANUAL',
@@ -1680,6 +1680,16 @@ router.post('/devolucion', async (req: Request, res: Response): Promise<void> =>
     // 6. Restituir inventario dentro de una transacción
     let totalDevuelto = 0;
     let devueltoAlCliente = 0;
+    // Lo cobrado que todavia no se devolvio, y si esta devolucion vacia la venta: redondear cada
+    // devolucion parcial por separado podia entregar mas de lo que entro (2 x 1.900 de una venta
+    // cobrada en 3.790)
+    const yaDevuelto = -Number(sqlite.queryOne<{ t: number }>(
+      'SELECT COALESCE(SUM(total), 0) AS t FROM transacciones_venta WHERE referencia_venta_id = ? AND es_devolucion = 1',
+      [venta_id]
+    )?.t ?? 0);
+    const restanteCobrado = Math.max(0, Number(ventaOriginal.total) - yaDevuelto);
+    const vaciaLaVenta = detallesOriginales.every((d) =>
+      disponible(d) - itemsADevolver.filter((it) => it.producto_id === d.producto_id).reduce((s, it) => s + it.cantidad, 0) <= 0);
 
     sqlite.withTransaction(() => {
       // Asegurar tipo de movimiento en SQLite
@@ -1726,7 +1736,9 @@ router.post('/devolucion', async (req: Request, res: Response): Promise<void> =>
 
       // Lo que sale de la gaveta se redondea como el cobro en efectivo (Ley 20.956); la nota de credito
       // declara el monto exacto
-      devueltoAlCliente = medioFinal === 'EFECTIVO' ? aplicarRedondeoChileno(totalDevuelto) : totalDevuelto;
+      devueltoAlCliente = medioFinal !== 'EFECTIVO'
+        ? totalDevuelto
+        : vaciaLaVenta ? restanteCobrado : Math.min(aplicarRedondeoChileno(totalDevuelto), restanteCobrado);
 
       // Registrar transacción de devolución. Lo devuelto en efectivo lleva el medio efectivo, para que
       // reste de la gaveta del turno y no del total de la tarjeta.

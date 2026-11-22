@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import { PostgresClient, defaultPgClient } from '../database/postgres/client';
-import { PostgresMigrator } from '../database/postgres/migrator';
+import { asegurarMigracionesNube } from '../database/postgres/migraciones-al-dia';
 import { Producto } from '../database/types';
 import { logger } from '../utils/logger';
 import { defaultLotesService } from '../inventory/lotes.service';
@@ -35,28 +35,9 @@ async function idEnNube(
 
 export class CloudSyncReceiverService {
   private pgClient: PostgresClient;
-  private migracionesAlDia: Promise<void> | null = null;
 
   constructor(customPgClient?: PostgresClient) {
     this.pgClient = customPgClient || defaultPgClient;
-  }
-
-  /**
-   * Las migraciones de la nube se aplican al arrancar solo si la nube esta disponible. Una caja que
-   * arranco sin conexion mandaria columnas que la nube todavia no tiene: se aplican antes de la
-   * primera sincronizacion, una vez por proceso, y se reintentan si fallan.
-   */
-  private asegurarMigraciones(): Promise<void> {
-    if (!this.migracionesAlDia) {
-      this.migracionesAlDia = new PostgresMigrator(this.pgClient).migrate().then(
-        () => undefined,
-        (err) => {
-          this.migracionesAlDia = null;
-          throw err;
-        }
-      );
-    }
-    return this.migracionesAlDia;
   }
 
   public async ingestPushBatch(payload: SyncPushPayload): Promise<SyncPushResponse> {
@@ -76,7 +57,7 @@ export class CloudSyncReceiverService {
     }
 
     try {
-      await this.asegurarMigraciones();
+      await asegurarMigracionesNube(this.pgClient);
       await this.pgClient.withTransaction(async (client) => {
         // Asegurar que exista el tipo de movimiento de venta en el catálogo maestro
         const movTipoRes = await client.query<{ id: string }>(

@@ -186,12 +186,14 @@ describe('Offline-First Push Sync & Idempotency', () => {
   });
 
   test('3. Aplica las migraciones pendientes de la nube antes de la primera sincronizacion, una vez, y reintenta si fallan', async () => {
-    // una caja que arranco sin nube no aplico la 024 al iniciar: la aplica antes de mandar ventas
+    // una caja que arranco sin nube no aplico la 024 al iniciar: la aplica antes de mandar ventas.
+    // Un cliente nuevo: la espera de migraciones se recuerda por cliente y el de arriba ya migro
+    const otraNube = (await createTestPostgresClient()).client;
     const migrar = jest.spyOn(PostgresMigrator.prototype, 'migrate')
       .mockRejectedValueOnce(new Error('la nube se cayo a mitad de camino'))
       .mockResolvedValue([]);
     try {
-      const receptor = new CloudSyncReceiverService(pgClient);
+      const receptor = new CloudSyncReceiverService(otraNube);
       const lote = { tenant_id: createFixtureIds().tenantId, sales: [{ sale: { id: createFixtureIds().ventaId }, details: [] }] } as any;
 
       const primero = await receptor.ingestPushBatch(lote);
@@ -203,6 +205,7 @@ describe('Offline-First Push Sync & Idempotency', () => {
       expect(migrar).toHaveBeenCalledTimes(2);
     } finally {
       migrar.mockRestore();
+      await otraNube.close();
     }
   });
 });

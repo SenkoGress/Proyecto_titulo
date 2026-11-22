@@ -484,12 +484,16 @@ function estaActivo(user: { activo?: number | boolean | null }): boolean {
   return user.activo === undefined || user.activo === null || Boolean(user.activo);
 }
 
-/** Un usuario con ventas o cierres de caja se desactiva: borrarlo perderia registro tributario. */
+/**
+ * Un usuario con ventas, cierres de caja o correcciones de un cierre se desactiva: borrarlo perderia
+ * registro tributario o dejaria el rastro de una correccion sin autor.
+ */
 function tieneHistorialLocal(usuarioId: string): boolean {
   return Boolean(defaultSqliteClient.queryOne(
     `SELECT 1 FROM transacciones_venta WHERE usuario_id = ?
-     UNION ALL SELECT 1 FROM cierres_caja WHERE usuario_id = ? LIMIT 1`,
-    [usuarioId, usuarioId]
+     UNION ALL SELECT 1 FROM cierres_caja WHERE usuario_id = ?
+     UNION ALL SELECT 1 FROM correcciones_cierre_caja WHERE usuario_id = ? LIMIT 1`,
+    [usuarioId, usuarioId, usuarioId]
   ));
 }
 

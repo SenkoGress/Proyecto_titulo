@@ -20,7 +20,7 @@ const rsaKey = crypto.generateKeyPairSync('rsa', {
 // Una imagen minima valida: la ruta solo exige formato data URL y el tope de tamano
 const FOTO = `data:image/png;base64,${Buffer.from('foto').toString('base64')}`;
 
-describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (81/81)', () => {
+describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (83/83)', () => {
   let server: http.Server;
   let baseUrl: string;
   let dteId = 'demo-dte-01';

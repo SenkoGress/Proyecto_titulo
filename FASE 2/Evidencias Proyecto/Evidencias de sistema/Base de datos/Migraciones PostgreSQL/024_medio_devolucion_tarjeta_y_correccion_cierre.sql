@@ -22,7 +22,7 @@ ALTER TABLE cierres_caja ADD COLUMN IF NOT EXISTS corregido_at TEXT;
 -- pueden no estar todavia. El correlativo ordena, la fecha puede empatar dentro del mismo segundo.
 CREATE TABLE IF NOT EXISTS correcciones_cierre_caja (
     id UUID PRIMARY KEY,
-    correlativo BIGSERIAL,
+    correlativo INTEGER NOT NULL,
     tenant_id TEXT NOT NULL,
     cierre_id TEXT NOT NULL,
     monto_anterior NUMERIC(14,2) NOT NULL,

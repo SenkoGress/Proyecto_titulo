@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { PostgresClient, defaultPgClient } from '../database/postgres/client';
 import { defaultSqliteClient, SqliteClient } from '../database/sqlite/client';
+import { asegurarMigracionesNube } from '../database/postgres/migraciones-al-dia';
 import { logger } from '../utils/logger';
 
 export interface MovimientoCaja {
@@ -359,10 +360,11 @@ export class CierreCajaService {
       ]
     );
 
-    // 2. Espejo en PostgreSQL Cloud
+    // 2. Espejo en PostgreSQL Cloud, con su esquema al dia: el cierre escribe columnas de la 024
     try {
+      await asegurarMigracionesNube(this.pgClient);
       await this.pgClient.query(
-        `UPDATE cierres_caja 
+        `UPDATE cierres_caja
          SET fecha_cierre = now(),
              ventas_efectivo = $1,
              ventas_transbank = $2,
@@ -480,6 +482,7 @@ export class CierreCajaService {
 
     // Espejo en la nube: el cierre puede no estar alla todavia; la correccion local ya quedo
     try {
+      await asegurarMigracionesNube(this.pgClient);
       await this.pgClient.query(
         `INSERT INTO correcciones_cierre_caja
            (id, correlativo, tenant_id, cierre_id, monto_anterior, monto_nuevo, motivo, usuario_id, created_at)
@@ -487,11 +490,14 @@ export class CierreCajaService {
         [correccion.id, correccion.correlativo, tenantId, cierreId, correccion.monto_anterior, correccion.monto_nuevo,
           correccion.motivo, correccion.usuario_id, correccion.created_at]
       );
+      // la nube toma la correccion solo si no tiene una posterior: dos envios pueden llegar en otro orden
       await this.pgClient.query(
         `UPDATE cierres_caja
          SET monto_corregido_efectivo = $1, diferencia_corregida = $2, corregido_por = $3, corregido_at = $4, updated_at = now()
-         WHERE id = $5`,
-        [montoRealEfectivo, diferenciaCorregida, usuarioId, correccion.created_at, cierreId]
+         WHERE id = $5 AND NOT EXISTS (
+           SELECT 1 FROM correcciones_cierre_caja WHERE cierre_id = $6 AND correlativo > $7
+         )`,
+        [montoRealEfectivo, diferenciaCorregida, usuarioId, correccion.created_at, cierreId, cierreId, correccion.correlativo]
       );
     } catch (pgErr) {
       logger.warn('CierreCajaService', 'La correccion del cierre no se pudo copiar a la nube', { pgErr });
@@ -516,9 +522,12 @@ export class CierreCajaService {
   public async obtenerHistorialCierres(tenantId: string): Promise<SesionCaja[]> {
     try {
       const rows = this.sqliteClient.query<any>(
-        `SELECT c.*, u.nombre as cajero_nombre 
+        `SELECT c.*, u.nombre as cajero_nombre, uc.nombre as corregido_por_nombre,
+                (SELECT cc.motivo FROM correcciones_cierre_caja cc
+                 WHERE cc.cierre_id = c.id ORDER BY cc.correlativo DESC LIMIT 1) as motivo_correccion
          FROM cierres_caja c
          LEFT JOIN usuarios u ON c.usuario_id = u.id
+         LEFT JOIN usuarios uc ON c.corregido_por = uc.id
          WHERE c.tenant_id = ?
          ORDER BY c.fecha_apertura DESC LIMIT 50`,
         [tenantId]

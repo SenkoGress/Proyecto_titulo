@@ -375,6 +375,25 @@ describe('Venta con tarjeta por el SDK oficial de Transbank POS Integrado', () =
       expect(devolucionesDe(v.json.data.saleId)).toBe(1);
     });
 
+    test('devolver de a una lo cobrado en efectivo no entrega mas de lo que entro', async () => {
+      // 2 x 1.896 = 3.792, cobrado en efectivo 3.790. Redondear cada devolucion por separado daria
+      // 1.900 + 1.900 = 3.800: la ultima entrega lo que queda de lo cobrado
+      const panId = 'aaaaaaaa-0000-4000-8000-00000000tbk3';
+      defaultSqliteClient.execute(
+        `INSERT OR IGNORE INTO productos (id, tenant_id, sku, nombre, stock_actual, stock_minimo, precio_compra, precio_venta, activo)
+         VALUES (?, ?, 'TBK-SDK-3', 'Pan para la prueba del redondeo', 40, 1, 500, 1896, 1)`,
+        [panId, tenantId]
+      );
+      const venta = await post('/pos/checkout', { metodo_pago: 'EFECTIVO', items: [{ producto_id: panId, cantidad: 2 }] });
+      expect(venta.json.data.total).toBe(3790);
+
+      const primera = await devolver(venta.json.data.saleId, { items_devolucion: [{ producto_id: panId, cantidad: 1 }] });
+      const segunda = await devolver(venta.json.data.saleId, { items_devolucion: [{ producto_id: panId, cantidad: 1 }] });
+
+      expect([primera.json.data.devuelto_al_cliente, segunda.json.data.devuelto_al_cliente]).toEqual([1900, 1890]);
+      expect(primera.json.data.devuelto_al_cliente + segunda.json.data.devuelto_al_cliente).toBe(3790);
+    });
+
     // va al final: cierra el turno de esta prueba
     test('el panel y el cierre muestran lo devuelto por transferencia en su propio rubro', async () => {
       const transferido = Number(defaultSqliteClient.queryOne<{ t: number }>(

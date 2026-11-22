@@ -627,6 +627,12 @@ dteRouter.get('/backup/export', (req: Request, res: Response) => {
       [tenantId]
     );
 
+    // el conteo original de un cierre y cada correccion: el respaldo conserva los dos
+    const correccionesCierre = defaultSqliteClient.query<any>(
+      `SELECT * FROM correcciones_cierre_caja WHERE tenant_id = ? ORDER BY cierre_id, correlativo`,
+      [tenantId]
+    );
+
     const guias = defaultSqliteClient.query<any>(
       `SELECT * FROM guias_despacho WHERE tenant_id = ? ORDER BY fecha_emision ASC`,
       [tenantId]
@@ -643,6 +649,7 @@ dteRouter.get('/backup/export', (req: Request, res: Response) => {
         folios_caf_autorizados: cafs.length,
         transacciones_venta: ventas.length,
         cierres_caja: cierresCaja.length,
+        correcciones_cierre_caja: correccionesCierre.length,
         guias_despacho: guias.length
       },
       datos: {
@@ -651,6 +658,7 @@ dteRouter.get('/backup/export', (req: Request, res: Response) => {
         cafs,
         ventas,
         cierresCaja,
+        correccionesCierre,
         guias
       }
     };
