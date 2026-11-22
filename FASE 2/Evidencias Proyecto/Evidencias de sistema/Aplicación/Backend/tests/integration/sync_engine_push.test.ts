@@ -1,6 +1,7 @@
 import { PostgresClient } from '../../src/database/postgres/client';
 import { SqliteClient } from '../../src/database/sqlite/client';
 import { CloudSyncReceiverService } from '../../src/sync/cloud-sync-receiver.service';
+import { PostgresMigrator } from '../../src/database/postgres/migrator';
 import { PosSyncEngineService } from '../../src/sync/pos-sync-engine.service';
 import { createTestPostgresClient, createTestSqliteClient } from '../helpers/db-test-helper';
 import {
@@ -82,6 +83,10 @@ describe('Offline-First Push Sync & Idempotency', () => {
       [createFixtureIds().detalleVentaId, saleId2, prod2.id, 1.0, 1500.0, 1500.0]
     );
 
+    // credito o debito y como se devolvio viajan con la venta (migracion 024)
+    sqliteClient.execute("UPDATE transacciones_venta SET tipo_tarjeta = 'CREDITO' WHERE id = ?", [saleId1]);
+    sqliteClient.execute("UPDATE transacciones_venta SET medio_devolucion = 'EFECTIVO' WHERE id = ?", [saleId2]);
+
     // Verificar que están pendientes en SQLite
     const dirtyBefore = posEngine.getPendingDirtySales(ids.tenantId);
     expect(dirtyBefore.length).toBe(2);
@@ -94,6 +99,12 @@ describe('Offline-First Push Sync & Idempotency', () => {
     expect(pushResult.success).toBe(true);
     expect(pushResult.synced_ids).toContain(saleId1);
     expect(pushResult.synced_ids).toContain(saleId2);
+
+    const enLaNube = await pgClient.query<{ id: string; tipo_tarjeta: string | null; medio_devolucion: string | null }>(
+      'SELECT id, tipo_tarjeta, medio_devolucion FROM transacciones_venta WHERE id IN ($1, $2)', [saleId1, saleId2]);
+    const porId = new Map(enLaNube.rows.map((r) => [r.id, r]));
+    expect(porId.get(saleId1)?.tipo_tarjeta).toBe('CREDITO');
+    expect(porId.get(saleId2)?.medio_devolucion).toBe('EFECTIVO');
 
     // 5. Verificar que en SQLite se limpió el estado dirty
     const dirtyAfter = posEngine.getPendingDirtySales(ids.tenantId);
@@ -172,5 +183,26 @@ describe('Offline-First Push Sync & Idempotency', () => {
 
     const stockSecond = await pgClient.query<{ stock_actual: string }>('SELECT stock_actual FROM productos WHERE id = $1', [prod.id]);
     expect(Number(stockSecond.rows[0].stock_actual)).toBe(99.0); // El stock se mantiene exactamente en 99
+  });
+
+  test('3. Aplica las migraciones pendientes de la nube antes de la primera sincronizacion, una vez, y reintenta si fallan', async () => {
+    // una caja que arranco sin nube no aplico la 024 al iniciar: la aplica antes de mandar ventas
+    const migrar = jest.spyOn(PostgresMigrator.prototype, 'migrate')
+      .mockRejectedValueOnce(new Error('la nube se cayo a mitad de camino'))
+      .mockResolvedValue([]);
+    try {
+      const receptor = new CloudSyncReceiverService(pgClient);
+      const lote = { tenant_id: createFixtureIds().tenantId, sales: [{ sale: { id: createFixtureIds().ventaId }, details: [] }] } as any;
+
+      const primero = await receptor.ingestPushBatch(lote);
+      expect(primero.success).toBe(false);
+      await receptor.ingestPushBatch(lote);
+      await receptor.ingestPushBatch(lote);
+
+      // la primera fallo y no quedo guardada: la segunda reintenta y la tercera ya no migra
+      expect(migrar).toHaveBeenCalledTimes(2);
+    } finally {
+      migrar.mockRestore();
+    }
   });
 });

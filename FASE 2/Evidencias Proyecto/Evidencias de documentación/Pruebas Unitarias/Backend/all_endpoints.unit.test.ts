@@ -167,6 +167,27 @@ describe('Batería Completa de Verificación: Cobertura del 100% de Endpoints (8
       expect(res.data.success).toBe(true);
       expect(Array.isArray(res.data.data)).toBe(true);
     });
+
+    test('8b. POST /api/v1/caja/cierres/:id/correccion corrige el conteo sin tocar el original', async () => {
+      const historial = await requestApi('GET', `/api/v1/caja/historial?tenant_id=${DEMO_TENANT}`);
+      const cerrado = historial.data.data.find((c: any) => c.estado === 'CERRADA');
+      const res = await requestApi('POST', `/api/v1/caja/cierres/${cerrado.id}/correccion`, {
+        tenant_id: DEMO_TENANT,
+        usuario_id: DEMO_USER,
+        monto_real_efectivo: Number(cerrado.monto_real_efectivo) + 1000,
+        motivo: 'Recuento del billete de mil'
+      });
+      expect(res.status).toBe(200);
+      expect(res.data.data.cierre.monto_real_efectivo).toBe(cerrado.monto_real_efectivo);
+      sesionCajaId = cerrado.id;
+    });
+
+    test('8c. GET /api/v1/caja/cierres/:id/correcciones retorna el rastro de correcciones', async () => {
+      const res = await requestApi('GET', `/api/v1/caja/cierres/${sesionCajaId}/correcciones?tenant_id=${DEMO_TENANT}`);
+      expect(res.status).toBe(200);
+      expect(res.data.data.length).toBeGreaterThan(0);
+      expect(res.data.data[res.data.data.length - 1].motivo).toBe('Recuento del billete de mil');
+    });
   });
 
   describe('9. Módulo de Configuración (config.routes.ts)', () => {

@@ -216,11 +216,14 @@ export class DashboardService {
 
     // 5. Desglose por Medio de Pago (incluyendo RutPay)
     const payRows = this.sqlite.query<{ metodo_pago: string; total: number; cantidad: number }>(
-      `SELECT COALESCE(mp.pasarela, 'EFECTIVO') as metodo_pago, SUM(tv.total) as total, COUNT(*) as cantidad
+      // lo devuelto por transferencia no salio de la gaveta ni de la tarjeta: va en su propio rubro,
+      // como en el resumen del turno
+      `SELECT CASE WHEN tv.medio_devolucion = 'TRANSFERENCIA' THEN 'TRANSFERENCIA' ELSE COALESCE(mp.pasarela, 'EFECTIVO') END as metodo_pago,
+              SUM(tv.total) as total, COUNT(*) as cantidad
        FROM transacciones_venta tv
        LEFT JOIN metodos_pago mp ON tv.metodo_pago_id = mp.id
        WHERE tv.tenant_id = ? ${dateFilter}
-       GROUP BY COALESCE(mp.pasarela, 'EFECTIVO')
+       GROUP BY CASE WHEN tv.medio_devolucion = 'TRANSFERENCIA' THEN 'TRANSFERENCIA' ELSE COALESCE(mp.pasarela, 'EFECTIVO') END
        ORDER BY total DESC`,
       [tenantId]
     );

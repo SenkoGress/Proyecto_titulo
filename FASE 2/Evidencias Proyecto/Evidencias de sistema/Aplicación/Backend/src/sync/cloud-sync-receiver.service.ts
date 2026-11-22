@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import { PostgresClient, defaultPgClient } from '../database/postgres/client';
+import { PostgresMigrator } from '../database/postgres/migrator';
 import { Producto } from '../database/types';
 import { logger } from '../utils/logger';
 import { defaultLotesService } from '../inventory/lotes.service';
@@ -34,9 +35,28 @@ async function idEnNube(
 
 export class CloudSyncReceiverService {
   private pgClient: PostgresClient;
+  private migracionesAlDia: Promise<void> | null = null;
 
   constructor(customPgClient?: PostgresClient) {
     this.pgClient = customPgClient || defaultPgClient;
+  }
+
+  /**
+   * Las migraciones de la nube se aplican al arrancar solo si la nube esta disponible. Una caja que
+   * arranco sin conexion mandaria columnas que la nube todavia no tiene: se aplican antes de la
+   * primera sincronizacion, una vez por proceso, y se reintentan si fallan.
+   */
+  private asegurarMigraciones(): Promise<void> {
+    if (!this.migracionesAlDia) {
+      this.migracionesAlDia = new PostgresMigrator(this.pgClient).migrate().then(
+        () => undefined,
+        (err) => {
+          this.migracionesAlDia = null;
+          throw err;
+        }
+      );
+    }
+    return this.migracionesAlDia;
   }
 
   public async ingestPushBatch(payload: SyncPushPayload): Promise<SyncPushResponse> {
@@ -56,6 +76,7 @@ export class CloudSyncReceiverService {
     }
 
     try {
+      await this.asegurarMigraciones();
       await this.pgClient.withTransaction(async (client) => {
         // Asegurar que exista el tipo de movimiento de venta en el catálogo maestro
         const movTipoRes = await client.query<{ id: string }>(
@@ -97,8 +118,8 @@ export class CloudSyncReceiverService {
             // 2. Insertar cabecera de Transacciones_Venta (El POS manda en Transacciones) con soporte DTE
             await client.query(
               `INSERT INTO transacciones_venta 
-               (id, tenant_id, usuario_id, folio_local_sqlite, fecha, total, unidades, estado, rut_cliente, observaciones, metodo_pago_id, sync_status, last_synced_at, tipo_documento_tributario, dte_folio, dte_id, monto_ila, es_devolucion, referencia_venta_id, is_dirty, sync_attempts)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'SYNCED', now(), $12, $13, $14, $15, $16, $17, 0, 0)
+               (id, tenant_id, usuario_id, folio_local_sqlite, fecha, total, unidades, estado, rut_cliente, observaciones, metodo_pago_id, sync_status, last_synced_at, tipo_documento_tributario, dte_folio, dte_id, monto_ila, es_devolucion, referencia_venta_id, tipo_tarjeta, medio_devolucion, is_dirty, sync_attempts)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'SYNCED', now(), $12, $13, $14, $15, $16, $17, $18, $19, 0, 0)
                ON CONFLICT (id) DO UPDATE SET
                  sync_status = 'SYNCED',
                  last_synced_at = now(),
@@ -120,7 +141,9 @@ export class CloudSyncReceiverService {
                 (sale as any).dte_id || null,
                 (sale as any).monto_ila || 0,
                 (sale as any).es_devolucion ? 1 : 0,
-                (sale as any).referencia_venta_id || null
+                (sale as any).referencia_venta_id || null,
+                (sale as any).tipo_tarjeta || null,
+                (sale as any).medio_devolucion || null
               ]
             );
 

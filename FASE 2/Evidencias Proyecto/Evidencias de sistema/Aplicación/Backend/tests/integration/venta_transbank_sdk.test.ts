@@ -15,6 +15,7 @@ jest.mock('serialport', () => {
 
 import { MockBinding, MockPortBinding } from '@serialport/binding-mock';
 import app from '../../src/index';
+import { tipoTarjetaDePasarela } from '../../src/routes/pos.routes';
 import { initializeDatabase } from '../../src/database/init-db';
 import { defaultSqliteClient } from '../../src/database/sqlite/client';
 
@@ -210,5 +211,185 @@ describe('Venta con tarjeta por el SDK oficial de Transbank POS Integrado', () =
     expect(json.data.folio_nc).toBeGreaterThan(0);
     expect(json.data.reverso_tarjeta).toMatchObject({ pasarela: 'RutPay', manual: true });
     expect(json.message).toContain('efectivo o por transferencia');
+  });
+
+  describe('credito o debito, y como se devolvio el dinero', () => {
+    const otroProducto = 'aaaaaaaa-0000-4000-8000-00000000tbk2';
+    const post = async (ruta: string, cuerpo: Record<string, unknown>) => {
+      const res = await fetch(`${base}/api/v1${ruta}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tenant_id: tenantId, usuario_id: usuarioId, ...cuerpo }),
+      });
+      return { status: res.status, json: (await res.json()) as any };
+    };
+    const vender = (cantidad: number, extra: Record<string, unknown> = {}) =>
+      post('/pos/checkout', { metodo_pago: 'TRANSBANK', items: [{ producto_id: otroProducto, cantidad }], ...extra });
+    const devolver = (ventaId: string, extra: Record<string, unknown> = {}) => post('/pos/devolucion', { venta_id: ventaId, ...extra });
+    const resumen = async () => ((await (await fetch(`${base}/api/v1/caja/resumen?tenant_id=${tenantId}`)).json()) as any).data;
+    const venta = (id: string) => defaultSqliteClient.queryOne<any>('SELECT * FROM transacciones_venta WHERE id = ?', [id]);
+    const devolucionesDe = (id: string) =>
+      Number(defaultSqliteClient.queryOne<{ n: number }>('SELECT COUNT(*) AS n FROM transacciones_venta WHERE referencia_venta_id = ?', [id])!.n);
+    const stockOtro = () => defaultSqliteClient.queryOne<{ s: number }>('SELECT stock_actual AS s FROM productos WHERE id = ?', [otroProducto])!.s;
+
+    beforeAll(() => {
+      // 1.893: el efectivo que sale de la gaveta se redondea a 1.890 y la nota de credito queda exacta
+      defaultSqliteClient.execute(
+        `INSERT OR IGNORE INTO productos (id, tenant_id, sku, nombre, stock_actual, stock_minimo, precio_compra, precio_venta, activo)
+         VALUES (?, ?, 'TBK-SDK-2', 'Queso para la prueba de la devolucion', 40, 1, 500, 1893, 1)`,
+        [otroProducto, tenantId]
+      );
+      process.env.PAGOS_MODO = 'produccion';
+      terminal.codigoVenta = '00';
+    });
+
+    test('manda el tipo de tarjeta que informa el terminal, y el historial lo muestra', async () => {
+      // el terminal de la prueba responde CR (credito) aunque el cajero diga debito
+      const res = await vender(1, { tipo_tarjeta: 'debito' });
+      expect(res.status).toBe(201);
+      expect(venta(res.json.data.saleId).tipo_tarjeta).toBe('CREDITO');
+
+      const historial: any = await (await fetch(`${base}/api/v1/pos/transactions?tenant_id=${tenantId}`)).json();
+      const fila = (historial.data ?? historial).find((v: any) => v.id === res.json.data.saleId);
+      expect(fila.tipo_tarjeta).toBe('CREDITO');
+
+      expect((await vender(1, { tipo_tarjeta: 'PREPAGO' })).status).toBe(400);
+    });
+
+    test('cada pasarela informa el tipo a su manera; SumUp solo da la marca y RutPay no es tarjeta', async () => {
+      expect(tipoTarjetaDePasarela({ card_type: 'DB' })).toBe('DEBITO');
+      expect(tipoTarjetaDePasarela({ card_type: 'debit_card' })).toBe('DEBITO');
+      expect(tipoTarjetaDePasarela({ card_type: 'credit_card' })).toBe('CREDITO');
+      expect(tipoTarjetaDePasarela({ card_type: 'MASTERCARD' })).toBeNull();
+
+      // RutPay cobra solo en modo simulado: no lleva tipo de tarjeta aunque el cajero lo envie
+      process.env.PAGOS_MODO = 'simulado';
+      try {
+        const rutpay = await post('/pos/checkout', { metodo_pago: 'RUTPAY', tipo_tarjeta: 'DEBITO', items: [{ producto_id: otroProducto, cantidad: 1 }] });
+        expect(rutpay.status).toBe(201);
+        expect(venta(rutpay.json.data.saleId).tipo_tarjeta).toBeNull();
+        const efectivo = await post('/pos/checkout', { metodo_pago: 'EFECTIVO', tipo_tarjeta: 'CREDITO', items: [{ producto_id: otroProducto, cantidad: 1 }] });
+        expect(venta(efectivo.json.data.saleId).tipo_tarjeta).toBeNull();
+        // en modo simulado Transbank no informa el tipo: vale el del cajero
+        const simulada = await vender(1, { tipo_tarjeta: 'DEBITO' });
+        expect(venta(simulada.json.data.saleId).tipo_tarjeta).toBe('DEBITO');
+      } finally {
+        process.env.PAGOS_MODO = 'produccion';
+      }
+    });
+
+    test('una devolucion de antes de la 1.0.6, sin medio, se clasifica como antes', async () => {
+      const v = await vender(1);
+      const id = v.json.data.saleId;
+      const antes = await resumen();
+      // como la dejaba la version anterior: hereda el medio de la venta y no dice como se devolvio
+      defaultSqliteClient.execute(
+        `INSERT INTO transacciones_venta (id, tenant_id, usuario_id, folio_local_sqlite, total, unidades, estado, metodo_pago_id, es_devolucion, referencia_venta_id, fecha)
+         SELECT 'dev-antigua-' || id, tenant_id, usuario_id, 'DEV-ANTIGUA', -total, unidades, 'COMPLETADA', metodo_pago_id, 1, id, datetime('now')
+         FROM transacciones_venta WHERE id = ?`,
+        [id]
+      );
+      const despues = await resumen();
+      expect(despues.ventas_transbank).toBe(antes.ventas_transbank - 1893);
+      expect(despues.monto_esperado_efectivo).toBe(antes.monto_esperado_efectivo);
+      expect(despues.devoluciones_transferencia).toBe(antes.devoluciones_transferencia);
+    });
+
+    test('con TARJETA y un reverso imposible responde 409 sin registrar nada; en efectivo resta de la gaveta, redondeado', async () => {
+      const v = await vender(2);
+      const id = v.json.data.saleId;
+      const stock0 = stockOtro();
+
+      const conTarjeta = await devolver(id, { medio_devolucion: 'TARJETA', items_devolucion: [{ producto_id: otroProducto, cantidad: 1 }] });
+      expect([conTarjeta.status, conTarjeta.json.error]).toEqual([409, 'REVERSO_MANUAL']);
+      expect(conTarjeta.json.message).toContain('portal de Transbank');
+      expect(devolucionesDe(id)).toBe(0);
+      expect(stockOtro()).toBe(stock0);
+
+      const antes = await resumen();
+      const enEfectivo = await devolver(id, { medio_devolucion: 'efectivo', items_devolucion: [{ producto_id: otroProducto, cantidad: 1 }] });
+      expect(enEfectivo.status).toBe(200);
+      expect(enEfectivo.json.data).toMatchObject({ medio_devolucion: 'EFECTIVO', total_devuelto: 1893, devuelto_al_cliente: 1890 });
+      const nc = defaultSqliteClient.queryOne<{ monto_total: number }>(
+        'SELECT monto_total FROM sii_dte_emitidos WHERE venta_id = ?', [enEfectivo.json.data.devolucion_id]);
+      expect(Number(nc?.monto_total)).toBe(1893);
+      const despues = await resumen();
+      expect(despues.monto_esperado_efectivo).toBe(antes.monto_esperado_efectivo - 1890);
+      expect(despues.ventas_transbank).toBe(antes.ventas_transbank);
+
+      // el resto con TARJETA: Transbank no anula una parte, 409; la gaveta resta solo la primera
+      const resto = await devolver(id, { medio_devolucion: 'TARJETA' });
+      expect(resto.status).toBe(409);
+      expect((await resumen()).monto_esperado_efectivo).toBe(antes.monto_esperado_efectivo - 1890);
+
+      // por transferencia no sale de la gaveta ni de la tarjeta, y el total sigue cuadrando con el desglose
+      const porTransferencia = await devolver(id, { medio_devolucion: 'TRANSFERENCIA' });
+      expect(porTransferencia.status).toBe(200);
+      const fin = await resumen();
+      expect(fin.monto_esperado_efectivo).toBe(despues.monto_esperado_efectivo);
+      expect(fin.ventas_transbank).toBe(despues.ventas_transbank);
+      expect(fin.devoluciones_transferencia).toBe((despues.devoluciones_transferencia ?? 0) + 1893);
+      expect(fin.total_ventas).toBe(
+        fin.ventas_efectivo + fin.ventas_transbank + fin.ventas_mercadopago + fin.ventas_sumup + fin.ventas_rutpay - fin.devoluciones_transferencia
+      );
+      expect(venta(porTransferencia.json.data.devolucion_id).medio_devolucion).toBe('TRANSFERENCIA');
+    });
+
+    test('una venta con tarjeta sin pago aprobado no se da por devuelta en la maquina', async () => {
+      const v = await vender(1);
+      const id = v.json.data.saleId;
+      defaultSqliteClient.execute('DELETE FROM payment_transactions WHERE sale_id = ?', [id]);
+
+      const res = await devolver(id, { medio_devolucion: 'TARJETA' });
+      expect([res.status, res.json.error]).toEqual([409, 'REVERSO_MANUAL']);
+      expect(devolucionesDe(id)).toBe(0);
+    });
+
+    test('medios invalidos y la caja cerrada se rechazan antes de devolver nada', async () => {
+      const enEfectivo = await post('/pos/checkout', { metodo_pago: 'EFECTIVO', items: [{ producto_id: otroProducto, cantidad: 1 }] });
+      const id = enEfectivo.json.data.saleId;
+      expect((await devolver(id, { medio_devolucion: 'CHEQUE' })).status).toBe(400);
+      expect((await devolver(id, { medio_devolucion: 'TRANSFERENCIA' })).json.error).toBe('MEDIO_DEVOLUCION_INVALIDO');
+      expect((await devolver(id, { medio_devolucion: 'TARJETA' })).status).toBe(400);
+
+      const turno = defaultSqliteClient.queryOne<{ id: string }>("SELECT id FROM cierres_caja WHERE tenant_id = ? AND estado = 'ABIERTA'", [tenantId])!;
+      defaultSqliteClient.execute("UPDATE cierres_caja SET estado = 'CERRADA' WHERE id = ?", [turno.id]);
+      try {
+        const cerrada = await devolver(id, { medio_devolucion: 'EFECTIVO' });
+        expect([cerrada.status, cerrada.json.error]).toEqual([400, 'TURNO_CERRADO']);
+      } finally {
+        defaultSqliteClient.execute("UPDATE cierres_caja SET estado = 'ABIERTA' WHERE id = ?", [turno.id]);
+      }
+      expect(devolucionesDe(id)).toBe(0);
+
+      // sin medio, la venta en efectivo se devuelve como siempre y queda dicho que fue en efectivo
+      const normal = await devolver(id);
+      expect(normal.status).toBe(200);
+      expect(normal.json.data.medio_devolucion).toBe('EFECTIVO');
+    });
+
+    test('dos devoluciones de la misma venta a la vez: una se registra y la otra espera su turno', async () => {
+      const v = await vender(1);
+      const [a, b] = await Promise.all([devolver(v.json.data.saleId), devolver(v.json.data.saleId)]);
+
+      expect([a.status, b.status].sort()).toEqual([200, 409]);
+      expect([a.json.error, b.json.error]).toContain('DEVOLUCION_EN_CURSO');
+      expect(devolucionesDe(v.json.data.saleId)).toBe(1);
+    });
+
+    // va al final: cierra el turno de esta prueba
+    test('el panel y el cierre muestran lo devuelto por transferencia en su propio rubro', async () => {
+      const transferido = Number(defaultSqliteClient.queryOne<{ t: number }>(
+        "SELECT COALESCE(SUM(-total), 0) AS t FROM transacciones_venta WHERE tenant_id = ? AND medio_devolucion = 'TRANSFERENCIA'", [tenantId])!.t);
+      expect(transferido).toBeGreaterThan(0);
+
+      const panel: any = await (await fetch(`${base}/api/v1/dashboard/overview?tenant_id=${tenantId}&periodo=historico`)).json();
+      const rubro = panel.data.paymentsBreakdown.find((p: any) => p.metodo === 'TRANSFERENCIA');
+      expect(rubro.total).toBe(-transferido);
+
+      const esperado = (await resumen()).devoluciones_transferencia;
+      const cerrado = await post('/caja/cerrar', { monto_real_efectivo: 0 });
+      expect(cerrado.status).toBe(200);
+      const guardado = defaultSqliteClient.queryOne<{ d: number }>('SELECT devoluciones_transferencia AS d FROM cierres_caja WHERE id = ?', [cerrado.json.data.id])!;
+      expect(Number(guardado.d)).toBe(esperado);
+    });
   });
 });

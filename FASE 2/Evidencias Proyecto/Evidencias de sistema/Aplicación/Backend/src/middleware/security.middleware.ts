@@ -199,6 +199,11 @@ function isAdminCatalogWrite(method: string | undefined, fullPath: string): bool
   return false;
 }
 
+/** Corregir el conteo de un cierre de caja, y ver su rastro, es del administrador. */
+function isAdminCierreCorreccion(fullPath: string): boolean {
+  return /^\/api\/v1\/caja\/cierres\/[^/]+\/correccion(es)?\/?$/.test(fullPath);
+}
+
 /**
  * Middleware de Control de Acceso Basado en Roles (RBAC) y Seguridad JWT
  * - Rutas exclusivas de administrador: /dashboard, /invoices, /suppliers, /replenishment, /dte, /config
@@ -301,7 +306,8 @@ export const rbacAuthMiddleware = (req: Request, res: Response, next: NextFuncti
     const isAdminRoute =
       (/^\/api\/v1\/(dashboard|invoices|suppliers|replenishment|dte|config)(\/|$)/.test(fullPath) &&
         !isCashierDteRoute(req.method, fullPath)) ||
-      isAdminCatalogWrite(req.method, fullPath);
+      isAdminCatalogWrite(req.method, fullPath) ||
+      isAdminCierreCorreccion(fullPath);
     if (isAdminRoute && decodedUser.rol !== 'admin') {
       logger.warn('SecurityMiddleware', `Acceso denegado a ruta admin (${fullPath}) para rol ${decodedUser.rol}`, {
         userId: decodedUser.id,

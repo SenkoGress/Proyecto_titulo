@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { defaultCierreCajaService } from '../caja/cierre-caja.service';
+import { defaultCierreCajaService, ErrorCorreccionCierre } from '../caja/cierre-caja.service';
 import { defaultSqliteClient } from '../database/sqlite/client';
 import { logger } from '../utils/logger';
 import { defaultSiiEnvio } from '../dte/sii-envio.service';
@@ -112,6 +112,48 @@ router.get('/historial', async (req: Request, res: Response): Promise<void> => {
   } catch (error) {
     res.status(500).json({ success: false, message: 'Failed to fetch cash history' });
   }
+});
+
+/**
+ * POST /api/v1/caja/cierres/:id/correccion
+ * El administrador corrige el conteo del efectivo de un cierre; el original no se modifica
+ */
+router.post('/cierres/:id/correccion', async (req: Request, res: Response): Promise<void> => {
+  const { tenant_id, usuario_id, monto_real_efectivo, motivo } = req.body;
+  if (!tenant_id) {
+    res.status(400).json({ success: false, message: 'tenant_id is required' });
+    return;
+  }
+  try {
+    const resultado = await defaultCierreCajaService.corregirCierre(
+      tenant_id,
+      String(req.params.id),
+      usuario_id,
+      monto_real_efectivo === undefined || monto_real_efectivo === null || monto_real_efectivo === '' ? NaN : Number(monto_real_efectivo),
+      motivo
+    );
+    res.status(200).json({ success: true, data: resultado });
+  } catch (error) {
+    if (error instanceof ErrorCorreccionCierre) {
+      res.status(error.status).json({ success: false, error: error.codigo, message: error.message });
+      return;
+    }
+    logger.error('CajaRoutes', 'Error corrigiendo el cierre de caja', error);
+    res.status(500).json({ success: false, message: 'No se pudo corregir el cierre de caja' });
+  }
+});
+
+/**
+ * GET /api/v1/caja/cierres/:id/correcciones
+ * Rastro de las correcciones de un cierre, en orden
+ */
+router.get('/cierres/:id/correcciones', (req: Request, res: Response): void => {
+  const tenantId = req.query.tenant_id as string;
+  if (!tenantId) {
+    res.status(400).json({ success: false, message: 'tenant_id is required' });
+    return;
+  }
+  res.status(200).json({ success: true, data: defaultCierreCajaService.obtenerCorrecciones(tenantId, String(req.params.id)) });
 });
 
 /**

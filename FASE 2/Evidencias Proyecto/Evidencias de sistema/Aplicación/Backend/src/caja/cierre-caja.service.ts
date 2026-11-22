@@ -35,10 +35,34 @@ export interface SesionCaja {
   monto_esperado_efectivo: number;
   monto_real_efectivo?: number | null;
   diferencia_efectivo?: number | null;
+  /** Lo devuelto por transferencia: no sale de la gaveta ni de la tarjeta, pero resta del total. */
+  devoluciones_transferencia?: number;
+  monto_corregido_efectivo?: number | null;
+  diferencia_corregida?: number | null;
+  corregido_por?: string | null;
+  corregido_at?: string | null;
   estado: 'ABIERTA' | 'CERRADA';
   observaciones?: string | null;
   transacciones_count?: number;
   movimientos?: MovimientoCaja[];
+}
+
+export interface CorreccionCierre {
+  id: string;
+  correlativo: number;
+  cierre_id: string;
+  monto_anterior: number;
+  monto_nuevo: number;
+  motivo: string;
+  usuario_id: string;
+  created_at: string;
+}
+
+/** Error de la correccion de un cierre con el codigo HTTP que corresponde. */
+export class ErrorCorreccionCierre extends Error {
+  constructor(public readonly status: number, public readonly codigo: string, mensaje: string) {
+    super(mensaje);
+  }
 }
 
 export class CierreCajaService {
@@ -195,7 +219,7 @@ export class CierreCajaService {
 
     // Consultar las ventas realizadas desde la fecha de apertura de esta sesión
     const ventas = this.sqliteClient.query<any>(
-      `SELECT v.id, v.total, v.monto_ila, v.metodo_pago_id, mp.pasarela 
+      `SELECT v.id, v.total, v.monto_ila, v.metodo_pago_id, v.medio_devolucion, mp.pasarela
        FROM transacciones_venta v
        LEFT JOIN metodos_pago mp ON v.metodo_pago_id = mp.id
        WHERE v.tenant_id = ? AND v.estado IN ('COMPLETADA', 'PAGADA') AND v.fecha >= ?`,
@@ -207,6 +231,7 @@ export class CierreCajaService {
     let mercadopago = 0;
     let sumup = 0;
     let rutpay = 0;
+    let devolucionesTransferencia = 0;
     let totalIla = 0;
     let total = 0;
 
@@ -214,6 +239,12 @@ export class CierreCajaService {
       const monto = Number(v.total) || 0;
       total += monto;
       totalIla += Number(v.monto_ila) || 0;
+
+      // Devuelto por transferencia: sale de la cuenta del dueño, no de la gaveta ni de la tarjeta
+      if (String(v.medio_devolucion || '').toUpperCase() === 'TRANSFERENCIA') {
+        devolucionesTransferencia -= monto;
+        continue;
+      }
 
       const pasarela = (v.pasarela || '').toUpperCase();
       if (pasarela === 'TRANSBANK') {
@@ -261,6 +292,7 @@ export class CierreCajaService {
       ventas_mercadopago: mercadopago,
       ventas_sumup: sumup,
       ventas_rutpay: rutpay,
+      devoluciones_transferencia: devolucionesTransferencia,
       total_ila: totalIla,
       monto_ila: totalIla,
       total_ingresos_caja: totalIngresos,
@@ -307,6 +339,7 @@ export class CierreCajaService {
            monto_esperado_efectivo = ?,
            monto_real_efectivo = ?,
            diferencia_efectivo = ?,
+           devoluciones_transferencia = ?,
            estado = 'CERRADA',
            observaciones = ?,
            updated_at = datetime('now')
@@ -320,6 +353,7 @@ export class CierreCajaService {
         resumen.monto_esperado_efectivo,
         montoRealEfectivo,
         diferencia,
+        resumen.devoluciones_transferencia ?? 0,
         observaciones || null,
         resumen.id
       ]
@@ -338,10 +372,11 @@ export class CierreCajaService {
              monto_esperado_efectivo = $6,
              monto_real_efectivo = $7,
              diferencia_efectivo = $8,
+             devoluciones_transferencia = $9,
              estado = 'CERRADA',
-             observaciones = $9,
+             observaciones = $10,
              updated_at = now()
-         WHERE id = $10`,
+         WHERE id = $11`,
         [
           resumen.ventas_efectivo,
           resumen.ventas_transbank,
@@ -351,6 +386,7 @@ export class CierreCajaService {
           resumen.monto_esperado_efectivo,
           montoRealEfectivo,
           diferencia,
+          resumen.devoluciones_transferencia ?? 0,
           observaciones || null,
           resumen.id
         ]
@@ -372,6 +408,106 @@ export class CierreCajaService {
       estado: 'CERRADA',
       observaciones: observaciones || null
     };
+  }
+
+  /**
+   * Corrige el conteo del efectivo de un cierre ya hecho. El conteo y la diferencia originales no se
+   * tocan: la correccion queda en su propio rastro, que solo crece, y el cierre guarda la ultima.
+   */
+  public async corregirCierre(
+    tenantId: string,
+    cierreId: string,
+    usuarioId: string,
+    montoRealEfectivo: number,
+    motivo: string
+  ): Promise<{ cierre: SesionCaja; correccion: CorreccionCierre }> {
+    if (!usuarioId) {
+      throw new ErrorCorreccionCierre(400, 'USUARIO_REQUERIDO', 'Falta el usuario que corrige el cierre.');
+    }
+    if (!Number.isFinite(montoRealEfectivo) || montoRealEfectivo < 0) {
+      throw new ErrorCorreccionCierre(400, 'MONTO_INVALIDO', 'El monto contado debe ser un numero mayor o igual a cero.');
+    }
+    const motivoLimpio = String(motivo ?? '').trim();
+    if (!motivoLimpio) {
+      throw new ErrorCorreccionCierre(400, 'MOTIVO_REQUERIDO', 'La correccion de un cierre necesita un motivo.');
+    }
+
+    let correccion!: CorreccionCierre;
+    let diferenciaCorregida = 0;
+    // Leer y escribir sin esperas entre medio: dos correcciones a la vez no se pisan el correlativo
+    this.sqliteClient.withTransaction(() => {
+      const cierre = this.sqliteClient.queryOne<any>(
+        'SELECT * FROM cierres_caja WHERE id = ? AND tenant_id = ?',
+        [cierreId, tenantId]
+      );
+      if (!cierre) {
+        throw new ErrorCorreccionCierre(404, 'CIERRE_NO_ENCONTRADO', 'El cierre de caja no existe.');
+      }
+      if (cierre.estado !== 'CERRADA') {
+        throw new ErrorCorreccionCierre(409, 'TURNO_ABIERTO', 'El turno sigue abierto: el conteo se corrige despues de cerrarlo.');
+      }
+      const vigente = cierre.monto_corregido_efectivo ?? cierre.monto_real_efectivo ?? 0;
+      diferenciaCorregida = montoRealEfectivo - Number(cierre.monto_esperado_efectivo || 0);
+      const ultimo = this.sqliteClient.queryOne<{ n: number }>(
+        'SELECT COALESCE(MAX(correlativo), 0) AS n FROM correcciones_cierre_caja WHERE cierre_id = ?',
+        [cierreId]
+      );
+      correccion = {
+        id: uuidv4(),
+        correlativo: Number(ultimo?.n ?? 0) + 1,
+        cierre_id: cierreId,
+        monto_anterior: Number(vigente),
+        monto_nuevo: montoRealEfectivo,
+        motivo: motivoLimpio,
+        usuario_id: usuarioId,
+        created_at: new Date().toISOString()
+      };
+      this.sqliteClient.execute(
+        `INSERT INTO correcciones_cierre_caja
+           (id, correlativo, tenant_id, cierre_id, monto_anterior, monto_nuevo, motivo, usuario_id, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [correccion.id, correccion.correlativo, tenantId, cierreId, correccion.monto_anterior, correccion.monto_nuevo,
+          correccion.motivo, correccion.usuario_id, correccion.created_at]
+      );
+      this.sqliteClient.execute(
+        `UPDATE cierres_caja
+         SET monto_corregido_efectivo = ?, diferencia_corregida = ?, corregido_por = ?, corregido_at = ?,
+             updated_at = datetime('now')
+         WHERE id = ?`,
+        [montoRealEfectivo, diferenciaCorregida, usuarioId, correccion.created_at, cierreId]
+      );
+    });
+
+    // Espejo en la nube: el cierre puede no estar alla todavia; la correccion local ya quedo
+    try {
+      await this.pgClient.query(
+        `INSERT INTO correcciones_cierre_caja
+           (id, correlativo, tenant_id, cierre_id, monto_anterior, monto_nuevo, motivo, usuario_id, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT (id) DO NOTHING`,
+        [correccion.id, correccion.correlativo, tenantId, cierreId, correccion.monto_anterior, correccion.monto_nuevo,
+          correccion.motivo, correccion.usuario_id, correccion.created_at]
+      );
+      await this.pgClient.query(
+        `UPDATE cierres_caja
+         SET monto_corregido_efectivo = $1, diferencia_corregida = $2, corregido_por = $3, corregido_at = $4, updated_at = now()
+         WHERE id = $5`,
+        [montoRealEfectivo, diferenciaCorregida, usuarioId, correccion.created_at, cierreId]
+      );
+    } catch (pgErr) {
+      logger.warn('CierreCajaService', 'La correccion del cierre no se pudo copiar a la nube', { pgErr });
+    }
+
+    const cierre = this.sqliteClient.queryOne<SesionCaja>('SELECT * FROM cierres_caja WHERE id = ?', [cierreId])!;
+    return { cierre, correccion };
+  }
+
+  /** Rastro de las correcciones de un cierre, en el orden en que se hicieron. */
+  public obtenerCorrecciones(tenantId: string, cierreId: string): CorreccionCierre[] {
+    return this.sqliteClient.query<CorreccionCierre>(
+      `SELECT id, correlativo, cierre_id, monto_anterior, monto_nuevo, motivo, usuario_id, created_at
+       FROM correcciones_cierre_caja WHERE tenant_id = ? AND cierre_id = ? ORDER BY correlativo`,
+      [tenantId, cierreId]
+    );
   }
 
   /**

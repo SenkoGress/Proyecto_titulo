@@ -36,6 +36,22 @@ import { rutSiiSeguro } from '../utils/sii.utils';
 const router = Router();
 const sqlite = defaultSqliteClient;
 
+const MEDIOS_DEVOLUCION = ['TARJETA', 'EFECTIVO', 'TRANSFERENCIA'];
+const PASARELAS_ELECTRONICAS = ['TRANSBANK', 'MERCADOPAGO', 'SUMUP', 'RUTPAY'];
+const PASARELAS_CON_TARJETA = ['TRANSBANK', 'MERCADOPAGO', 'SUMUP'];
+const TIPOS_TARJETA = ['CREDITO', 'DEBITO'];
+
+/** Credito o debito segun lo que informa la maquina; null si no lo informa (SumUp solo da la marca). */
+export function tipoTarjetaDePasarela(metadata: Record<string, unknown> | undefined): string | null {
+  const valor = String(metadata?.card_type ?? '').trim().toUpperCase();
+  if (valor === 'CR' || valor === 'CREDIT_CARD') return 'CREDITO';
+  if (valor === 'DB' || valor === 'DEBIT_CARD') return 'DEBITO';
+  return null;
+}
+// Una devolucion espera a la maquina antes de registrar: otra de la misma venta en ese lapso
+// calcularia lo disponible sin ver la primera y devolveria dos veces
+const devolucionesEnCurso = new Set<string>();
+
 /**
  * Modo de cobro y maquinas que el local tiene configuradas, para que la caja muestre solo esas.
  * En modo simulado no se informa ninguna: todas aprueban sin salir del equipo.
@@ -738,7 +754,8 @@ router.post('/checkout', async (req: Request, res: Response): Promise<void> => {
       tipo_comprobante = 'BOLETA', // 'BOLETA' | 'FACTURA'
       receptor_empresa, // { rut, razon_social, giro, direccion, comuna, ciudad }
       rut_cliente,
-      observaciones
+      observaciones,
+      tipo_tarjeta
     } = req.body;
 
   if (!tenant_id || !usuario_id || !Array.isArray(items) || items.length === 0) {
@@ -746,6 +763,14 @@ router.post('/checkout', async (req: Request, res: Response): Promise<void> => {
       success: false,
       message: 'Missing required checkout fields: tenant_id, usuario_id, and non-empty items array'
     });
+    return;
+  }
+
+  const tipoTarjetaPedido = tipo_tarjeta === undefined || tipo_tarjeta === null || tipo_tarjeta === ''
+    ? null
+    : String(tipo_tarjeta).trim().toUpperCase();
+  if (tipoTarjetaPedido !== null && !TIPOS_TARJETA.includes(tipoTarjetaPedido)) {
+    res.status(400).json({ success: false, error: 'TIPO_TARJETA_INVALIDO', message: 'El tipo de tarjeta debe ser CREDITO o DEBITO.' });
     return;
   }
 
@@ -867,6 +892,12 @@ router.post('/checkout', async (req: Request, res: Response): Promise<void> => {
       }
     }
 
+    // Credito o debito: manda lo que informa la maquina; si no lo informa, lo que indico el cajero.
+    // Con efectivo o RutPay no hay tarjeta.
+    const tipoTarjetaFinal = PASARELAS_CON_TARJETA.includes(String(metodo_pago).toUpperCase())
+      ? tipoTarjetaDePasarela(cobro?.metadataResponse) ?? tipoTarjetaPedido
+      : null;
+
     // 2. Ejecutar venta transaccional en SQLite
     cobroAprobado = cobro;
     const checkoutResult = sqlite.withTransaction(() => {
@@ -892,10 +923,10 @@ router.post('/checkout', async (req: Request, res: Response): Promise<void> => {
 
       // Insertar transacciones_venta en SQLite con is_dirty = 1
       sqlite.execute(
-        `INSERT INTO transacciones_venta 
-         (id, tenant_id, usuario_id, folio_local_sqlite, total, unidades, estado, rut_cliente, observaciones, metodo_pago_id, is_dirty, sync_attempts, sync_status, fecha)
-         VALUES (?, ?, ?, ?, ?, ?, 'COMPLETADA', ?, ?, ?, 1, 0, 'PENDING', datetime('now'))`,
-        [saleId, tenant_id, usuario_id, folio, total, unidades, rut_cliente || null, observaciones || null, metodoPagoId]
+        `INSERT INTO transacciones_venta
+         (id, tenant_id, usuario_id, folio_local_sqlite, total, unidades, estado, rut_cliente, observaciones, metodo_pago_id, tipo_tarjeta, is_dirty, sync_attempts, sync_status, fecha)
+         VALUES (?, ?, ?, ?, ?, ?, 'COMPLETADA', ?, ?, ?, ?, 1, 0, 'PENDING', datetime('now'))`,
+        [saleId, tenant_id, usuario_id, folio, total, unidades, rut_cliente || null, observaciones || null, metodoPagoId, tipoTarjetaFinal]
       );
 
       // Procesar cada detalle y actualizar stock
@@ -1393,7 +1424,7 @@ router.get('/transactions', (req: Request, res: Response): void => {
               v.sync_status, v.observaciones, v.es_devolucion, v.referencia_venta_id,
               COALESCE(v.sync_attempts, 0) as sync_attempts,
               (v.sync_status = 'FAILED' AND COALESCE(v.sync_attempts, 0) >= ?) as sync_detenida,
-              v.rut_cliente, v.tipo_documento_tributario, v.monto_ila,
+              v.rut_cliente, v.tipo_documento_tributario, v.monto_ila, v.medio_devolucion, v.tipo_tarjeta,
               u.nombre as cajero_nombre,
               mp.nombre as medio_pago_nombre, mp.pasarela as medio_pago_tipo
        FROM transacciones_venta v
@@ -1432,7 +1463,7 @@ router.get('/transactions', (req: Request, res: Response): void => {
  * Emite Nota de Crédito Electrónica (DTE Tipo 61) con nodo <Referencia> y restituye el stock al inventario.
  */
 router.post('/devolucion', async (req: Request, res: Response): Promise<void> => {
-  const { tenant_id, usuario_id, venta_id, motivo = 'Garantía Legal Ley N° 21.398', items_devolucion } = req.body;
+  const { tenant_id, usuario_id, venta_id, motivo = 'Garantía Legal Ley N° 21.398', items_devolucion, medio_devolucion } = req.body;
 
   if (!tenant_id || !usuario_id || !venta_id) {
     res.status(400).json({
@@ -1441,6 +1472,29 @@ router.post('/devolucion', async (req: Request, res: Response): Promise<void> =>
     });
     return;
   }
+
+  // Sin medio declarado la devolucion hace lo de siempre: la pantalla anterior no lo envia
+  const medioPedido = medio_devolucion === undefined || medio_devolucion === null || medio_devolucion === ''
+    ? null
+    : String(medio_devolucion).trim().toUpperCase();
+  if (medioPedido !== null && !MEDIOS_DEVOLUCION.includes(medioPedido)) {
+    res.status(400).json({
+      success: false,
+      error: 'MEDIO_DEVOLUCION_INVALIDO',
+      message: 'El medio de devolucion debe ser TARJETA, EFECTIVO o TRANSFERENCIA.'
+    });
+    return;
+  }
+
+  if (devolucionesEnCurso.has(venta_id)) {
+    res.status(409).json({
+      success: false,
+      error: 'DEVOLUCION_EN_CURSO',
+      message: 'Ya hay una devolucion de esta venta en curso. Espera a que termine y revisa lo que queda por devolver.'
+    });
+    return;
+  }
+  devolucionesEnCurso.add(venta_id);
 
   try {
     // 1. Obtener la venta original
@@ -1558,23 +1612,74 @@ router.post('/devolucion', async (req: Request, res: Response): Promise<void> =>
     }
     const receptorNc = dteOriginal?.rut_receptor && rutSiiSeguro(dteOriginal.rut_receptor) ? dteOriginal : null;
 
-    // 5. Lo cobrado con tarjeta se devuelve primero en la maquina: si no se puede, no hay devolucion
+    // Como sale el dinero se decide por el medio con que se cobro la venta, no por si quedo un pago
+    // que reversar: una venta con tarjeta sin pago aprobado no se da por devuelta en la maquina
+    const pasarelaVenta = String(
+      sqlite.queryOne<{ pasarela: string }>('SELECT pasarela FROM metodos_pago WHERE id = ?', [ventaOriginal.metodo_pago_id])?.pasarela
+        || 'EFECTIVO'
+    ).toUpperCase();
+    const ventaElectronica = PASARELAS_ELECTRONICAS.includes(pasarelaVenta);
+    if (!ventaElectronica && medioPedido !== null && medioPedido !== 'EFECTIVO') {
+      res.status(400).json({
+        success: false,
+        error: 'MEDIO_DEVOLUCION_INVALIDO',
+        message: 'La venta se pago en efectivo: se devuelve en efectivo.'
+      });
+      return;
+    }
+    if (medioPedido === 'EFECTIVO') {
+      // el dinero sale de una gaveta y tiene que restarse de un turno
+      const turnoAbierto = sqlite.queryOne<{ id: string }>(
+        "SELECT id FROM cierres_caja WHERE tenant_id = ? AND estado = 'ABIERTA' LIMIT 1",
+        [tenant_id]
+      );
+      if (!turnoAbierto) {
+        res.status(400).json({
+          success: false,
+          error: 'TURNO_CERRADO',
+          message: 'La caja esta cerrada. Abre la caja antes de devolver dinero en efectivo.'
+        });
+        return;
+      }
+    }
+
+    // 5. Lo cobrado con tarjeta se devuelve primero en la maquina: si no se puede, no hay devolucion.
+    // Si el cajero declaro que devolvio en efectivo o por transferencia, la maquina no se toca.
     const returnSaleId = uuidv4();
     let reverso: PaymentTransactionResult | null = null;
-    try {
-      reverso = await defaultPaymentDispatcher.reembolsar(
-        venta_id, itemsADevolver.reduce((suma, it) => suma + it.subtotal, 0), returnSaleId);
-    } catch (errReverso) {
-      logger.warn('PosRoutes', 'No se pudo reversar el cobro con tarjeta', { errReverso: detalleError(errReverso) });
-      res.status(402).json({
+    if (medioPedido === null || medioPedido === 'TARJETA') {
+      try {
+        reverso = await defaultPaymentDispatcher.reembolsar(
+          venta_id, itemsADevolver.reduce((suma, it) => suma + it.subtotal, 0), returnSaleId);
+      } catch (errReverso) {
+        logger.warn('PosRoutes', 'No se pudo reversar el cobro con tarjeta', { errReverso: detalleError(errReverso) });
+        res.status(402).json({
+          success: false,
+          message: `No se pudo devolver el pago a la tarjeta: ${detalleError(errReverso)}. La devolucion no se registro.`
+        });
+        return;
+      }
+    }
+    if (medioPedido === 'TARJETA' && ventaElectronica && (!reverso || reverso.status === 'PENDING')) {
+      res.status(409).json({
         success: false,
-        message: `No se pudo devolver el pago a la tarjeta: ${detalleError(errReverso)}. La devolucion no se registro.`
+        error: 'REVERSO_MANUAL',
+        message: `No se puede devolver en la maquina: ${reverso?.metadataResponse.motivo
+          ?? 'la venta no tiene un pago aprobado que se pueda reversar'}. Indica si devolviste en efectivo o por transferencia. La devolucion no se registro.`
       });
       return;
     }
 
+    // Lo que se declaro, o lo que se sabe sin declararlo; un reverso manual sin declarar queda sin medio
+    const medioFinal = medioPedido
+      ?? (reverso && reverso.status !== 'PENDING' ? 'TARJETA' : !ventaElectronica ? 'EFECTIVO' : null);
+    const metodoEfectivoId = sqlite.queryOne<{ id: string }>(
+      "SELECT id FROM metodos_pago WHERE pasarela = 'EFECTIVO' ORDER BY id LIMIT 1"
+    )?.id;
+
     // 6. Restituir inventario dentro de una transacción
     let totalDevuelto = 0;
+    let devueltoAlCliente = 0;
 
     sqlite.withTransaction(() => {
       // Asegurar tipo de movimiento en SQLite
@@ -1619,22 +1724,28 @@ router.post('/devolucion', async (req: Request, res: Response): Promise<void> =>
         );
       }
 
-      // Registrar transacción de devolución
+      // Lo que sale de la gaveta se redondea como el cobro en efectivo (Ley 20.956); la nota de credito
+      // declara el monto exacto
+      devueltoAlCliente = medioFinal === 'EFECTIVO' ? aplicarRedondeoChileno(totalDevuelto) : totalDevuelto;
+
+      // Registrar transacción de devolución. Lo devuelto en efectivo lleva el medio efectivo, para que
+      // reste de la gaveta del turno y no del total de la tarjeta.
       sqlite.execute(
         `INSERT INTO transacciones_venta 
-         (id, tenant_id, usuario_id, folio_local_sqlite, total, unidades, estado, rut_cliente, observaciones, metodo_pago_id, is_dirty, sync_attempts, sync_status, es_devolucion, referencia_venta_id, fecha)
-         VALUES (?, ?, ?, ?, ?, ?, 'COMPLETADA', ?, ?, ?, 1, 0, 'PENDING', 1, ?, datetime('now'))`,
+         (id, tenant_id, usuario_id, folio_local_sqlite, total, unidades, estado, rut_cliente, observaciones, metodo_pago_id, is_dirty, sync_attempts, sync_status, es_devolucion, referencia_venta_id, medio_devolucion, fecha)
+         VALUES (?, ?, ?, ?, ?, ?, 'COMPLETADA', ?, ?, ?, 1, 0, 'PENDING', 1, ?, ?, datetime('now'))`,
         [
           returnSaleId,
           tenant_id,
           usuario_id,
           `DEV-${Date.now()}`,
-          -totalDevuelto,
+          -devueltoAlCliente,
           itemsADevolver.reduce((acc, it) => acc + it.cantidad, 0),
           ventaOriginal.rut_cliente,
           `Devolución / NC: ${motivo}`,
-          ventaOriginal.metodo_pago_id,
-          venta_id
+          medioFinal === 'EFECTIVO' && metodoEfectivoId ? metodoEfectivoId : ventaOriginal.metodo_pago_id,
+          venta_id,
+          medioFinal
         ]
       );
     });
@@ -1687,6 +1798,8 @@ router.post('/devolucion', async (req: Request, res: Response): Promise<void> =>
         folio_nc: ncResponse.folio,
         monto_total: totalDevuelto,
         total_devuelto: totalDevuelto,
+        devuelto_al_cliente: devueltoAlCliente,
+        medio_devolucion: medioFinal,
         nota_credito: ncResponse,
         dte_nc: ncResponse,
         items_devueltos: itemsADevolver,
@@ -1700,6 +1813,8 @@ router.post('/devolucion', async (req: Request, res: Response): Promise<void> =>
       message: 'Error al procesar la devolución',
       error: detalleError(error)
     });
+  } finally {
+    devolucionesEnCurso.delete(venta_id);
   }
 });
 
