@@ -1,5 +1,6 @@
 // src/features/caja/hooks/useCaja.ts
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { trasMoverCaja } from '@/lib/query/invalidar'
 import {
   abrirCaja,
   cerrarCaja,
@@ -28,7 +29,7 @@ export function useAbrirCaja() {
   return useMutation({
     mutationFn: abrirCaja,
     onSuccess: () => {
-      clienteQuery.invalidateQueries({ queryKey: ['caja', 'resumen'] })
+      trasMoverCaja(clienteQuery)
     },
   })
 }
@@ -41,7 +42,7 @@ export function useCerrarCaja() {
     mutationFn: (variables: { montoRealEfectivo: number; observaciones?: string }) =>
       cerrarCaja(variables.montoRealEfectivo, variables.observaciones),
     onSuccess: () => {
-      clienteQuery.invalidateQueries({ queryKey: ['caja', 'resumen'] })
+      trasMoverCaja(clienteQuery)
     },
   })
 }
@@ -54,7 +55,7 @@ export function useRegistrarMovimiento() {
     mutationFn: (variables: { tipo: TipoMovimiento; monto: number; motivo: string }) =>
       registrarMovimiento(variables.tipo, variables.monto, variables.motivo),
     onSuccess: () => {
-      clienteQuery.invalidateQueries({ queryKey: ['caja', 'resumen'] })
+      trasMoverCaja(clienteQuery)
     },
   })
 }
@@ -82,7 +83,7 @@ export function useCorregirCierre() {
   return useMutation({
     mutationFn: corregirCierre,
     onSuccess: (_datos, variables) => {
-      clienteQuery.invalidateQueries({ queryKey: ['caja', 'historial'] })
+      trasMoverCaja(clienteQuery)
       clienteQuery.invalidateQueries({ queryKey: ['caja', 'correcciones', variables.cierreId] })
     },
   })

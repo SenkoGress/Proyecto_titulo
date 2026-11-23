@@ -1,6 +1,7 @@
 // src/features/pos/hooks/usePos.ts
 import { metodosVisibles } from '@/features/pos/utils/metodosVisibles'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { trasVender } from '@/lib/query/invalidar'
 import {
   obtenerEstadoPos,
   obtenerProductos,
@@ -39,10 +40,7 @@ export function useRegistrarVenta() {
 
   return useMutation({
     mutationFn: registrarVenta,
-    onSuccess: () => {
-      clienteQuery.invalidateQueries({ queryKey: ['pos', 'productos'] })
-      clienteQuery.invalidateQueries({ queryKey: ['pos', 'estado'] })
-    },
+    onSuccess: () => trasVender(clienteQuery),
   })
 }
 

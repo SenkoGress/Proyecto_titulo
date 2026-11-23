@@ -1,5 +1,6 @@
 // src/features/invoices/hooks/useInvoices.ts
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { trasIngresarFactura } from '@/lib/query/invalidar'
 import {
   abrirFacturaDeCola,
   confirmarFactura,
@@ -24,12 +25,8 @@ export function useConfirmarFactura() {
 
   return useMutation({
     mutationFn: confirmarFactura,
-    onSuccess: () => {
-      // el stock cambio, refrescamos el catalogo del pos
-      clienteQuery.invalidateQueries({ queryKey: ['pos', 'productos'] })
-      // si venia de la cola, su ticket ya no existe
-      clienteQuery.invalidateQueries({ queryKey: ['invoices'] })
-    },
+    // el stock cambio y la cola perdio su ticket
+    onSuccess: () => trasIngresarFactura(clienteQuery),
   })
 }
 
@@ -60,10 +57,7 @@ export function useProcesarPendientes() {
 
   return useMutation({
     mutationFn: procesarPendientes,
-    onSuccess: () => {
-      clienteQuery.invalidateQueries({ queryKey: ['invoices'] })
-      clienteQuery.invalidateQueries({ queryKey: ['pos', 'productos'] })
-    },
+    onSuccess: () => trasIngresarFactura(clienteQuery),
   })
 }
 

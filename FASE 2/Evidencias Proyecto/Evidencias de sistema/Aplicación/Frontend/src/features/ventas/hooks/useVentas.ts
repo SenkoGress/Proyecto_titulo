@@ -1,5 +1,6 @@
 // src/features/ventas/hooks/useVentas.ts
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { trasVender } from '@/lib/query/invalidar'
 import {
   obtenerDtesEmitidos,
   obtenerTransacciones,
@@ -46,11 +47,7 @@ export function useDevolucion() {
   return useMutation({
     mutationFn: registrarDevolucion,
     onSuccess: () => {
-      clienteQuery.invalidateQueries({ queryKey: ['pos', 'transacciones'] })
-      clienteQuery.invalidateQueries({ queryKey: ['dte', 'lista'] })
-      clienteQuery.invalidateQueries({ queryKey: ['pos', 'productos'] })
-      clienteQuery.invalidateQueries({ queryKey: ['inventario'] })
-      clienteQuery.invalidateQueries({ queryKey: ['caja', 'resumen'] })
+      trasVender(clienteQuery)
     },
   })
 }
