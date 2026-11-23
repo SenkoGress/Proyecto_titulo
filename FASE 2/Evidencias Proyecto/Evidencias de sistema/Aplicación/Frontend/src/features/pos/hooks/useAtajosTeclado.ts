@@ -16,10 +16,15 @@ function estaEscribiendo(objetivo: EventTarget | null): boolean {
   return objetivo instanceof HTMLInputElement || objetivo instanceof HTMLTextAreaElement
 }
 
+// un lector de codigos teclea mucho mas rapido que una persona: dos digitos tan seguidos no son
+// dos atajos, son un codigo entrando
+const MS_ENTRE_DIGITOS_DEL_LECTOR = 60
+
 // atajos de teclado de la caja
 export function useAtajosTeclado(acciones: AccionesAtajos) {
   // guardar acciones sin volver a registrar el evento
   const accionesRef = useRef(acciones)
+  const ultimoDigito = useRef(0)
 
   useEffect(() => {
     accionesRef.current = acciones
@@ -27,8 +32,14 @@ export function useAtajosTeclado(acciones: AccionesAtajos) {
 
   useEffect(() => {
     function alPresionar(evento: KeyboardEvent) {
+      const carrito = useCarritoStore.getState()
+
       // con el aviso de producto vencido abierto, la caja espera la decision: nada de cobrar ni limpiar
-      if (useCarritoStore.getState().porConfirmarVencido) return
+      if (carrito.porConfirmarVencido) return
+
+      // mientras la maquina responde el ticket esta congelado. Solo la ayuda sigue disponible:
+      // Escape lo vaciaba a medio cobrar y las teclas 1 a 5 cambiaban el medio de pago
+      if (carrito.cobrando && evento.key !== 'F1') return
 
       const a = accionesRef.current
       const escribiendo = estaEscribiendo(evento.target)
@@ -60,9 +71,21 @@ export function useAtajosTeclado(acciones: AccionesAtajos) {
           return
       }
 
-      // medio de pago con 1 a 5
-      if (!escribiendo && /^[1-5]$/.test(evento.key)) {
-        a.elegirMetodo(Number(evento.key) - 1)
+      // Medio de pago con 1 a 5. Un codigo de barras tambien son digitos: si el lector dispara
+      // con el foco fuera del buscador, cada digito del 1 al 5 cambiaba el medio de pago y el
+      // Enter final apretaba el boton que tuviera el foco. Varios digitos seguidos son un codigo,
+      // no cinco veces el atajo: ahi se devuelve el foco al buscador y el resto del codigo entra
+      // donde corresponde
+      if (!escribiendo && /^[0-9]$/.test(evento.key)) {
+        const ahora = evento.timeStamp
+        const seguido = ahora - ultimoDigito.current < MS_ENTRE_DIGITOS_DEL_LECTOR
+        ultimoDigito.current = ahora
+
+        if (seguido) {
+          a.buscar()
+          return
+        }
+        if (/^[1-5]$/.test(evento.key)) a.elegirMetodo(Number(evento.key) - 1)
       }
     }
 

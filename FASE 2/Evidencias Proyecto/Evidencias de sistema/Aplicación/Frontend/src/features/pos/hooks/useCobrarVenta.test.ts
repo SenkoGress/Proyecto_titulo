@@ -43,6 +43,8 @@ describe('useCobrarVenta: lo que el atajo no puede saltarse', () => {
     mutate.mockClear()
     estado.error = null
     estado.isPending = false
+    // el mutate esta simulado, asi que onSettled no corre y la marca de cobrando quedaria puesta
+    carrito().marcarCobrando(false)
     carrito().limpiar()
   })
   afterEach(cleanup)

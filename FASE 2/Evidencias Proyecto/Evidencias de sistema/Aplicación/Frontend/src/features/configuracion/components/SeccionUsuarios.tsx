@@ -103,7 +103,7 @@ export function SeccionUsuarios() {
               {estaActivo(usuario) ? (
                 <>
                   <Tooltip title="Editar sus datos">
-                    <IconButton size="small" onClick={() => setEditando(usuario)}>
+                    <IconButton size="small" onClick={() => setEditando(usuario)} aria-label={`Editar a ${usuario.nombre}`}>
                       <EditOutlined fontSize="small" />
                     </IconButton>
                   </Tooltip>

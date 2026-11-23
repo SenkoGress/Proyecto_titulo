@@ -89,7 +89,12 @@ function FilaTicket({ linea }: { linea: LineaCarrito }) {
 
       {/* quitar */}
       <TableCell align="center" padding="checkbox">
-        <IconButton size="small" color="error" onClick={() => eliminarLinea(producto.id)}>
+        <IconButton
+          size="small"
+          color="error"
+          onClick={() => eliminarLinea(producto.id)}
+          aria-label={`Quitar ${producto.nombre} de la venta`}
+        >
           <DeleteOutlineIcon fontSize="small" />
         </IconButton>
       </TableCell>

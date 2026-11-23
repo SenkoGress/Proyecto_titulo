@@ -4,6 +4,7 @@ import Paper from '@mui/material/Paper'
 import Typography from '@mui/material/Typography'
 import Tooltip from '@mui/material/Tooltip'
 import { formatoClp } from '@/shared/utils/formatoClp'
+import { useArqueoStore } from '@/features/caja/stores/arqueoStore'
 import type { SesionCaja } from '@/features/caja/types'
 
 type Props = {
@@ -19,12 +20,14 @@ function Kpi({
   color,
   ayuda,
   destacado,
+  oculto,
 }: {
   etiqueta: string
   monto: number
   color: Color
   ayuda?: string
   destacado?: boolean
+  oculto?: boolean
 }) {
   const contenido = (
     <Paper
@@ -43,8 +46,8 @@ function Kpi({
         {etiqueta.toUpperCase()}
       </Typography>
 
-      <Typography variant="h5" sx={{ fontWeight: 700, color, mt: 0.5 }}>
-        {formatoClp(monto)}
+      <Typography variant="h5" sx={{ fontWeight: 700, color: oculto ? 'text.disabled' : color, mt: 0.5 }}>
+        {oculto ? '• • •' : formatoClp(monto)}
       </Typography>
     </Paper>
   )
@@ -54,6 +57,9 @@ function Kpi({
 
 // balance en vivo del turno: de donde sale y como queda el efectivo en gaveta
 export function KpisBalanceTurno({ sesion }: Props) {
+  // arqueo ciego: el monto que el sistema espera no se ve hasta que el cajero termina de contar
+  const revelada = useArqueoStore((estado) => estado.cuadraturaRevelada)
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
       {/* la cadena del efectivo: apertura + ventas + aportes - egresos = gaveta */}
@@ -77,8 +83,13 @@ export function KpisBalanceTurno({ sesion }: Props) {
           etiqueta="Efectivo en gaveta (=)"
           monto={sesion.monto_esperado_efectivo}
           color="primary.main"
-          ayuda="Lo que deberia haber en la gaveta segun el sistema"
+          ayuda={
+            revelada
+              ? 'Lo que deberia haber en la gaveta segun el sistema'
+              : 'Se muestra al comparar con el sistema: primero cuenta la gaveta'
+          }
           destacado
+          oculto={!revelada}
         />
       </Box>
 

@@ -22,6 +22,9 @@ export const useArqueoStore = create<ArqueoState>((set) => ({
   fijarCantidad: (valor, cantidad) =>
     set((estado) => ({
       cantidades: { ...estado.cantidades, [valor]: Math.max(0, Math.floor(cantidad) || 0) },
+      // cambiar lo contado tapa de nuevo la comparacion: con ella a la vista, el conteo se puede
+      // ajustar hasta que cuadre y el arqueo ciego deja de medir nada
+      cuadraturaRevelada: false,
     })),
 
   // F7: limpiar el conteo (por si se cuenta de nuevo)

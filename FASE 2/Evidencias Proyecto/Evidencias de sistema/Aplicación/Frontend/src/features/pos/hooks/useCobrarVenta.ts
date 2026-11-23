@@ -27,6 +27,7 @@ export function useCobrarVenta() {
       receptorEmpresa,
       montoRecibido,
       limpiar,
+      marcarCobrando,
     } = useCarritoStore.getState()
 
     // nada que cobrar o ya cobrando
@@ -55,6 +56,10 @@ export function useCobrarVenta() {
       codigo_ila: linea.producto.impuesto_adicional_codigo ?? undefined,
     }))
 
+    // el ticket queda congelado hasta que la maquina responda: lo que se agregara en ese rato se
+    // perderia al vaciarlo, y Escape lo dejaba vacio a medio cobrar
+    marcarCobrando(true)
+
     registrarVenta.mutate(
       {
         tenant_id: tenantActual(),
@@ -67,8 +72,10 @@ export function useCobrarVenta() {
         tipo_tarjeta: tipoTarjetaParaCobro(metodoPago, tipoTarjeta),
       },
       {
+        onSettled: () => marcarCobrando(false),
         onSuccess: (venta) => {
           setVentaLista(venta) // mostrar comprobante
+          marcarCobrando(false) // se apaga antes de vaciar: limpiar no actua mientras se cobra
           limpiar() // ticket nuevo
         },
       },
@@ -78,6 +85,8 @@ export function useCobrarVenta() {
   // con el cobro ya hecho y la venta perdida, la unica salida segura es partir un ticket nuevo:
   // si no, el boton queda bloqueado y el cajero no puede atender al siguiente cliente
   function empezarDeNuevo() {
+    // si el cobro quedo a medias la marca puede seguir puesta, y sin apagarla no se vacia
+    useCarritoStore.getState().marcarCobrando(false)
     useCarritoStore.getState().limpiar()
     registrarVenta.reset()
   }

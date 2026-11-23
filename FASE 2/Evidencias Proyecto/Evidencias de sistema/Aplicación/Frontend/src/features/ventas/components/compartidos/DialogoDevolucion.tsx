@@ -119,11 +119,22 @@ export function DialogoDevolucion({ venta, onCerrar }: Props) {
   const puedeConfirmar = aDevolver.length > 0 && !devolucion.isPending && (esTotal || sinIdentificar.length === 0)
 
   return (
-    <Dialog open onClose={onCerrar} maxWidth="sm" fullWidth>
+    <Dialog
+      open
+      onClose={(_evento, motivo) => {
+        // mientras la maquina anula no se cierra ni con Escape ni tocando fuera: la devolucion
+        // seguiria sola y el aviso de que falta entregarle la plata se perderia
+        if (devolucion.isPending) return
+        if (motivo === 'backdropClick' || motivo === 'escapeKeyDown') return onCerrar()
+        onCerrar()
+      }}
+      maxWidth="sm"
+      fullWidth
+    >
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
         <AssignmentReturnOutlined color="warning" />
         <Box sx={{ flexGrow: 1 }}>Devolver la venta {venta.folio}</Box>
-        <IconButton size="small" onClick={onCerrar} aria-label="Cerrar">
+        <IconButton size="small" onClick={onCerrar} disabled={devolucion.isPending} aria-label="Cerrar">
           <CloseOutlined fontSize="small" />
         </IconButton>
       </DialogTitle>
@@ -299,7 +310,9 @@ export function DialogoDevolucion({ venta, onCerrar }: Props) {
           </Button>
         ) : (
           <>
-            <Button onClick={onCerrar}>Cancelar</Button>
+            <Button onClick={onCerrar} disabled={devolucion.isPending}>
+              Cancelar
+            </Button>
             <Button variant="contained" color="warning" onClick={confirmar} disabled={!puedeConfirmar}>
               {devolucion.isPending
                 ? 'Procesando...'

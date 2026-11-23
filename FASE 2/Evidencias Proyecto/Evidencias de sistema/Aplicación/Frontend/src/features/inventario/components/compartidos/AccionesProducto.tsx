@@ -32,7 +32,11 @@ export function AccionesProducto({ onEditar, onAjustar, onMerma, onHistorial }: 
 
   return (
     <>
-      <IconButton size="small" onClick={(evento) => setAncla(evento.currentTarget)}>
+      <IconButton
+        size="small"
+        onClick={(evento) => setAncla(evento.currentTarget)}
+        aria-label="Mas acciones de este producto"
+      >
         <MoreVertIcon fontSize="small" />
       </IconButton>
 

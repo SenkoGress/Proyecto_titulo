@@ -106,7 +106,7 @@ export function PanelTicket({ onCobrar, cobrando, errorCobro, onEmpezarDeNuevo }
         {ila > 0 && (
           <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
             <Typography variant="body2" color="text.secondary">
-              Impuesto adicional ILA
+              del cual, impuesto adicional ILA
             </Typography>
             <Typography variant="body2">{formatoClp(ila)}</Typography>
           </Box>

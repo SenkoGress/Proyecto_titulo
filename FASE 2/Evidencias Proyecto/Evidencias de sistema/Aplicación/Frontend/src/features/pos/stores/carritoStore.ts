@@ -25,6 +25,7 @@ type CarritoState = {
   porConfirmarVencido: Producto | null // producto vencido que espera la decision del cajero
   montoRecibido: number // con cuanto paga el cliente en efectivo
   tipoTarjeta: TipoTarjeta | null // credito o debito, cuando se cobra con tarjeta
+  cobrando: boolean // la maquina esta procesando: el ticket queda congelado
 
   agregar: (producto: Producto) => void
   confirmarVencido: () => void
@@ -40,6 +41,7 @@ type CarritoState = {
   fijarReceptorEmpresa: (receptor: ReceptorEmpresa | null) => void
   fijarMontoRecibido: (monto: number) => void
   cambiarTipoTarjeta: (tipo: TipoTarjeta | null) => void
+  marcarCobrando: (cobrando: boolean) => void
 }
 
 // estado inicial del ticket
@@ -53,6 +55,7 @@ const ticketVacio = {
   porConfirmarVencido: null,
   montoRecibido: 0,
   tipoTarjeta: null,
+  cobrando: false,
 }
 
 // carrito de la venta actual
@@ -62,6 +65,7 @@ export const useCarritoStore = create<CarritoState>((set) => ({
   // agregar producto (sin pasar el stock)
   agregar: (producto) =>
     set((estado) => {
+      if (estado.cobrando) return {}
       const existente = estado.lineas.find((linea) => linea.producto.id === producto.id)
 
       if (!existente) {
@@ -83,6 +87,7 @@ export const useCarritoStore = create<CarritoState>((set) => ({
   // el cajero decidio vender el vencido de todos modos
   confirmarVencido: () =>
     set((estado) => {
+      if (estado.cobrando) return {}
       const producto = estado.porConfirmarVencido
       if (!producto) return {}
       return { porConfirmarVencido: null, lineas: [...estado.lineas, { producto, cantidad: 1 }] }
@@ -92,7 +97,7 @@ export const useCarritoStore = create<CarritoState>((set) => ({
 
   // restar uno (si llega a 0 se borra)
   quitarUno: (productoId) =>
-    set((estado) => ({
+    set((estado) => (estado.cobrando ? {} : {
       lineas: estado.lineas
         .map((linea) =>
           linea.producto.id === productoId ? { ...linea, cantidad: linea.cantidad - 1 } : linea,
@@ -102,7 +107,7 @@ export const useCarritoStore = create<CarritoState>((set) => ({
 
   // escribir cantidad (entre 1 y el stock)
   fijarCantidad: (productoId, cantidad) =>
-    set((estado) => ({
+    set((estado) => (estado.cobrando ? {} : {
       lineas: estado.lineas.map((linea) => {
         if (linea.producto.id !== productoId) return linea
         const maximo = Math.max(1, linea.producto.stock_actual)
@@ -113,12 +118,15 @@ export const useCarritoStore = create<CarritoState>((set) => ({
 
   // borrar linea
   eliminarLinea: (productoId) =>
-    set((estado) => ({
+    set((estado) => (estado.cobrando ? {} : {
       lineas: estado.lineas.filter((linea) => linea.producto.id !== productoId),
     })),
 
-  // vaciar ticket
-  limpiar: () => set(ticketVacio),
+  // vaciar ticket. No se puede mientras la maquina responde: Escape vaciaba el ticket a medio
+  // cobrar. El cobro apaga la marca antes de vaciarlo
+  limpiar: () => set((estado) => (estado.cobrando ? {} : ticketVacio)),
+
+  marcarCobrando: (cobrando) => set({ cobrando }),
 
   cambiarMetodoPago: (metodo) => set({ metodoPago: metodo }),
 

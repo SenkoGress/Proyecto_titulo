@@ -11,6 +11,8 @@ import {
   restablecerClave,
 } from '@/features/auth/api/auth.api'
 import { useSesionStore } from '@/features/auth/stores/sesionStore'
+import { useCarritoStore } from '@/features/pos/stores/carritoStore'
+import { useArqueoStore } from '@/features/caja/stores/arqueoStore'
 
 export function useIniciarSesion() {
   const iniciar = useSesionStore((estado) => estado.iniciar)
@@ -77,5 +79,10 @@ export function useCerrarSesion() {
   return () => {
     cerrar()
     clienteQuery.clear()
+    // el ticket a medias y el conteo de la gaveta son del turno de quien se va: el siguiente
+    // cajero los encontraba cargados y podia cobrarlos o cerrar con ellos
+    useCarritoStore.getState().marcarCobrando(false)
+    useCarritoStore.getState().limpiar()
+    useArqueoStore.getState().limpiar()
   }
 }
