@@ -1,12 +1,9 @@
 // src/features/pos/components/visual/CatalogoProductos.tsx
 import { useMemo, useState } from 'react'
 import Box from '@mui/material/Box'
-import TextField from '@mui/material/TextField'
-import InputAdornment from '@mui/material/InputAdornment'
 import Chip from '@mui/material/Chip'
 import Skeleton from '@mui/material/Skeleton'
 import Typography from '@mui/material/Typography'
-import SearchIcon from '@mui/icons-material/Search'
 import { ErrorBox } from '@/shared/components/ui/ErrorBox'
 import { ProductoCard } from '@/features/pos/components/visual/ProductoCard'
 import { useImagenesProductos } from '@/features/pos/hooks/useImagenesProductos'
@@ -20,13 +17,17 @@ import {
 
 const TODOS = 'Todos'
 
-// buscador, categorias y grilla
-export function CatalogoProductos() {
+type Props = {
+  busqueda: string
+}
+
+// categorias y grilla. El buscador vive aparte, en BuscadorVisual, porque el lector necesita un
+// campo montado tambien cuando esta grilla cede el espacio a la venta
+export function CatalogoProductos({ busqueda }: Props) {
   const { data: productos, isPending, isError, error } = useProductos()
   const fotos = useImagenesProductos()
   const agregar = useCarritoStore((estado) => estado.agregar)
 
-  const [busqueda, setBusqueda] = useState('')
   const [categoria, setCategoria] = useState(TODOS)
 
   // categorias con cantidad
@@ -45,38 +46,8 @@ export function CatalogoProductos() {
     )
   }, [productos, busqueda, categoria])
 
-  // enter del lector: si hay uno solo, agregarlo
-  function alPresionarEnter(evento: React.KeyboardEvent) {
-    if (evento.key !== 'Enter') return
-    const unico = productosFiltrados.length === 1 ? productosFiltrados[0] : undefined
-    if (unico) {
-      agregar(unico)
-      setBusqueda('')
-    }
-  }
-
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, height: '100%', minWidth: 0, flexGrow: 1 }}>
-      {/* buscador */}
-      <TextField
-        value={busqueda}
-        onChange={(evento) => setBusqueda(evento.target.value)}
-        onKeyDown={alPresionarEnter}
-        placeholder="Buscar por nombre, codigo o escanear producto"
-        size="small"
-        fullWidth
-        slotProps={{
-          input: {
-            startAdornment: (
-              <InputAdornment position="start">
-                <SearchIcon fontSize="small" />
-              </InputAdornment>
-            ),
-          },
-        }}
-        sx={{ bgcolor: 'background.paper' }}
-      />
-
       {/* filtro por categoria */}
       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
         {categorias.map((item) => (

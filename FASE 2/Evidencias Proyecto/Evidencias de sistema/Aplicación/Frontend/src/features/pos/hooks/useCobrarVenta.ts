@@ -4,6 +4,9 @@ import { useRegistrarVenta } from '@/features/pos/hooks/usePos'
 import { useCarritoStore } from '@/features/pos/stores/carritoStore'
 import { tieneAlcohol } from '@/features/pos/utils/alcohol'
 import { tipoTarjetaParaCobro } from '@/features/pos/utils/tipoTarjeta'
+import { faltaElMontoRecibido } from '@/features/pos/utils/pagoEnEfectivo'
+import { cobroSinVenta } from '@/features/pos/utils/errorVenta'
+import { totalCobrado } from '@/features/pos/utils/totalCobrado'
 import type { ItemCheckout, VentaRegistrada } from '@/features/pos/types'
 import { tenantActual, usuarioActualId } from '@/features/auth/utils/identidad'
 
@@ -14,11 +17,27 @@ export function useCobrarVenta() {
 
   // enviar venta al backend
   function cobrar() {
-    const { lineas, metodoPago, tipoTarjeta, rutCliente, edadVerificada, tipoComprobante, receptorEmpresa, limpiar } =
-      useCarritoStore.getState()
+    const {
+      lineas,
+      metodoPago,
+      tipoTarjeta,
+      rutCliente,
+      edadVerificada,
+      tipoComprobante,
+      receptorEmpresa,
+      montoRecibido,
+      limpiar,
+    } = useCarritoStore.getState()
 
     // nada que cobrar o ya cobrando
     if (lineas.length === 0 || registrarVenta.isPending) return
+
+    // la tarjeta quedo cobrada y la venta no se guardo: cobrar de nuevo le cobra dos veces al
+    // cliente. El boton se bloquea, pero el atajo F4 entraba igual por aca
+    if (cobroSinVenta(registrarVenta.error)) return
+
+    // en efectivo hay que anotar con cuanto paga: el boton ya lo exige y el atajo tambien
+    if (faltaElMontoRecibido(metodoPago, montoRecibido, totalCobrado(lineas, metodoPago, tipoComprobante))) return
 
     // falta verificar edad
     if (tieneAlcohol(lineas) && !edadVerificada) return

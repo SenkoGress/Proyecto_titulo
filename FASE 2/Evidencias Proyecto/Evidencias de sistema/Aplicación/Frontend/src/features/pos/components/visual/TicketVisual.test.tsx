@@ -141,3 +141,46 @@ describe('TicketVisual', () => {
     expect(carrito().lineas).toHaveLength(0)
   })
 })
+
+// El lector de codigos escribe en el buscador y termina con Enter. Cuando la venta le quito el
+// espacio al catalogo, el buscador se iba con el: el primer producto entraba y el segundo escaneo
+// no llegaba a ninguna parte, sin aviso. El campo tiene que seguir montado en las dos vistas
+describe('CajaVisual: el lector sigue teniendo donde escribir', () => {
+  beforeEach(() => carrito().limpiar())
+  afterEach(cleanup)
+
+  const buscador = () => screen.queryByPlaceholderText(/escanear producto/i)
+
+  it('el buscador esta con el catalogo a la vista', () => {
+    render(conConsultas(<CajaVisual />))
+
+    expect(buscador()).toBeTruthy()
+  })
+
+  it('y sigue estando cuando la venta toma el espacio', () => {
+    render(conConsultas(<CajaVisual />))
+    act(() => carrito().agregar(coca))
+
+    expect(screen.getByText('COCA COLA Zero Azucar 350 ml')).toBeTruthy()
+    expect(buscador()).toBeTruthy()
+  })
+
+  it('y tambien al volver al catalogo', () => {
+    render(conConsultas(<CajaVisual />))
+    act(() => carrito().agregar(coca))
+
+    fireEvent.click(screen.getByRole('button', { name: /Ver el catalogo/i }))
+
+    expect(buscador()).toBeTruthy()
+  })
+
+  it('lo que se escribe no se pierde al cambiar de vista', () => {
+    render(conConsultas(<CajaVisual />))
+    act(() => carrito().agregar(coca))
+
+    fireEvent.change(buscador() as HTMLInputElement, { target: { value: 'leche' } })
+    fireEvent.click(screen.getByRole('button', { name: /Ver el catalogo/i }))
+
+    expect((buscador() as HTMLInputElement).value).toBe('leche')
+  })
+})
